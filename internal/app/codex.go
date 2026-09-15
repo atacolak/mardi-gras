@@ -401,6 +401,7 @@ func (m Model) toggleCodexTranscript() (tea.Model, tea.Cmd) {
 
 	m.showCodex = true
 	m.showGasTown = false
+	m.showActors = false
 	m.showProblems = false
 	m.showDoctor = false
 

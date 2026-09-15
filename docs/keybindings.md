@@ -18,11 +18,12 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `f`          | Toggle focus mode (my work + top priority) |
 | `c`          | Toggle closed issues       |
 | `ctrl+g`     | Toggle Gas Town panel **(orch)** |
+| `o`          | Toggle the actor society pane **(actor CLI)** |
 | `p`          | Toggle problems view **(orch)** |
 | `D`          | Toggle doctor diagnostics overlay |
 | `M`          | Toggle Codex (MCP) live transcript |
 
-`ctrl+g`, `p`, `D` and `M` are mutually exclusive — opening one closes the other three.
+`ctrl+g`, `o`, `p`, `D` and `M` are mutually exclusive — opening one closes the others. `o` is progressive-hide like `ctrl+g`: without the `actor` CLI on `PATH` the pane, its key and its help section do not exist (see [Actors Pane](#actors-pane-o)), and pressing `o` is a no-op rather than an error.
 
 ## Parade
 
@@ -120,6 +121,22 @@ The panel takes over the detail pane; give it focus with `tab` (or `enter` from 
 | `R`          | Recover dead rig — opens a confirmation dialog, then releases + re-slings orphans |
 
 `R` only applies to a `dead_rig` problem; on any other row it does nothing. Recovery shells out to `gt` directly, so it is offered on the Gas Town backend only.
+
+## Actors Pane (`o`)
+
+The read-only window onto the actor society: who is live, what they own, and what they are doing. It takes over the detail pane and stays a pure observation surface — mg never restores, recycles, or messages an actor from here.
+
+It is fed by the `actor` CLI's societyRow projection (`actor project <id-or-root> --json`, or `actor list --json` village-wide), re-read every 10 seconds while the pane is open, with a fetch kicked immediately when the pane opens. A failed fetch keeps the last roster on screen and reports the failure under it in a toast; polling continues.
+
+Each row reads `name  kind  lifecycle/readiness  sprint — title  asked: …  now: …`, with `-` where the sprint is null.
+
+| Key          | Action                          |
+| ------------ | ------------------------------- |
+| `o`          | Open or close the pane          |
+| `v`          | Switch scope: this project ↔ the whole village (pane focused) |
+| `j` / `k`    | Scroll the roster               |
+
+`v` refetches as it flips, so the village listing appears without waiting out the poll interval. Without the `actor` CLI on `PATH`, the pane, the `o` key, the footer hint and the help section are all absent.
 
 ## Doctor Overlay (`D`)
 

@@ -178,8 +178,11 @@ func (f Footer) renderHealthState(age string) string {
 	return style.Render(label)
 }
 
-// NewFooter creates a footer with the given width and pane focus.
-func NewFooter(width int, detailFocused, hasGasTown bool) Footer {
+// NewFooter creates a footer with the given width and pane focus. hasGasTown
+// and hasActors gate the orchestrator and actor-society hints: both features
+// hide entirely when their CLI is absent, so the footer must not advertise keys
+// that do nothing.
+func NewFooter(width int, detailFocused, hasGasTown, hasActors bool) Footer {
 	bindings := ParadeBindings
 	if detailFocused {
 		bindings = DetailBindings
@@ -192,6 +195,9 @@ func NewFooter(width int, detailFocused, hasGasTown bool) Footer {
 			{Key: "n", Desc: "nudge"},
 		}
 		bindings = insertBefore(bindings, "q", gtBindings...)
+	}
+	if hasActors {
+		bindings = insertBefore(bindings, "q", FooterBinding{Key: "o", Desc: "actors"})
 	}
 	return Footer{Width: width, Bindings: bindings}
 }

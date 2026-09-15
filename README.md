@@ -80,6 +80,7 @@ mg
 | --- | --- |
 | `j` / `k` | Move along the route |
 | `enter` | Open the detail pane for the selected issue |
+| `o` | Actor society pane: who is live, what they own, what they're doing (needs the `actor` CLI) |
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
 | `f` | Focus mode: your work and the top priorities, nothing else |
 | `c` | Fold or unfold Past the Stand |
@@ -87,13 +88,15 @@ mg
 | `?` | Help overlay, paged by section |
 | `q` | Leave the parade |
 
-Press `?` for the rest. The [full keybinding reference](docs/keybindings.md) lists every shortcut across the parade, detail pane, orchestrator panel, and overlays.
+Press `?` for the rest. The [full keybinding reference](docs/keybindings.md) lists every shortcut across the parade, detail pane, actor society pane, orchestrator panel, and overlays.
 
 ## What you can do
 
 ### Read
 
 The detail pane renders an issue's description, design notes, and acceptance criteria as real markdown. It shows dependencies in both directions, an epic's progress through its children, comments and the timeline, how old the issue is, and when work on it started. With an orchestrator attached it also suggests a formula for the work and, on Gas Town, draws the molecule DAG with the critical path picked out.
+
+`o` opens the actor society pane in the same slot: one row per persistent actor with its kind, lifecycle, readiness, the sprint it owns, and what it was asked and is doing now. `v` flips between this project and the whole village. It is strictly read-only — the pane reports, it never restores, recycles, or messages anyone — and it is absent entirely when the `actor` CLI is not installed.
 
 ### Act
 

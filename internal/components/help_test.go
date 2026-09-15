@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestHelpViewRendersContent(t *testing.T) {
@@ -110,6 +111,35 @@ func TestHelpMultiPageShowsIndicator(t *testing.T) {
 	view := h.View()
 	if !strings.Contains(view, "Page 1/") {
 		t.Fatal("should show page indicator when multiple pages")
+	}
+}
+
+// The ACTORS section is progressive-hide: the pane and its keys do not exist
+// without the actor CLI, so the help overlay must not document them either.
+func TestHelpActorsSectionHiddenWithoutActorCLI(t *testing.T) {
+	h := NewHelp(120, 200)
+	for _, s := range h.sections() {
+		if strings.Contains(s.title, "ACTORS") {
+			t.Fatal("help sections list the actors pane without the actor CLI on PATH")
+		}
+	}
+	if strings.Contains(ansi.Strip(h.View()), "ACTORS") {
+		t.Fatal("help renders the actors pane without the actor CLI on PATH")
+	}
+}
+
+func TestHelpActorsSectionShownWithActorCLI(t *testing.T) {
+	h := NewHelp(120, 200)
+	h.ShowActors = true
+	// Titles are styled per rune, so match against the stripped overlay.
+	view := ansi.Strip(h.View())
+	if !strings.Contains(view, "ACTORS") {
+		t.Fatal("help should document the actors pane when the actor CLI is present")
+	}
+	for _, want := range []string{"Toggle the actor society pane", "Switch the pane's scope: project ↔ village"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("actors section missing %q", want)
+		}
 	}
 }
 

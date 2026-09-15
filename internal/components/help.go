@@ -14,7 +14,11 @@ import (
 type Help struct {
 	Width  int
 	Height int
-	page   int // current page (0-indexed)
+	// ShowActors documents the actor society pane. The app sets it from
+	// actors.Available(): without the `actor` CLI the pane and its keys are
+	// gone, so the overlay must not list them.
+	ShowActors bool
+	page       int // current page (0-indexed)
 }
 
 type helpBinding struct {
@@ -179,6 +183,29 @@ func allSections() []helpSection {
 	}
 }
 
+// actorsSection documents the actor society pane (key `o`). It is appended
+// only when the actor CLI is present; see Help.ShowActors.
+func actorsSection() helpSection {
+	return helpSection{
+		title: "ACTORS (when the actor CLI is present)",
+		bindings: []helpBinding{
+			{key: "o", desc: "Toggle the actor society pane"},
+			{key: "v", desc: "Switch the pane's scope: project ↔ village"},
+			{key: "j / k", desc: "Scroll the roster"},
+		},
+	}
+}
+
+// sections returns the binding sections this Help shows. The actors section is
+// progressive-hide, so it exists only when the CLI behind it does.
+func (h Help) sections() []helpSection {
+	sections := allSections()
+	if h.ShowActors {
+		sections = append(sections, actorsSection())
+	}
+	return sections
+}
+
 // sectionHeight returns the number of lines a section takes up,
 // including the title line and one blank line separator after it.
 func sectionHeight(s helpSection) int {
@@ -226,7 +253,7 @@ func (h Help) bodyLines() int {
 
 // pageCount returns the total number of pages.
 func (h Help) pageCount() int {
-	pages := paginateSections(allSections(), h.bodyLines())
+	pages := paginateSections(h.sections(), h.bodyLines())
 	return len(pages)
 }
 
@@ -240,7 +267,7 @@ func (h Help) View() string {
 		contentWidth = 44
 	}
 
-	sections := allSections()
+	sections := h.sections()
 	pages := paginateSections(sections, h.bodyLines())
 
 	// Clamp page
@@ -292,9 +319,10 @@ func (h Help) View() string {
 }
 
 func (h Help) renderSections(width int, sections []helpSection) string {
+	keyWidth := h.maxKeyWidth(h.sections())
 	blocks := make([]string, 0, len(sections))
 	for i := range sections {
-		blocks = append(blocks, h.renderSection(width, sections[i], h.maxKeyWidth(allSections())))
+		blocks = append(blocks, h.renderSection(width, sections[i], keyWidth))
 	}
 	return strings.Join(blocks, "\n\n")
 }

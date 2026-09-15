@@ -17,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/atotto/clipboard"
+	"github.com/matt-wright86/mardi-gras/internal/actors"
 	"github.com/matt-wright86/mardi-gras/internal/agent"
 	"github.com/matt-wright86/mardi-gras/internal/components"
 	"github.com/matt-wright86/mardi-gras/internal/data"
@@ -83,6 +84,13 @@ type Model struct {
 	townStatus    *gastown.TownStatus // Latest gt status, nil when unavailable
 	gasTown       views.GasTown       // Gas Town control surface panel
 	showGasTown   bool                // Whether the Gas Town panel replaces detail
+
+	// Actor society pane (read-only projection over the `actor` CLI). The
+	// feature hides entirely when the binary is absent, so actorsAvail gates
+	// the key, the footer hint and the help section.
+	actors      views.Actors
+	showActors  bool
+	actorsAvail bool
 
 	// Toast notification
 	toast components.Toast
@@ -203,6 +211,12 @@ type Model struct {
 	// Single-flight gate for gt status polls
 	gtPollInFlight bool
 
+	// Single-flight gate and tick state for the actor society poll. The actor
+	// CLI is slow (project ~1-3s, village up to ~10s), so overlapping polls are
+	// dropped the same way `gt status` polls are.
+	actorsPollInFlight bool
+	actorsTicking      bool
+
 	// townStatusErr is the last orchestrator status failure. It stops
 	// gasTownLoading() spinning forever on a backend that will never answer,
 	// and is cleared whenever a fresh poll starts or a poll succeeds.
@@ -315,6 +329,7 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 		gtEnv:          gtEnv,
 		driver:         gastown.SelectDriver(),
 		gtPollInFlight: gtEnv.Available || gastown.GCEnabled(), // Init() launches the first poll; gate subsequent ones
+		actorsAvail:    actors.Available(),
 		changedIDs:     make(map[string]bool),
 		prevIssueMap:   prevMap,
 		sourceMode:     source.Mode,
@@ -411,6 +426,42 @@ func (m Model) orchestratorAvailable() bool {
 // rather than ever reaching the error state.
 func (m Model) gasTownLoading() bool {
 	return m.showGasTown && m.townStatus == nil && m.townStatusErr == nil && m.orchestratorAvailable()
+}
+
+// actorsLoading reports whether the actors pane is open and still waiting on
+// its first fetch — the window during which the loading spinner runs. The err
+// term mirrors gasTownLoading(): without it a failed poll would keep animating
+// a loading line that can never resolve.
+func (m Model) actorsLoading() bool {
+	return m.showActors && m.actors.Loading()
+}
+
+// activateActors opens the actors pane and schedules its first fetch. The actor
+// CLI is slow, so the fetch runs in the background and the pane shows a loading
+// line until it lands (mirrors activateGasTown).
+func (m *Model) activateActors() tea.Cmd {
+	if !m.actorsAvail {
+		return nil
+	}
+
+	m.showActors = true
+	m.showProblems = false
+	m.showDoctor = false
+	m.showCodex = false
+	m.dismissCodexReply()
+
+	cmds := []tea.Cmd{m.gatedPollActors()}
+	if !m.actorsTicking {
+		cmds = append(cmds, actorsTickCmd())
+		m.actorsTicking = true
+	}
+	// Restart the spinner loop so the loading line animates during the slow
+	// fetch. Safe to kick unconditionally: the spinner's tag mechanism drops
+	// duplicate ticks.
+	if m.actors.Loading() {
+		cmds = append(cmds, m.spinner.Tick)
+	}
+	return tea.Batch(cmds...)
 }
 
 // activateGasTown shows the Gas Town panel and schedules its data refreshes.
@@ -1365,6 +1416,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case actorsTickMsg:
+		// The loop only lives while the pane is open, and keeps ticking even
+		// when the gate drops a fetch, so a slow poll can never stall it.
+		if !m.showActors {
+			m.actorsTicking = false
+			return m, nil
+		}
+		cmds := []tea.Cmd{actorsTickCmd()}
+		if cmd := m.gatedPollActors(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+
+	case actorsMsg:
+		m.actorsPollInFlight = false
+		if msg.village != nil {
+			m.actors.SetVillage(msg.village)
+		} else {
+			m.actors.SetRows(msg.rows)
+		}
+		return m, nil
+
+	case actorsErrMsg:
+		m.actorsPollInFlight = false
+		// The pane keeps whatever roster it already has and reports the
+		// failure under it; polling continues on the next tick.
+		m.actors.SetErr(msg.err)
+		toast, cmd := components.ShowToast(
+			fmt.Sprintf("Actors: %s", msg.err),
+			components.ToastError, toastDuration,
+		)
+		m.toast = toast
+		return m, cmd
+
 	case agentStatusMsg:
 		m.activeAgents = msg.activeAgents
 		m.propagateAgentState()
@@ -1791,9 +1876,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		// Spin during the boot splash, and again whenever the Gas Town panel is
-		// waiting on a status fetch. Otherwise let the loop die.
-		if m.ready && !m.gasTownLoading() {
+		// Spin during the boot splash, and again whenever the Gas Town panel or
+		// the actors pane is waiting on a fetch. Otherwise let the loop die.
+		if m.ready && !m.gasTownLoading() && !m.actorsLoading() {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -1970,6 +2055,26 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// When the actors pane is focused, route its keys before global handlers
+	// (the Gas Town panel above does the same, and it keeps the detail pane's
+	// own j/k scrolling from running underneath).
+	if m.showActors && m.activPane == PaneDetail && !m.showGasTown {
+		switch msg.String() {
+		case "j", "down":
+			m.actors.ScrollBy(1)
+			return m, nil
+		case "k", "up":
+			m.actors.ScrollBy(-1)
+			return m, nil
+		case "v":
+			// Project ↔ village: a second view over the same model, refetched
+			// immediately so the toggle is not a poll-interval wait.
+			logAction("actors scope toggle: %v", m.actors.Scope())
+			m.actors.ToggleScope()
+			return m, m.gatedPollActors()
+		}
+	}
+
 	// When Gas Town panel is focused, route its keys before global handlers
 	if m.showGasTown && m.activPane == PaneDetail {
 		switch msg.String() {
@@ -2036,11 +2141,25 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.showGasTown = !m.showGasTown
 		if m.showGasTown {
+			m.showActors = false
 			m.showDoctor = false
 			m.showCodex = false
 			m.dismissCodexReply()
 			cmd := m.activateGasTown()
 			return m, cmd
+		}
+		return m, nil
+
+	case "o":
+		// Read-only actor society. Without the `actor` CLI the whole feature is
+		// gone, so the key is a no-op rather than an error.
+		if !m.actorsAvail {
+			return m, nil
+		}
+		m.showActors = !m.showActors
+		if m.showActors {
+			logAction("actors pane open")
+			return m, m.activateActors()
 		}
 		return m, nil
 
@@ -2051,6 +2170,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.showProblems = !m.showProblems
 		if m.showProblems {
 			m.showGasTown = false
+			m.showActors = false
 			m.showDoctor = false
 			m.showCodex = false
 			m.dismissCodexReply()
@@ -2062,6 +2182,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.showDoctor = !m.showDoctor
 		if m.showDoctor {
 			m.showGasTown = false
+			m.showActors = false
 			m.showProblems = false
 			m.showCodex = false
 			m.dismissCodexReply()
@@ -2831,6 +2952,7 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		}
 		m.showGasTown = !m.showGasTown
 		if m.showGasTown {
+			m.showActors = false
 			cmd := m.activateGasTown()
 			return m, cmd
 		}
@@ -3268,6 +3390,7 @@ func (m *Model) layout() {
 	m.parade.SetSize(paradeW, bodyH)
 	m.detail.SetSize(detailW, bodyH)
 	m.gasTown.SetSize(detailW, bodyH)
+	m.actors.SetSize(detailW, bodyH)
 	m.problems.SetSize(detailW, bodyH)
 	m.doctor.SetSize(detailW, bodyH)
 	m.codexTranscript.SetSize(detailW, bodyH)
@@ -3522,6 +3645,63 @@ func buildZombieIDs(status *gastown.TownStatus, orphanedIDs map[string]bool) map
 	return ids
 }
 
+// actorsPollInterval is how often the actor society is re-read while its pane
+// is open. The CLI is slow, so this is far coarser than the gt tick.
+const actorsPollInterval = 10 * time.Second
+
+// actorsTickMsg drives the actors poll loop while the pane is open.
+type actorsTickMsg struct{}
+
+// actorsMsg carries a delivered roster (project scope) or village grouping.
+type actorsMsg struct {
+	rows    []actors.SocietyRow
+	village []actors.ProjectGroup
+}
+
+// actorsErrMsg carries a failed actors poll.
+type actorsErrMsg struct{ err error }
+
+// actorsTickCmd returns a Cmd that fires actorsTickMsg after the interval.
+func actorsTickCmd() tea.Cmd {
+	return tea.Tick(actorsPollInterval, func(time.Time) tea.Msg {
+		return actorsTickMsg{}
+	})
+}
+
+// gatedPollActors returns a Cmd that fetches the society for the pane's active
+// scope, dropping the fetch when one is already in flight (the actor CLI can
+// take seconds to tens of seconds, so overlapping polls would pile up). It
+// returns nil when the pane is closed or the CLI is absent.
+func (m *Model) gatedPollActors() tea.Cmd {
+	if !m.actorsAvail || !m.showActors || m.actorsPollInFlight {
+		return nil
+	}
+	m.actorsPollInFlight = true
+	// A fresh attempt clears the previous failure, so the pane returns to its
+	// loading line instead of showing a stale error while retrying.
+	m.actors.ClearErr()
+	return m.fetchActors()
+}
+
+// fetchActors reads the society for the current scope: the current project by
+// default, the whole village when the pane's scope is toggled with `v`.
+func (m Model) fetchActors() tea.Cmd {
+	return func() tea.Msg {
+		if m.actors.Scope() == views.ActorsScopeVillage {
+			groups, err := actors.FetchVillage()
+			if err != nil {
+				return actorsErrMsg{err: err}
+			}
+			return actorsMsg{village: groups}
+		}
+		rows, err := actors.FetchProject(m.projectDir)
+		if err != nil {
+			return actorsErrMsg{err: err}
+		}
+		return actorsMsg{rows: rows}
+	}
+}
+
 // gatedPollAgentState returns a Cmd that queries Gas Town or raw tmux for agent state.
 // It uses a single-flight gate to prevent overlapping gt status polls (gt status --json
 // takes ~9s, and this is called from 3 watcher handlers + 8 user-action handlers).
@@ -3729,6 +3909,15 @@ func (m Model) View() tea.View {
 				m.gasTown.SetLoadingFrame("")
 			}
 			rightPanel = m.gasTown.View()
+		case m.showActors:
+			// Gas Town and the actor society share this slot, and Gas Town wins
+			// the case above when both are on.
+			if m.actorsLoading() {
+				m.actors.SetLoadingFrame(m.spinner.View())
+			} else {
+				m.actors.SetLoadingFrame("")
+			}
+			rightPanel = m.actors.View()
 		default:
 			rightPanel = m.detail.View()
 		}
@@ -3769,7 +3958,7 @@ func (m Model) View() tea.View {
 		}
 		bottomBar = inputBarStyle.Render(line)
 	default:
-		footer := components.NewFooter(m.width, m.activPane == PaneDetail, m.orchestratorAvailable())
+		footer := components.NewFooter(m.width, m.activPane == PaneDetail, m.orchestratorAvailable(), m.actorsAvail)
 		footer.Focus = m.focusMode
 		footer.SourcePath = m.watchPath
 		footer.LastRefresh = m.lastFileMod
@@ -3808,6 +3997,7 @@ func (m Model) View() tea.View {
 	}
 
 	if m.showHelp {
+		m.help.ShowActors = m.actorsAvail
 		m.help.SetSize(m.width, m.height)
 		helpModal := m.help.View()
 		return altView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, helpModal))

@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewFooterParadeBindings(t *testing.T) {
-	f := NewFooter(80, false, false)
+	f := NewFooter(80, false, false, false)
 	if len(f.Bindings) != len(ParadeBindings) {
 		t.Fatalf("expected %d bindings, got %d", len(ParadeBindings), len(f.Bindings))
 	}
@@ -21,7 +21,7 @@ func TestNewFooterParadeBindings(t *testing.T) {
 }
 
 func TestNewFooterDetailBindings(t *testing.T) {
-	f := NewFooter(80, true, false)
+	f := NewFooter(80, true, false, false)
 	if len(f.Bindings) != len(DetailBindings) {
 		t.Fatalf("expected %d bindings, got %d", len(DetailBindings), len(f.Bindings))
 	}
@@ -33,7 +33,7 @@ func TestNewFooterDetailBindings(t *testing.T) {
 }
 
 func TestNewFooterGasTownAddsBindings(t *testing.T) {
-	f := NewFooter(80, false, true)
+	f := NewFooter(80, false, true, false)
 
 	// Should have ParadeBindings + 4 Gas Town bindings (gas town, problems, sling, nudge)
 	expected := len(ParadeBindings) + 4
@@ -66,6 +66,41 @@ func TestNewFooterGasTownAddsBindings(t *testing.T) {
 	}
 	if !foundNudge {
 		t.Fatal("missing nudge binding")
+	}
+}
+
+// The actors hint is progressive-hide: it is in the footer only when the
+// actor CLI was found at startup, the way the Gas Town hints track `gt`.
+func TestNewFooterActorsAddsBindings(t *testing.T) {
+	without := NewFooter(80, false, false, false)
+	for _, b := range without.Bindings {
+		if b.Key == "o" {
+			t.Fatal("actors hint shown without the actor CLI on PATH")
+		}
+	}
+
+	with := NewFooter(80, false, false, true)
+	expected := len(ParadeBindings) + 1
+	if len(with.Bindings) != expected {
+		t.Fatalf("expected %d bindings with actors, got %d", expected, len(with.Bindings))
+	}
+	found, quitIdx := false, -1
+	for i, b := range with.Bindings {
+		switch b.Key {
+		case "o":
+			found = true
+			if b.Desc != "actors" {
+				t.Errorf("actors binding desc = %q, want %q", b.Desc, "actors")
+			}
+			if quitIdx >= 0 {
+				t.Error("actors hint appears after quit")
+			}
+		case "q":
+			quitIdx = i
+		}
+	}
+	if !found {
+		t.Fatal("missing actors binding")
 	}
 }
 

@@ -7,9 +7,12 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/matt-wright86/mardi-gras/internal/actors"
 	"github.com/matt-wright86/mardi-gras/internal/components"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
+	"github.com/matt-wright86/mardi-gras/internal/views"
 )
 
 // ---------------------------------------------------------------------------
@@ -610,5 +613,176 @@ func TestTownStatusSuccessClearsError(t *testing.T) {
 	}
 	if got2.townStatus == nil {
 		t.Error("expected the status to be stored")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Actors pane (o / v)
+// ---------------------------------------------------------------------------
+
+func actorRows() []actors.SocietyRow {
+	now := "SPRINT: mard-nob operator observability"
+	return []actors.SocietyRow{{
+		Name: "zime", Kind: "canonical", Lifecycle: "active", Readiness: "ready",
+		Activity:      actors.Activity{Now: &now},
+		CurrentSprint: &actors.SprintRef{Epic: "mard-nob", Title: "operator observability"},
+	}}
+}
+
+// Opening the pane must fetch immediately rather than waiting out the poll
+// interval, and a host without the actor CLI must not open it at all.
+func TestActorsToggleRequiresActorCLI(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = false
+
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	if got := model.(Model); got.showActors {
+		t.Fatal("actors pane opened without the actor CLI on PATH")
+	}
+}
+
+func TestActorsToggleOpensPaneAndFetchesNow(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+
+	model, cmd := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	got := model.(Model)
+
+	if !got.showActors {
+		t.Fatal("expected o to open the actors pane")
+	}
+	if !got.actorsPollInFlight {
+		t.Error("opening the pane should start a fetch immediately, not after the interval")
+	}
+	if cmd == nil {
+		t.Error("expected the open to return the fetch command")
+	}
+}
+
+func TestActorsToggleClosesPane(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	model, _ = model.(Model).Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	if got := model.(Model); got.showActors {
+		t.Fatal("expected the second o to close the pane")
+	}
+}
+
+func TestActorsScopeToggleRefetches(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	m.showActors = true
+	m.activPane = PaneDetail
+
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	got := model.(Model)
+
+	if got.actors.Scope() != views.ActorsScopeVillage {
+		t.Fatalf("v did not flip the scope: %v", got.actors.Scope())
+	}
+	if !got.actorsPollInFlight {
+		t.Error("expected the scope flip to refetch the village immediately")
+	}
+}
+
+func TestActorsScopeToggleNeedsFocusedPane(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	m.showActors = true
+	m.activPane = PaneParade
+
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	if got := model.(Model); got.actors.Scope() != views.ActorsScopeProject {
+		t.Fatal("v changed scope while the pane was not focused")
+	}
+}
+
+// A failed poll must end the loading state and surface the failure instead of
+// spinning forever (the same bug the Gas Town panel had).
+func TestActorsErrorStopsLoading(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	m.showActors = true
+	m.actorsPollInFlight = true
+
+	if !m.actorsLoading() {
+		t.Fatal("expected the pane to be loading before any poll result")
+	}
+
+	model, _ := m.Update(actorsErrMsg{err: errors.New("actor project: exit status 1")})
+	got := model.(Model)
+
+	if got.actorsLoading() {
+		t.Error("still loading after a failed poll")
+	}
+	if got.actorsPollInFlight {
+		t.Error("poll should no longer be in flight")
+	}
+	if !strings.Contains(ansi.Strip(got.actors.View()), "exit status 1") {
+		t.Error("pane does not report the poll failure")
+	}
+	if got.toast.Message == "" {
+		t.Error("expected a toast for the poll failure")
+	}
+}
+
+func TestActorsMsgDeliversRosterAndClearsError(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	m.showActors = true
+
+	model, _ := m.Update(actorsErrMsg{err: errors.New("actor project: timeout")})
+	model, _ = model.(Model).Update(actorsMsg{rows: actorRows()})
+	got := model.(Model)
+
+	if got.actorsLoading() {
+		t.Error("a delivered roster is not a loading pane")
+	}
+	pane := ansi.Strip(got.actors.View())
+	if !strings.Contains(pane, "zime") || !strings.Contains(pane, "mard-nob") {
+		t.Errorf("roster not rendered:\n%s", pane)
+	}
+	if strings.Contains(pane, "timeout") {
+		t.Errorf("stale poll failure kept after recovery:\n%s", pane)
+	}
+}
+
+// Gas Town and the actor society both live in the detail slot; Gas Town wins.
+func TestViewGasTownWinsOverActorsPane(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	m.showActors = true
+	m.actors.SetRows(actorRows())
+	m.gtEnv.Available = true
+
+	if v := ansi.Strip(m.View().Content); !strings.Contains(v, "ACTORS") {
+		t.Fatalf("actors pane not rendered when it owns the slot:\n%s", v)
+	}
+
+	m.showGasTown = true
+	if v := ansi.Strip(m.View().Content); strings.Contains(v, "ACTORS") {
+		t.Errorf("actors pane rendered while Gas Town holds the slot:\n%s", v)
+	}
+}
+
+// A host without the actor CLI must report the failure rather than panic or
+// block the update loop.
+func TestActorsFetchWithoutCLIReportsError(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	t.Setenv("PATH", t.TempDir())
+
+	cmd := m.fetchActors()
+	if cmd == nil {
+		t.Fatal("expected a fetch command")
+	}
+	msg, ok := cmd().(actorsErrMsg)
+	if !ok {
+		t.Fatalf("want actorsErrMsg without the actor CLI, got %T", cmd())
+	}
+	if msg.err == nil {
+		t.Fatal("expected the missing binary to be reported")
 	}
 }
