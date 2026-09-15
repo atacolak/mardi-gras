@@ -23,7 +23,7 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `D`          | Toggle doctor diagnostics overlay |
 | `M`          | Toggle Codex (MCP) live transcript |
 
-`ctrl+g`, `o`, `p`, `D` and `M` are mutually exclusive — opening one closes the others. `o` is progressive-hide like `ctrl+g`: without the `actor` CLI on `PATH` the pane, its key and its help section do not exist (see [Actors Pane](#actors-pane-o)), and pressing `o` is a no-op rather than an error.
+`ctrl+g`, `o`, `p`, `D` and `M` all render into the same right-hand panel, but opening one does not always close the others: `o` displaces nothing, so pressing it while the Gas Town panel is open leaves Gas Town holding the shared slot, and the actors pane becomes visible once Gas Town is closed. `o` is progressive-hide like `ctrl+g`: without the `actor` CLI on `PATH` the pane, its key and its help section do not exist (see [Actors Pane](#actors-pane-o)), and pressing `o` is a no-op rather than an error.
 
 ## Parade
 
