@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/matt-wright86/mardi-gras/internal/data"
@@ -362,5 +364,48 @@ func TestFindBeadsDirNotFound(t *testing.T) {
 	got := findBeadsDir(dir)
 	if got != "" {
 		t.Errorf("findBeadsDir(%q) = %q, want empty string", dir, got)
+	}
+}
+
+func TestNoSourceMessageMentionsBothCLIs(t *testing.T) {
+	msg := noSourceMessage()
+	if !strings.Contains(msg, "br") {
+		t.Errorf("no-source message should mention br, got %q", msg)
+	}
+	if !strings.Contains(msg, "bd") {
+		t.Errorf("no-source message should mention bd, got %q", msg)
+	}
+	if !strings.Contains(msg, "issues.jsonl") {
+		t.Errorf("no-source message should still name issues.jsonl, got %q", msg)
+	}
+}
+
+func TestLoadFailureLineUsesSourceLabel(t *testing.T) {
+	src := data.Source{Mode: data.SourceCLI, CLIBinary: data.CLIBr}
+	got := loadFailureLine(src, errors.New("boom"))
+	if !strings.Contains(got, "br list") {
+		t.Errorf("load-failure line should name br list, got %q", got)
+	}
+	if strings.Contains(got, "bd list") {
+		t.Errorf("br source should not mention bd list, got %q", got)
+	}
+}
+
+func TestLoadFailureLineBdSource(t *testing.T) {
+	src := data.Source{Mode: data.SourceCLI, CLIBinary: data.CLIBd}
+	got := loadFailureLine(src, errors.New("boom"))
+	if !strings.Contains(got, "bd list") {
+		t.Errorf("bd source should name bd list, got %q", got)
+	}
+}
+
+func TestLoadFailureHintDoltOnlyForBd(t *testing.T) {
+	bd := loadFailureHint(data.Source{Mode: data.SourceCLI, CLIBinary: data.CLIBd})
+	if !strings.Contains(bd, "Dolt") || !strings.Contains(bd, "bd") {
+		t.Errorf("bd hint should mention Dolt and bd, got %q", bd)
+	}
+	br := loadFailureHint(data.Source{Mode: data.SourceCLI, CLIBinary: data.CLIBr})
+	if strings.Contains(br, "Dolt") || strings.Contains(br, "dolt") {
+		t.Errorf("br source must not get the Dolt/bd hint, got %q", br)
 	}
 }

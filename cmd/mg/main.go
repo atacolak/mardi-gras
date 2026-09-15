@@ -88,9 +88,7 @@ func main() {
 	}
 	source := resolveSource(cwd, *path)
 	if source.Mode == SourceJSONL && source.Path == "" {
-		fmt.Fprintf(os.Stderr, "No .beads/issues.jsonl found and bd not on PATH.\n\n")
-		fmt.Fprintf(os.Stderr, "Run mg from inside a project with Beads, or specify a path:\n")
-		fmt.Fprintf(os.Stderr, "  mg --path /path/to/.beads/issues.jsonl\n")
+		fmt.Fprint(os.Stderr, noSourceMessage())
 		os.Exit(1)
 	}
 
@@ -100,11 +98,11 @@ func main() {
 	case SourceCLI:
 		issues, err = data.FetchIssuesCLI(source.ProjectDir, source.CLIBinary)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading issues via bd list: %v\n\n", err)
+			fmt.Fprint(os.Stderr, loadFailureLine(source, err))
 			if hint := data.SchemaSkewHint(err); hint != "" {
 				fmt.Fprint(os.Stderr, hint)
 			} else {
-				fmt.Fprintf(os.Stderr, "Ensure the Dolt server is running (dolt sql-server) and bd is working.\n")
+				fmt.Fprint(os.Stderr, loadFailureHint(source))
 			}
 			os.Exit(1)
 		}
@@ -288,4 +286,21 @@ func resolveSource(cwd, pathFlag string) data.Source {
 
 	// Nothing found
 	return data.Source{}
+}
+
+func noSourceMessage() string {
+	return "No .beads/issues.jsonl found and neither br nor bd is on PATH.\n\n" +
+		"Run mg from inside a project with Beads, or specify a path:\n" +
+		"  mg --path /path/to/.beads/issues.jsonl\n"
+}
+
+func loadFailureLine(src data.Source, err error) string {
+	return fmt.Sprintf("Error loading issues via %s: %v\n\n", src.Label(), err)
+}
+
+func loadFailureHint(src data.Source) string {
+	if src.CLIBinary != data.CLIBd {
+		return ""
+	}
+	return "Ensure the Dolt server is running (dolt sql-server) and bd is working.\n"
 }

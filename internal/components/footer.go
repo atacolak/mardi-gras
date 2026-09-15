@@ -25,6 +25,7 @@ type Footer struct {
 	LastRefresh  time.Time
 	PathExplicit bool
 	SourceMode   data.SourceMode
+	SourceLabel  string // resolved CLI label ("br list" / "bd list"); empty → fallback
 	BeadsContext *data.BeadsContext
 	SourceHealth *data.SourceHealth
 	Focus        bool // focus mode active — show a persistent badge (audit #12)
@@ -75,6 +76,9 @@ func (f Footer) View() string {
 	if f.SourceMode == data.SourceCLI || f.SourcePath != "" {
 		name := "bd list"
 		mode := "(cli)"
+		if f.SourceMode == data.SourceCLI && f.SourceLabel != "" {
+			name = f.SourceLabel
+		}
 		if f.SourceMode != data.SourceCLI {
 			name = filepath.Base(f.SourcePath)
 			mode = "(legacy)"
@@ -187,6 +191,9 @@ func NewFooter(width int, detailFocused, hasGasTown, hasActors bool) Footer {
 	if detailFocused {
 		bindings = DetailBindings
 	}
+	if hasActors {
+		bindings = insertBefore(bindings, "j/k", FooterBinding{Key: "o", Desc: "actors"})
+	}
 	if hasGasTown {
 		gtBindings := []FooterBinding{
 			{Key: "^g", Desc: "gas town"},
@@ -195,9 +202,6 @@ func NewFooter(width int, detailFocused, hasGasTown, hasActors bool) Footer {
 			{Key: "n", Desc: "nudge"},
 		}
 		bindings = insertBefore(bindings, "q", gtBindings...)
-	}
-	if hasActors {
-		bindings = insertBefore(bindings, "q", FooterBinding{Key: "o", Desc: "actors"})
 	}
 	return Footer{Width: width, Bindings: bindings}
 }

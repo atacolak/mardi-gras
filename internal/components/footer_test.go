@@ -84,7 +84,7 @@ func TestNewFooterActorsAddsBindings(t *testing.T) {
 	if len(with.Bindings) != expected {
 		t.Fatalf("expected %d bindings with actors, got %d", expected, len(with.Bindings))
 	}
-	found, quitIdx := false, -1
+	found, navIdx, quitIdx := false, -1, -1
 	for i, b := range with.Bindings {
 		switch b.Key {
 		case "o":
@@ -92,15 +92,43 @@ func TestNewFooterActorsAddsBindings(t *testing.T) {
 			if b.Desc != "actors" {
 				t.Errorf("actors binding desc = %q, want %q", b.Desc, "actors")
 			}
-			if quitIdx >= 0 {
-				t.Error("actors hint appears after quit")
-			}
+		case "j/k":
+			navIdx = i
 		case "q":
 			quitIdx = i
 		}
 	}
 	if !found {
 		t.Fatal("missing actors binding")
+	}
+	oIdx := -1
+	for i, b := range with.Bindings {
+		if b.Key == "o" {
+			oIdx = i
+			break
+		}
+	}
+	if navIdx >= 0 && oIdx > navIdx {
+		t.Errorf("actors hint at %d is after j/k at %d; it must sit with the early operator hints", oIdx, navIdx)
+	}
+	if quitIdx >= 0 && oIdx > quitIdx {
+		t.Error("actors hint appears after quit")
+	}
+}
+
+// fitBindings drops whole hint chips from the tail once the row is too narrow,
+// so a binding ordered last is invisible at 80 columns — the common terminal.
+// The actors hint is the only entry point to the pane, so it has to be ordered
+// among the hints that survive there (VerifyT3 finding 4).
+func TestFooterActorsHintSurvivesAt80Columns(t *testing.T) {
+	f := NewFooter(80, false, true, true)
+	f.SourceMode = data.SourceCLI
+	f.SourceLabel = "br list"
+	f.LastRefresh = time.Now()
+
+	output := f.View()
+	if !strings.Contains(output, "actors") {
+		t.Fatalf("actors hint dropped from an 80-column footer: %q", output)
 	}
 }
 
@@ -228,5 +256,59 @@ func TestFooterViewWithoutBeadsContext(t *testing.T) {
 	output := f.View()
 	if strings.Contains(output, "mardi_gras") {
 		t.Fatalf("footer should not contain context info when nil, got: %s", output)
+	}
+}
+
+// Source.Label() already returns "br list" for CLIBr, but the footer used to
+// hardcode "bd list" for every SourceCLI source. Prefer the resolved label.
+func TestFooterViewUsesSourceLabel(t *testing.T) {
+	f := Footer{
+		Width:       120,
+		Bindings:    ParadeBindings,
+		SourceMode:  data.SourceCLI,
+		SourceLabel: "br list",
+		LastRefresh: time.Now(),
+	}
+	output := f.View()
+	if !strings.Contains(output, "br list") {
+		t.Fatalf("footer should report SourceLabel, got: %s", output)
+	}
+	if strings.Contains(output, "bd list") {
+		t.Fatalf("footer should not fall back to bd list when SourceLabel is set, got: %s", output)
+	}
+}
+
+func TestFooterViewCLIFallsBackToBdList(t *testing.T) {
+	f := Footer{
+		Width:       120,
+		Bindings:    ParadeBindings,
+		SourceMode:  data.SourceCLI,
+		LastRefresh: time.Now(),
+	}
+	output := f.View()
+	if !strings.Contains(output, "bd list") {
+		t.Fatalf("empty SourceLabel should keep the bd list fallback, got: %s", output)
+	}
+}
+
+func TestFooterViewJSONLIgnoresSourceLabel(t *testing.T) {
+	f := Footer{
+		Width:        120,
+		Bindings:     ParadeBindings,
+		SourceMode:   data.SourceJSONL,
+		SourcePath:   "/tmp/.beads/issues.jsonl",
+		SourceLabel:  "br list",
+		LastRefresh:  time.Now(),
+		PathExplicit: false,
+	}
+	output := f.View()
+	if !strings.Contains(output, "issues.jsonl") {
+		t.Fatalf("JSONL footer should keep the file basename, got: %s", output)
+	}
+	if strings.Contains(output, "br list") {
+		t.Fatalf("JSONL footer should ignore SourceLabel, got: %s", output)
+	}
+	if !strings.Contains(output, "(legacy)") {
+		t.Fatalf("JSONL footer should keep the (legacy) mode, got: %s", output)
 	}
 }

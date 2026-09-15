@@ -3964,6 +3964,7 @@ func (m Model) View() tea.View {
 		footer.LastRefresh = m.lastFileMod
 		footer.PathExplicit = m.pathExplicit
 		footer.SourceMode = m.sourceMode
+		footer.SourceLabel = data.Source{Mode: m.sourceMode, CLIBinary: m.cliBinary}.Label()
 		footer.BeadsContext = m.beadsContext
 		footer.SourceHealth = &m.sourceHealth
 		bottomBar = footer.View()
