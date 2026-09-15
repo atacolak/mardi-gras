@@ -699,6 +699,61 @@ func TestActorsScopeToggleNeedsFocusedPane(t *testing.T) {
 	}
 }
 
+// A project fetch still in flight must not paint the village view: v has to
+// refetch, and the late project result has to be ignored.
+func TestActorsScopeFlipIgnoresStaleInFlightPoll(t *testing.T) {
+	m := initModel(t)
+	m.actorsAvail = true
+	m.showActors = true
+	m.activPane = PaneDetail
+	m.actorsPollInFlight = true
+
+	village := []actors.ProjectGroup{{
+		Project: actors.ProjectRef{ID: "oh-my-pi"},
+		Actors:  []actors.SocietyRow{{Name: "tori", Kind: "sibling", Lifecycle: "idle", Readiness: "ready"}},
+	}}
+
+	model, flipCmd := m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	got := model.(Model)
+	if got.actors.Scope() != views.ActorsScopeVillage {
+		t.Fatalf("v did not flip the scope: %v", got.actors.Scope())
+	}
+
+	model, staleCmd := got.Update(actorsMsg{scope: views.ActorsScopeProject, rows: actorRows()})
+	got = model.(Model)
+
+	if flipCmd == nil && staleCmd == nil {
+		t.Fatal("scope flip while a poll is in flight dropped the village refetch")
+	}
+
+	pane := ansi.Strip(got.actors.View())
+	if strings.Contains(pane, "No actors in the village.") {
+		t.Fatalf("stale project poll painted the empty village state:\n%s", pane)
+	}
+	if strings.Contains(pane, "zime") {
+		t.Fatalf("stale project roster rendered under the village heading:\n%s", pane)
+	}
+	if !got.actorsLoading() {
+		t.Fatal("stale project poll ended village loading")
+	}
+
+	model, _ = got.Update(actorsMsg{scope: views.ActorsScopeVillage, village: village})
+	got = model.(Model)
+	pane = ansi.Strip(got.actors.View())
+	if !strings.Contains(pane, "village") {
+		t.Fatalf("want village heading, got:\n%s", pane)
+	}
+	if !strings.Contains(pane, "tori") || !strings.Contains(pane, "oh-my-pi") {
+		t.Fatalf("village data not shown:\n%s", pane)
+	}
+	if strings.Contains(pane, "No actors in the village.") {
+		t.Fatalf("empty village state after village data delivered:\n%s", pane)
+	}
+	if strings.Contains(pane, "zime") {
+		t.Fatalf("project roster still rendered after village data:\n%s", pane)
+	}
+}
+
 // A failed poll must end the loading state and surface the failure instead of
 // spinning forever (the same bug the Gas Town panel had).
 func TestActorsErrorStopsLoading(t *testing.T) {

@@ -215,6 +215,7 @@ type Model struct {
 	// CLI is slow (project ~1-3s, village up to ~10s), so overlapping polls are
 	// dropped the same way `gt status` polls are.
 	actorsPollInFlight bool
+	actorsPollPending  bool
 	actorsTicking      bool
 
 	// townStatusErr is the last orchestrator status failure. It stops
@@ -1431,24 +1432,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case actorsMsg:
 		m.actorsPollInFlight = false
-		if msg.village != nil {
-			m.actors.SetVillage(msg.village)
-		} else {
-			m.actors.SetRows(msg.rows)
+		if msg.scope == m.actors.Scope() {
+			if msg.scope == views.ActorsScopeVillage {
+				m.actors.SetVillage(msg.village)
+			} else {
+				m.actors.SetRows(msg.rows)
+			}
 		}
-		return m, nil
+		var cmd tea.Cmd
+		if m.actorsPollPending {
+			cmd = m.gatedPollActors()
+		}
+		return m, cmd
 
 	case actorsErrMsg:
 		m.actorsPollInFlight = false
-		// The pane keeps whatever roster it already has and reports the
-		// failure under it; polling continues on the next tick.
-		m.actors.SetErr(msg.err)
-		toast, cmd := components.ShowToast(
-			fmt.Sprintf("Actors: %s", msg.err),
-			components.ToastError, toastDuration,
-		)
-		m.toast = toast
-		return m, cmd
+		var cmds []tea.Cmd
+		if msg.scope == m.actors.Scope() {
+			// The pane keeps whatever roster it already has and reports the
+			// failure under it; polling continues on the next tick.
+			m.actors.SetErr(msg.err)
+			toast, cmd := components.ShowToast(
+				fmt.Sprintf("Actors: %s", msg.err),
+				components.ToastError, toastDuration,
+			)
+			m.toast = toast
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		if m.actorsPollPending {
+			if cmd := m.gatedPollActors(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case agentStatusMsg:
 		m.activeAgents = msg.activeAgents
@@ -3654,12 +3672,16 @@ type actorsTickMsg struct{}
 
 // actorsMsg carries a delivered roster (project scope) or village grouping.
 type actorsMsg struct {
+	scope   views.ActorsScope
 	rows    []actors.SocietyRow
 	village []actors.ProjectGroup
 }
 
 // actorsErrMsg carries a failed actors poll.
-type actorsErrMsg struct{ err error }
+type actorsErrMsg struct {
+	err   error
+	scope views.ActorsScope
+}
 
 // actorsTickCmd returns a Cmd that fires actorsTickMsg after the interval.
 func actorsTickCmd() tea.Cmd {
@@ -3673,10 +3695,18 @@ func actorsTickCmd() tea.Cmd {
 // take seconds to tens of seconds, so overlapping polls would pile up). It
 // returns nil when the pane is closed or the CLI is absent.
 func (m *Model) gatedPollActors() tea.Cmd {
-	if !m.actorsAvail || !m.showActors || m.actorsPollInFlight {
+	if !m.actorsAvail || !m.showActors {
+		return nil
+	}
+	if m.actorsPollInFlight {
+		// A scope flip (or another legitimate refetch) while a poll is in
+		// flight must still run; overlapping actor CLI calls are what the
+		// gate prevents, not the follow-up itself.
+		m.actorsPollPending = true
 		return nil
 	}
 	m.actorsPollInFlight = true
+	m.actorsPollPending = false
 	// A fresh attempt clears the previous failure, so the pane returns to its
 	// loading line instead of showing a stale error while retrying.
 	m.actors.ClearErr()
@@ -3686,19 +3716,21 @@ func (m *Model) gatedPollActors() tea.Cmd {
 // fetchActors reads the society for the current scope: the current project by
 // default, the whole village when the pane's scope is toggled with `v`.
 func (m Model) fetchActors() tea.Cmd {
+	scope := m.actors.Scope()
+	projectDir := m.projectDir
 	return func() tea.Msg {
-		if m.actors.Scope() == views.ActorsScopeVillage {
+		if scope == views.ActorsScopeVillage {
 			groups, err := actors.FetchVillage()
 			if err != nil {
-				return actorsErrMsg{err: err}
+				return actorsErrMsg{err: err, scope: scope}
 			}
-			return actorsMsg{village: groups}
+			return actorsMsg{scope: scope, village: groups}
 		}
-		rows, err := actors.FetchProject(m.projectDir)
+		rows, err := actors.FetchProject(projectDir)
 		if err != nil {
-			return actorsErrMsg{err: err}
+			return actorsErrMsg{err: err, scope: scope}
 		}
-		return actorsMsg{rows: rows}
+		return actorsMsg{scope: scope, rows: rows}
 	}
 }
 
