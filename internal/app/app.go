@@ -186,6 +186,9 @@ type Model struct {
 
 	// Data source mode (JSONL file watcher vs bd CLI polling)
 	sourceMode data.SourceMode
+	// Beads CLI binary backing SourceCLI ("br" or "bd"); threaded to every
+	// poll so the source is resolved once, at startup.
+	cliBinary string
 
 	// Dolt resilience state machine
 	sourceHealth   data.SourceHealth
@@ -315,6 +318,7 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 		changedIDs:     make(map[string]bool),
 		prevIssueMap:   prevMap,
 		sourceMode:     source.Mode,
+		cliBinary:      source.CLIBinary,
 		metadataSchema: metaSchema,
 		startedAt:      time.Now(),
 		spinner:        newLoadingSpinner(),
@@ -377,7 +381,7 @@ func (m Model) startPoll() tea.Cmd {
 		return data.WatchFile(m.watchPath, m.lastFileMod)
 	}
 	if m.sourceMode == data.SourceCLI {
-		return data.PollCLI(m.projectDir)
+		return data.PollCLI(m.projectDir, m.cliBinary)
 	}
 	return data.WatchFile(m.watchPath, m.lastFileMod)
 }
@@ -385,7 +389,7 @@ func (m Model) startPoll() tea.Cmd {
 // startPollImmediate returns an immediate-fetch Cmd for post-mutation refresh.
 func (m Model) startPollImmediate() tea.Cmd {
 	if m.sourceMode == data.SourceCLI {
-		return data.FetchIssuesNow(m.projectDir)
+		return data.FetchIssuesNow(m.projectDir, m.cliBinary)
 	}
 	return data.WatchFile(m.watchPath, m.lastFileMod)
 }
@@ -1226,7 +1230,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.watchPath = path
 				if !m.healthChecking {
 					m.healthChecking = true
-					cmds = append(cmds, data.CLIHealthCheck(m.projectDir))
+					cmds = append(cmds, data.CLIHealthCheck(m.projectDir, m.cliBinary))
 				}
 				toast, toastCmd := components.ShowToast(
 					"Switched to issues.jsonl fallback (bd unavailable)",
@@ -1425,7 +1429,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.sourceHealth = m.sourceHealth.RecordFailure(msg.Err)
 			// Keep probing until CLI recovers.
-			return m, data.CLIHealthCheck(m.projectDir)
+			return m, data.CLIHealthCheck(m.projectDir, m.cliBinary)
 		}
 		m.sourceHealth = m.sourceHealth.RecordSuccess()
 		if m.sourceHealth.State == data.HealthHealthy {
@@ -1445,7 +1449,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.startPoll(), m.gatedPollAgentState(), toastCmd)
 		}
 		// Still recovering (1 success counted); keep probing.
-		return m, data.CLIHealthCheck(m.projectDir)
+		return m, data.CLIHealthCheck(m.projectDir, m.cliBinary)
 
 	case slingResultMsg:
 		label := fmt.Sprintf("Slung %s to polecat", msg.issueID)

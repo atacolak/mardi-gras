@@ -54,11 +54,12 @@ func WatchFile(path string, lastMod time.Time) tea.Cmd {
 	})
 }
 
-// PollCLI polls bd list --json --flat on a timer and emits FileChangedMsg or FileWatchErrorMsg.
-// The app's diffIssues() handles no-op detection when nothing changed.
-func PollCLI(projectDir string) tea.Cmd {
+// PollCLI polls the Beads CLI (`br`/`bd` list --json) on a timer and emits
+// FileChangedMsg or FileWatchErrorMsg. The app's diffIssues() handles no-op
+// detection when nothing changed.
+func PollCLI(projectDir, binary string) tea.Cmd {
 	return tea.Tick(cliPollInterval, func(time.Time) tea.Msg {
-		issues, err := FetchIssuesCLI(projectDir)
+		issues, err := FetchIssuesCLI(projectDir, binary)
 		if err != nil {
 			return FileWatchErrorMsg{Err: err}
 		}
@@ -85,11 +86,11 @@ type CLIHealthCheckMsg struct {
 
 const cliHealthCheckInterval = 15 * time.Second
 
-// CLIHealthCheck polls bd list on a longer interval to detect CLI recovery
-// while the app is operating in JSONL fallback mode.
-func CLIHealthCheck(projectDir string) tea.Cmd {
+// CLIHealthCheck polls the Beads CLI on a longer interval to detect CLI
+// recovery while the app is operating in JSONL fallback mode.
+func CLIHealthCheck(projectDir, binary string) tea.Cmd {
 	return tea.Tick(cliHealthCheckInterval, func(time.Time) tea.Msg {
-		issues, err := FetchIssuesCLI(projectDir)
+		issues, err := FetchIssuesCLI(projectDir, binary)
 		if err != nil {
 			return CLIHealthCheckMsg{Err: err}
 		}

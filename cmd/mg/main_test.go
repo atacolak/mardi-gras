@@ -279,6 +279,57 @@ func TestResolveSourceNoBeadsDir(t *testing.T) {
 	}
 }
 
+// writeFakeBin drops an executable stub named `name` into dir. resolveSource
+// only calls exec.LookPath, so the body never runs.
+func writeFakeBin(t *testing.T, dir, name string) {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupBeadsDir returns a project root containing an empty .beads/ directory.
+func setupBeadsDir(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	mustMkdir(t, filepath.Join(root, ".beads"))
+	return root
+}
+
+func TestResolveSourcePrefersBr(t *testing.T) {
+	bin := t.TempDir()
+	writeFakeBin(t, bin, "br")
+	writeFakeBin(t, bin, "bd")
+	t.Setenv("PATH", bin)
+	src := resolveSource(setupBeadsDir(t), "")
+	if src.Mode != data.SourceCLI || src.CLIBinary != data.CLIBr {
+		t.Fatalf("got %+v, want CLI/br", src)
+	}
+}
+
+func TestResolveSourceBdOnlyWhenBrMissing(t *testing.T) {
+	bin := t.TempDir()
+	writeFakeBin(t, bin, "bd")
+	t.Setenv("PATH", bin)
+	src := resolveSource(setupBeadsDir(t), "")
+	if src.Mode != data.SourceCLI || src.CLIBinary != data.CLIBd {
+		t.Fatalf("got %+v, want CLI/bd", src)
+	}
+}
+
+func TestResolveSourceJSONLWhenNoCLI(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	root := setupBeadsDir(t)
+	if err := os.WriteFile(filepath.Join(root, ".beads", "issues.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := resolveSource(root, "")
+	if src.Mode != data.SourceJSONL {
+		t.Fatalf("got %+v, want JSONL fallback", src)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // findBeadsDir tests
 // ---------------------------------------------------------------------------

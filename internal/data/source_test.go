@@ -224,7 +224,7 @@ EOF
 		t.Fatal(err)
 	}
 
-	issues, err := FetchIssuesCLI(projectDir)
+	issues, err := FetchIssuesCLI(projectDir, CLIBd)
 	if err != nil {
 		t.Fatalf("FetchIssuesCLI() error = %v", err)
 	}
@@ -245,6 +245,56 @@ EOF
 		if gotArgs[i] != want {
 			t.Fatalf("argv[%d] = %q, want %q (full: %q)", i, gotArgs[i], want, string(argsRaw))
 		}
+	}
+}
+
+func TestParseBrListOutput(t *testing.T) {
+	out := []byte(`{"issues":[{"id":"mard-nob","title":"operator UI","status":"in_progress","priority":1,"issue_type":"epic","assignee":"zime","updated_at":"2026-09-15T06:59:04Z"},{"id":"mard-abc","title":"closed one","status":"closed","priority":2,"issue_type":"task","updated_at":"2026-09-15T06:00:00Z"}],"total":2,"limit":0,"offset":0,"has_more":false}`)
+	issues, err := parseBrListOutput(out, "mard")
+	if err != nil {
+		t.Fatalf("parseBrListOutput: %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("got %d issues, want 2", len(issues))
+	}
+	// SortIssues: active first
+	if issues[0].ID != "mard-nob" {
+		t.Errorf("first issue = %q, want mard-nob (active sorts first)", issues[0].ID)
+	}
+}
+
+func TestParseBrListOutputMalformed(t *testing.T) {
+	if _, err := parseBrListOutput([]byte(`not json`), ""); err == nil {
+		t.Fatal("want error for malformed br output")
+	}
+}
+
+func TestFetchIssuesCLIBrWrapper(t *testing.T) {
+	defer mockRun([]byte(`{"issues":[{"id":"mard-nob","title":"t","status":"open","priority":1,"issue_type":"epic","updated_at":"2026-09-15T06:59:04Z"}],"total":1}`), nil)()
+	issues, err := FetchIssuesCLI("", CLIBr)
+	if err != nil {
+		t.Fatalf("FetchIssuesCLI br: %v", err)
+	}
+	if len(issues) != 1 || issues[0].ID != "mard-nob" {
+		t.Fatalf("got %+v", issues)
+	}
+}
+
+func TestFetchIssuesCLIBdArray(t *testing.T) {
+	defer mockRun([]byte(`[{"id":"mard-nob","title":"t","status":"open","priority":1,"issue_type":"epic","updated_at":"2026-09-15T06:59:04Z"}]`), nil)()
+	issues, err := FetchIssuesCLI("", CLIBd)
+	if err != nil {
+		t.Fatalf("FetchIssuesCLI bd: %v", err)
+	}
+	if len(issues) != 1 || issues[0].ID != "mard-nob" {
+		t.Fatalf("got %+v", issues)
+	}
+}
+
+func TestSourceLabelBr(t *testing.T) {
+	s := Source{Mode: SourceCLI, CLIBinary: CLIBr, ProjectDir: "/x"}
+	if s.Label() != "br list" {
+		t.Errorf("Label() = %q, want %q", s.Label(), "br list")
 	}
 }
 

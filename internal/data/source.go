@@ -16,7 +16,14 @@ type SourceMode int
 
 const (
 	SourceJSONL SourceMode = iota // Legacy: read from .beads/issues.jsonl (or --path)
-	SourceCLI                     // Preferred: shell out to bd list --json
+	SourceCLI                     // Preferred: shell out to bd/br list --json
+)
+
+// Beads CLI binaries mg can drive. Both take the same `list --json --limit 0 --all`
+// argv; only the output shape differs (br wraps the array in {"issues":[...]}).
+const (
+	CLIBd = "bd"
+	CLIBr = "br"
 )
 
 // Source describes how mg loads its issue data.
@@ -25,11 +32,15 @@ type Source struct {
 	Path       string // JSONL file path (SourceJSONL) or empty (SourceCLI)
 	ProjectDir string // Project root directory
 	Explicit   bool   // True if --path was used
+	CLIBinary  string // CLIBd | CLIBr; empty unless Mode == SourceCLI
 }
 
 // Label returns a display string for the footer.
 func (s Source) Label() string {
 	if s.Mode == SourceCLI {
+		if s.CLIBinary == CLIBr {
+			return "br list"
+		}
 		return "bd list"
 	}
 	if s.Path != "" {
@@ -70,17 +81,41 @@ func parseBdVersionWarning(output string) string {
 	return BdVersionWarning(fields[len(fields)-1])
 }
 
-// FetchIssuesCLI runs `bd list --json --limit 0 --all` and parses the result.
-func FetchIssuesCLI(projectDir string) ([]Issue, error) {
-	out, err := runWithTimeout(timeoutMedium, "bd", bdListArgs()...)
+// FetchIssuesCLI runs `<binary> list --json --limit 0 --all` and parses the result.
+// br returns a wrapper object; bd returns a bare array.
+func FetchIssuesCLI(projectDir, binary string) ([]Issue, error) {
+	out, err := runWithTimeout(timeoutMedium, binary, bdListArgs()...)
 	if err != nil {
-		return nil, wrapExitError("bd list --json", err)
+		return nil, wrapExitError(binary+" list --json", err)
+	}
+	if binary == CLIBr {
+		return parseBrListOutput(out, LoadIssuePrefix(projectDir))
 	}
 	return parseIssuesCLIOutput(out, LoadIssuePrefix(projectDir))
 }
 
 func bdListArgs() []string {
 	return []string{"list", "--json", "--limit", "0", "--all"}
+}
+
+// brListEnvelope mirrors the `br list --json` wrapper shape.
+type brListEnvelope struct {
+	Issues []Issue `json:"issues"`
+}
+
+// parseBrListOutput unwraps the br envelope and applies the same prefix
+// validation and sorting the bd array path uses. A wrapper without an issues
+// key decodes to an empty slice (empty parade), not an error.
+func parseBrListOutput(out []byte, expectedPrefix string) ([]Issue, error) {
+	var env brListEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		return nil, fmt.Errorf("br list parse: %w", err)
+	}
+	if err := validateIssuePrefixes(env.Issues, expectedPrefix); err != nil {
+		return nil, err
+	}
+	SortIssues(env.Issues)
+	return env.Issues, nil
 }
 
 func parseIssuesCLIOutput(out []byte, expectedPrefix string) ([]Issue, error) {
@@ -274,11 +309,12 @@ func parseIssueDetail(out []byte) (*Issue, error) {
 	return &issues[0], nil
 }
 
-// FetchIssuesNow returns a tea.Cmd that fetches issues via bd CLI immediately
-// (no timer delay). Emits FileChangedMsg on success, FileWatchErrorMsg on failure.
-func FetchIssuesNow(projectDir string) tea.Cmd {
+// FetchIssuesNow returns a tea.Cmd that fetches issues via the Beads CLI
+// immediately (no timer delay). Emits FileChangedMsg on success,
+// FileWatchErrorMsg on failure.
+func FetchIssuesNow(projectDir, binary string) tea.Cmd {
 	return func() tea.Msg {
-		issues, err := FetchIssuesCLI(projectDir)
+		issues, err := FetchIssuesCLI(projectDir, binary)
 		if err != nil {
 			return FileWatchErrorMsg{Err: err}
 		}

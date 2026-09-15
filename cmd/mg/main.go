@@ -98,7 +98,7 @@ func main() {
 	var issues []data.Issue
 	switch source.Mode {
 	case SourceCLI:
-		issues, err = data.FetchIssuesCLI(source.ProjectDir)
+		issues, err = data.FetchIssuesCLI(source.ProjectDir, source.CLIBinary)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading issues via bd list: %v\n\n", err)
 			if hint := data.SchemaSkewHint(err); hint != "" {
@@ -231,10 +231,17 @@ func bdOnPath() bool {
 	return err == nil
 }
 
+// brOnPath returns true if the br command is available.
+func brOnPath() bool {
+	_, err := exec.LookPath("br")
+	return err == nil
+}
+
 // resolveSource determines how mg should load issues.
 //
 //	--path flag → SourceJSONL with explicit path
-//	.beads/ dir exists, bd on PATH → SourceCLI (preferred)
+//	.beads/ dir exists, br on PATH → SourceCLI with CLIBr (preferred)
+//	.beads/ dir exists, bd on PATH → SourceCLI with CLIBd (legacy binary)
 //	.beads/issues.jsonl exists → SourceJSONL (legacy fallback)
 //	neither → empty Source (caller should exit with error)
 func resolveSource(cwd, pathFlag string) data.Source {
@@ -251,15 +258,26 @@ func resolveSource(cwd, pathFlag string) data.Source {
 		}
 	}
 
-	// Prefer CLI when bd is available (JSONL removed upstream in beads v0.56+)
-	if projectDir := findBeadsDir(cwd); projectDir != "" && bdOnPath() {
-		return data.Source{
-			Mode:       data.SourceCLI,
-			ProjectDir: projectDir,
+	// Prefer CLI when br or bd is available (JSONL removed upstream in beads v0.56+).
+	// br wins: it is the current binary, bd the legacy one.
+	if projectDir := findBeadsDir(cwd); projectDir != "" {
+		if brOnPath() {
+			return data.Source{
+				Mode:       data.SourceCLI,
+				ProjectDir: projectDir,
+				CLIBinary:  data.CLIBr,
+			}
+		}
+		if bdOnPath() {
+			return data.Source{
+				Mode:       data.SourceCLI,
+				ProjectDir: projectDir,
+				CLIBinary:  data.CLIBd,
+			}
 		}
 	}
 
-	// Legacy fallback: JSONL file exists but bd not on PATH
+	// Legacy fallback: JSONL file exists but no CLI on PATH
 	if jsonlPath := findBeadsFile(cwd); jsonlPath != "" {
 		return data.Source{
 			Mode:       data.SourceJSONL,
