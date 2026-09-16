@@ -3,6 +3,8 @@ package data
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -59,6 +61,38 @@ func TestGroupByParade(t *testing.T) {
 	}
 	if len(passed) != 3 {
 		t.Errorf("expected 3 past the stand, got %d: %v", len(passed), issueIDs(passed))
+	}
+}
+
+func TestGroupBySemanticStateSample(t *testing.T) {
+	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
+	issues, _, err := LoadIssues(path)
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+
+	groups, unmapped := GroupBySemanticState(issues, DefaultBlockingTypes)
+
+	// Counts in StateOrder(): Working, Awaiting Review, Ready, Deferred,
+	// Waiting/Blocked, Done. Four issues are in_progress but only three are
+	// Working — mg-012 is blocked by mg-001, and blocked-wins. mg-017 carries a
+	// defer_until in the past, so it is Ready, not Deferred. The single epic has
+	// no parent-child edges, so the epic rule cannot fire: Awaiting Review is 0.
+	want := []int{3, 0, 12, 0, 3, 3}
+	for i, state := range StateOrder() {
+		if got := len(groups[state]); got != want[i] {
+			t.Errorf("%s: got %d, want %d (%v)", state.Label(), got, want[i], issueIDs(groups[state]))
+		}
+	}
+
+	if len(unmapped) != 0 {
+		t.Errorf("expected no unmapped issues, got %v", issueIDs(unmapped))
+	}
+
+	blocked := issueIDs(groups[StateWaitingBlocked])
+	sort.Strings(blocked)
+	if !reflect.DeepEqual(blocked, []string{"mg-006", "mg-011", "mg-012"}) {
+		t.Errorf("Waiting/Blocked = %v, want [mg-006 mg-011 mg-012]", blocked)
 	}
 }
 
@@ -253,6 +287,91 @@ func TestParadeGroup_CustomBlockTypes(t *testing.T) {
 	group = mg014.ParadeGroup(issueMap, customTypes)
 	if group != ParadeStalled {
 		t.Errorf("expected mg-014 to be Stalled with custom block types, got %d", group)
+	}
+}
+
+func TestDeriveStateCustomBlockTypes(t *testing.T) {
+	// When "discovered-from" is added to blocking types, mg-014 becomes
+	// Waiting/Blocked: the custom set decides which edges are blockers.
+	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
+	issues, _, err := LoadIssues(path)
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+	issueMap := BuildIssueMap(issues)
+
+	customTypes := map[string]bool{"blocks": true, "discovered-from": true}
+
+	mg014 := issueMap["mg-014"]
+	if mg014 == nil {
+		t.Fatal("mg-014 not found")
+	}
+
+	// With default types: Ready (non-blocking dep type)
+	state, ok := DeriveState(mg014, issueMap, DefaultBlockingTypes)
+	if !ok {
+		t.Fatal("mg-014 must be decidable with default block types")
+	}
+	if state != StateReady {
+		t.Errorf("expected mg-014 to be Ready with default types, got %s", state.Label())
+	}
+
+	// With custom types including "discovered-from": Waiting/Blocked
+	state, ok = DeriveState(mg014, issueMap, customTypes)
+	if !ok {
+		t.Fatal("mg-014 must be decidable with custom block types")
+	}
+	if state != StateWaitingBlocked {
+		t.Errorf("expected mg-014 to be Waiting/Blocked with custom block types, got %s", state.Label())
+	}
+}
+
+func TestDeriveStateInProgressBlocked(t *testing.T) {
+	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
+	issues, _, err := LoadIssues(path)
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+	issueMap := BuildIssueMap(issues)
+
+	mg012 := issueMap["mg-012"]
+	if mg012 == nil {
+		t.Fatal("mg-012 not found")
+	}
+	if mg012.Status != StatusInProgress {
+		t.Fatalf("expected mg-012 to be in_progress, got %s", mg012.Status)
+	}
+
+	state, ok := DeriveState(mg012, issueMap, DefaultBlockingTypes)
+	if !ok {
+		t.Fatal("mg-012 must be decidable")
+	}
+	if state != StateWaitingBlocked {
+		t.Errorf("expected mg-012 to be Waiting/Blocked, got %s", state.Label())
+	}
+}
+
+func TestDeriveStateDanglingDep(t *testing.T) {
+	// mg-011: open, depends on mg-999 (not found) → Waiting/Blocked. A blocker
+	// that is not loaded counts, matching EvaluateDependencies' DepMissing.
+	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
+	issues, _, err := LoadIssues(path)
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+	issueMap := BuildIssueMap(issues)
+
+	mg011 := issueMap["mg-011"]
+	if mg011 == nil {
+		t.Fatal("mg-011 not found")
+	}
+
+	state, ok := DeriveState(mg011, issueMap, DefaultBlockingTypes)
+	if !ok {
+		t.Fatal("mg-011 must be decidable")
+	}
+	if state != StateWaitingBlocked {
+		t.Errorf("expected mg-011 to be Waiting/Blocked (dangling dep), got %s", state.Label())
 	}
 }
 

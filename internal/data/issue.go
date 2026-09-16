@@ -15,6 +15,14 @@ const (
 	StatusOpen       Status = "open"
 	StatusInProgress Status = "in_progress"
 	StatusClosed     Status = "closed"
+	// Recognized but not mapped by this wave's DeriveState: which semantic
+	// state each should render as is an open product question, so they are
+	// never silently bucketed (see DeriveState).
+	StatusBlocked   Status = "blocked"
+	StatusDeferred  Status = "deferred"
+	StatusDraft     Status = "draft"
+	StatusTombstone Status = "tombstone"
+	StatusPinned    Status = "pinned"
 )
 
 // IssueType represents the category of a Beads issue.

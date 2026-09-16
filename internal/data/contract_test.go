@@ -563,10 +563,22 @@ func TestContractEmptyList(t *testing.T) {
 }
 
 func TestContractAllStatusValues(t *testing.T) {
-	statuses := []string{"open", "in_progress", "closed"}
+	// Every status mg recognises, including the ones this wave deliberately
+	// leaves undecided (draft/tombstone/pinned). Recognising a status is not
+	// the same as deriving a semantic state from it.
+	statuses := []Status{
+		StatusOpen,
+		StatusInProgress,
+		StatusBlocked,
+		StatusDeferred,
+		StatusDraft,
+		StatusClosed,
+		StatusTombstone,
+		StatusPinned,
+	}
 	for _, s := range statuses {
-		t.Run(s, func(t *testing.T) {
-			jsonStr := `[{"id":"s-1","title":"test","status":"` + s + `",` +
+		t.Run(string(s), func(t *testing.T) {
+			jsonStr := `[{"id":"s-1","title":"test","status":"` + string(s) + `",` +
 				`"priority":0,"issue_type":"task",` +
 				`"created_at":"2026-03-01T00:00:00Z","created_by":"x",` +
 				`"updated_at":"2026-03-01T00:00:00Z"}]`
@@ -575,7 +587,7 @@ func TestContractAllStatusValues(t *testing.T) {
 			if err := json.Unmarshal([]byte(jsonStr), &issues); err != nil {
 				t.Fatalf("failed to parse status %q: %v", s, err)
 			}
-			assertEqual(t, "Status", string(issues[0].Status), s)
+			assertEqual(t, "Status", string(issues[0].Status), string(s))
 		})
 	}
 }
