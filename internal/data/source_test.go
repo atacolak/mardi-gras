@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -288,6 +289,98 @@ func TestFetchIssuesCLIBdArray(t *testing.T) {
 	}
 	if len(issues) != 1 || issues[0].ID != "mard-nob" {
 		t.Fatalf("got %+v", issues)
+	}
+}
+
+// TestFetchIssuesCLIBackfillsGraphEdges pins the fix for the operator's default
+// source. `br list --json` reports dependency_count but never a dependencies
+// array (verified live), so every CLI-loaded issue arrived edge-less and the
+// whole graph layer — hierarchy, blocking, semantic state — was inert. The
+// export on disk still carries the edges; FetchIssuesCLI must graft them back
+// in one pass, with no per-issue subprocess fan-out.
+func TestFetchIssuesCLIBackfillsGraphEdges(t *testing.T) {
+	projectDir := t.TempDir()
+	beadsDir := filepath.Join(projectDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	export := `{"id":"epic","title":"parent","status":"open","priority":1,"issue_type":"epic","updated_at":"2026-09-16T00:00:00Z"}
+{"id":"child","title":"kid","status":"open","priority":1,"issue_type":"task","updated_at":"2026-09-16T00:00:00Z","dependencies":[{"issue_id":"child","depends_on_id":"epic","type":"parent-child","created_at":"2026-09-16T00:00:00Z","created_by":"ata"}]}
+`
+	if err := os.WriteFile(filepath.Join(beadsDir, "issues.jsonl"), []byte(export), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// What br actually returns: the same issues, no dependencies key at all.
+	defer mockRun([]byte(`{"issues":[{"id":"epic","title":"parent","status":"open","priority":1,"issue_type":"epic","updated_at":"2026-09-16T00:00:00Z"},{"id":"child","title":"kid","status":"open","priority":1,"issue_type":"task","updated_at":"2026-09-16T00:00:00Z"}],"total":2}`), nil)()
+
+	got, err := FetchIssuesCLI(projectDir, CLIBr)
+	if err != nil {
+		t.Fatalf("FetchIssuesCLI() error = %v", err)
+	}
+	byID := BuildIssueMap(got)
+	if byID["child"] == nil {
+		t.Fatalf("child missing from %+v", got)
+	}
+	if parent := byID["child"].ParentRelationshipID(); parent != "epic" {
+		t.Errorf("child ParentRelationshipID() = %q, want %q", parent, "epic")
+	}
+}
+
+// TestMergeGraphEdgesMissingExportLeavesInput covers the no-export case: an
+// absent or unreadable issues.jsonl is not an error, and the fetched issues
+// pass through byte-identical.
+func TestMergeGraphEdgesMissingExportLeavesInput(t *testing.T) {
+	in := []Issue{{
+		ID:        "mard-abc",
+		Title:     "cli only",
+		Status:    StatusOpen,
+		IssueType: TypeTask,
+		Dependencies: []Dependency{
+			{IssueID: "mard-abc", DependsOnID: "mard-xyz", Type: "blocks"},
+		},
+	}}
+
+	got := MergeGraphEdges(in, t.TempDir()) // no .beads/ export anywhere
+
+	if !reflect.DeepEqual(got, in) {
+		t.Errorf("MergeGraphEdges() = %+v, want input unchanged %+v", got, in)
+	}
+}
+
+// TestMergeGraphEdgesPreservesExistingDependencies pins first-wins: a CLI issue
+// that already carries edges is authoritative, and the export must not
+// overwrite them.
+func TestMergeGraphEdgesPreservesExistingDependencies(t *testing.T) {
+	projectDir := t.TempDir()
+	beadsDir := filepath.Join(projectDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	export := `{"id":"mard-abc","title":"cli only","status":"open","priority":1,"issue_type":"task","updated_at":"2026-09-16T00:00:00Z","dependencies":[{"issue_id":"mard-abc","depends_on_id":"mard-stale","type":"parent-child"}]}
+`
+	if err := os.WriteFile(filepath.Join(beadsDir, "issues.jsonl"), []byte(export), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := []Issue{{
+		ID:        "mard-abc",
+		Title:     "cli only",
+		Status:    StatusOpen,
+		IssueType: TypeTask,
+		Dependencies: []Dependency{
+			{IssueID: "mard-abc", DependsOnID: "mard-blocker", Type: "blocks"},
+		},
+	}}
+	want := []Dependency{{IssueID: "mard-abc", DependsOnID: "mard-blocker", Type: "blocks"}}
+
+	got := MergeGraphEdges(in, projectDir)
+
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1", len(got))
+	}
+	if !reflect.DeepEqual(got[0].Dependencies, want) {
+		t.Errorf("Dependencies = %+v, want %+v (existing edges are authoritative)", got[0].Dependencies, want)
 	}
 }
 

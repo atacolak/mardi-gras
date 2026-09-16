@@ -83,19 +83,60 @@ func parseBdVersionWarning(output string) string {
 
 // FetchIssuesCLI runs `<binary> list --json --limit 0 --all` and parses the result.
 // br returns a wrapper object; bd returns a bare array.
+//
+// Neither binary's list output carries dependency edges, so the parsed issues
+// are passed through MergeGraphEdges before being returned. Every CLI caller —
+// the watcher poll, the health check, FetchIssuesNow, and the startup fetch —
+// funnels through here and therefore inherits the edges.
 func FetchIssuesCLI(projectDir, binary string) ([]Issue, error) {
 	out, err := runWithTimeout(timeoutMedium, binary, bdListArgs()...)
 	if err != nil {
 		return nil, wrapExitError(binary+" list --json", err)
 	}
+	var issues []Issue
 	if binary == CLIBr {
-		return parseBrListOutput(out, LoadIssuePrefix(projectDir))
+		issues, err = parseBrListOutput(out, LoadIssuePrefix(projectDir))
+	} else {
+		issues, err = parseIssuesCLIOutput(out, LoadIssuePrefix(projectDir))
 	}
-	return parseIssuesCLIOutput(out, LoadIssuePrefix(projectDir))
+	if err != nil {
+		return nil, err
+	}
+	return MergeGraphEdges(issues, projectDir), nil
 }
 
 func bdListArgs() []string {
 	return []string{"list", "--json", "--limit", "0", "--all"}
+}
+
+// MergeGraphEdges grafts dependency edges from the on-disk Beads export onto
+// issues loaded from a CLI source. `br list --json` (and bd's flat list)
+// report dependency_count but not the edges themselves, so CLI-loaded issues
+// arrive with an empty Dependencies slice and every graph-derived rule —
+// parent-child hierarchy, blocking evaluation, semantic state — is inert on
+// the operator's default path. The export at .beads/issues.jsonl still carries
+// the edges, so one tolerant read restores them for all issues at once, with
+// no per-issue subprocess fan-out.
+//
+// An issue that already carries dependencies is authoritative and left alone;
+// only edge-less issues are backfilled, and the export's slice is copied so
+// nothing aliases LoadIssues' backing array. A missing or unreadable export is
+// not an error — the issues pass through unchanged, exactly as before.
+func MergeGraphEdges(issues []Issue, projectDir string) []Issue {
+	dir := ResolveBeadsDir(filepath.Join(projectDir, ".beads"))
+	exported, _, err := LoadIssues(filepath.Join(dir, "issues.jsonl"))
+	if err != nil {
+		return issues
+	}
+	byID := BuildIssueMap(exported)
+	for i := range issues {
+		if len(issues[i].Dependencies) == 0 {
+			if x := byID[issues[i].ID]; x != nil {
+				issues[i].Dependencies = append([]Dependency(nil), x.Dependencies...)
+			}
+		}
+	}
+	return issues
 }
 
 // brListEnvelope mirrors the `br list --json` wrapper shape.
