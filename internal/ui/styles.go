@@ -33,6 +33,22 @@ var (
 	StatusStalledStr string
 	StatusPassedStr  string
 
+	// Semantic execution state section headers (see ExecSectionStyle)
+	SectionExecWorking        lipgloss.Style
+	SectionExecAwaitingReview lipgloss.Style
+	SectionExecReady          lipgloss.Style
+	SectionExecDeferred       lipgloss.Style
+	SectionExecWaiting        lipgloss.Style
+	SectionExecDone           lipgloss.Style
+
+	// Pre-rendered semantic execution indicators (see ExecIndicator)
+	ExecWorkingStr        string
+	ExecAwaitingReviewStr string
+	ExecReadyStr          string
+	ExecDeferredStr       string
+	ExecWaitingStr        string
+	ExecDoneStr           string
+
 	// Issue items in the list
 	ItemNormal   lipgloss.Style
 	ItemSelected lipgloss.Style
@@ -131,6 +147,10 @@ var (
 	ToastError   lipgloss.Style
 
 	matchStyle lipgloss.Style
+
+	// Contract-violation rendering for a state outside 0-5 (see ExecSymbol)
+	execSectionFallback   lipgloss.Style
+	execIndicatorFallback string
 )
 
 // bgSequence returns the raw SGR that sets bg as the background color.
@@ -208,6 +228,45 @@ func rebuildStyles() {
 	StatusLinedUpStr = lipgloss.NewStyle().Foreground(StatusLinedUp).Render(SymLinedUp)
 	StatusStalledStr = lipgloss.NewStyle().Foreground(StatusStalled).Render(SymStalled)
 	StatusPassedStr = lipgloss.NewStyle().Foreground(StatusPassed).Render(SymPassed)
+
+	// Semantic execution state section headers
+	SectionExecWorking = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ExecWorking)
+
+	SectionExecAwaitingReview = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ExecAwaitingReview)
+
+	SectionExecReady = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ExecReady)
+
+	SectionExecDeferred = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ExecDeferred)
+
+	SectionExecWaiting = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ExecWaiting)
+
+	SectionExecDone = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ExecDone)
+
+	// Pre-rendered semantic execution indicators
+	ExecWorkingStr = lipgloss.NewStyle().Foreground(ExecWorking).Render(SymExecWorking)
+	ExecAwaitingReviewStr = lipgloss.NewStyle().Foreground(ExecAwaitingReview).Render(SymExecAwaitingReview)
+	ExecReadyStr = lipgloss.NewStyle().Foreground(ExecReady).Render(SymExecReady)
+	ExecDeferredStr = lipgloss.NewStyle().Foreground(ExecDeferred).Render(SymExecDeferred)
+	ExecWaitingStr = lipgloss.NewStyle().Foreground(ExecWaiting).Render(SymExecWaiting)
+	ExecDoneStr = lipgloss.NewStyle().Foreground(ExecDone).Render(SymExecDone)
+
+	// Contract-violation fallback
+	execSectionFallback = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(Muted)
+	execIndicatorFallback = lipgloss.NewStyle().Foreground(Muted).Render(SymMissing)
 
 	// Issue items in the list
 	ItemNormal = lipgloss.NewStyle().
@@ -489,6 +548,54 @@ func StateBadge(state string) string {
 	return lipgloss.NewStyle().
 		Foreground(AgentStateColor(state)).
 		Render(sym + " " + state)
+}
+
+// ExecSectionStyle returns the section-header style for a semantic execution
+// state. state is the data package's SemanticState integer order — Working=0
+// through Done=5 — because ui is a leaf package and does not import that type.
+// The styles are baked by rebuildStyles, so a theme switch rebakes them.
+//
+// Out of range yields the muted bold fallback rather than panicking (see
+// ExecSymbol).
+func ExecSectionStyle(state int) lipgloss.Style {
+	switch state {
+	case 0:
+		return SectionExecWorking
+	case 1:
+		return SectionExecAwaitingReview
+	case 2:
+		return SectionExecReady
+	case 3:
+		return SectionExecDeferred
+	case 4:
+		return SectionExecWaiting
+	case 5:
+		return SectionExecDone
+	default:
+		return execSectionFallback
+	}
+}
+
+// ExecIndicator returns the pre-rendered, color-coded glyph for a semantic
+// execution state, using the same integer order as ExecSymbol. Out of range
+// renders the muted missing marker.
+func ExecIndicator(state int) string {
+	switch state {
+	case 0:
+		return ExecWorkingStr
+	case 1:
+		return ExecAwaitingReviewStr
+	case 2:
+		return ExecReadyStr
+	case 3:
+		return ExecDeferredStr
+	case 4:
+		return ExecWaitingStr
+	case 5:
+		return ExecDoneStr
+	default:
+		return execIndicatorFallback
+	}
 }
 
 // SectionDivider renders a btop-style section divider: ── ⚜ TITLE ──────────

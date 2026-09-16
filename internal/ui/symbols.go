@@ -105,7 +105,44 @@ const (
 
 	// Geometric indicators
 	SymDiamond = "◆"
+
+	// Semantic execution states (see ExecSymbol). Deliberately distinct from
+	// the Gas Town agent-state symbols above: an issue's derived execution
+	// state is not an agent's state.
+	SymExecWorking        = "●"
+	SymExecAwaitingReview = "◐"
+	SymExecReady          = "♪"
+	SymExecDeferred       = "⏸"
+	SymExecWaiting        = "⊘"
+	SymExecDone           = "✓"
 )
+
+// ExecSymbol returns the glyph for a semantic execution state. state is the
+// data package's SemanticState integer order — Working=0, AwaitingReview=1,
+// Ready=2, Deferred=3, WaitingBlocked=4, Done=5 — because ui is a leaf package
+// and does not import that type.
+//
+// A value outside 0-5 is a broken contract, not a seventh state: it renders
+// the existing "missing" marker so the row reads as unrecognized rather than
+// masquerading as ready work.
+func ExecSymbol(state int) string {
+	switch state {
+	case 0:
+		return SymExecWorking
+	case 1:
+		return SymExecAwaitingReview
+	case 2:
+		return SymExecReady
+	case 3:
+		return SymExecDeferred
+	case 4:
+		return SymExecWaiting
+	case 5:
+		return SymExecDone
+	default:
+		return SymMissing
+	}
+}
 
 // superscriptDigits maps 0-9 to their Unicode superscript equivalents.
 var superscriptDigits = [10]string{"⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"}
