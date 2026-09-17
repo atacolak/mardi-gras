@@ -1,7 +1,7 @@
 # Operator Work Cockpit Technical Spec
 
 **Design Brief:** `/home/sf/worlds/personal/designs/mardi-gras/operator-work-cockpit.md`
-**Status:** blocked on four operator confirmations; the settled tree, color, section, sort, mouse, and scope cutovers are sound
+**Status:** four operator confirmations recorded 2026-09-17; Task 1 is executable. Hover-scroll (wheel-under-pointer, no focus steal) is a Task 6 contract.
 **Repo:** `/home/sf/workspace/mardi-gras` (`feat/operator-observability`)
 
 ## Intent (from the Brief — do not rewrite)
@@ -152,14 +152,16 @@ Left pane:
 
 - click an issue row: `itemIndex = ScrollOffset + (mouseY - bodyTop)`; headers, footers, and padding do not select; a valid issue becomes `Cursor` / `SelectedIssue`, detail synchronizes, and focus becomes `PaneParade`
 - click a collapsed epic: expand it, then select it
-- wheel: focus Parade and move one selectable row per wheel event using the same cursor/selection synchronization as `j`/`k`
+- wheel over left: scroll Parade one selectable row per event. do NOT change `activPane` / `detail.Focused`
 
 Right detail pane:
 
 - click anywhere in the pane: focus becomes `PaneDetail`
 - click a recorded, locally loaded bead-reference line: navigate detail to that bead; if its row is visible in the current parade, synchronize the parade cursor as well
 - click a missing dependency or cross-rig ID absent from `IssueMap`: keep focus but do not fabricate or fetch a bead
-- wheel: focus Detail and scroll the existing viewport one line per event
+- wheel over right: scroll the existing viewport one line per event. do NOT change `activPane` / `detail.Focused`
+
+Wheel follows the pointer, not the focused pane. A wheel event never steals keyboard/click focus. Click still moves focus. Keyboard `j`/`k` still move the focused pane.
 
 Mouse messages are ignored by underlying panes while a modal/form/help overlay owns input. Wide layout has no right pane; its entire body is parade geometry.
 
@@ -312,13 +314,13 @@ Tree construction still sorts each sibling list itself; this loader rule removes
 
 **Operator Review storage — recommended but not closed:** declare exact custom status `review` in `.beads/policy.yaml`, preserving the built-in workflow statuses used by this board, keep `review` out of `workflow.status_groups.ready`, and transition explicitly with `br update <id> --status review`. The live board proves Beads does not auto-enter it when children close. A narrowly named compatibility rule may read old converged epics until migration. **Rejected:** permanent settled-descendant paint over `in_progress` — the Brief explicitly calls that a category error. **Rejected:** a label convention without operator approval — weaker than the preferred real status and not selected by the Brief.
 
-**Glyphs — proposed but not closed:** `○ ● ⊘ ⏸ ◐ ✓` in exact state order. It removes `♪`, reuses five already legible semantic shapes, and needs no carnival theme. Ata's glance is still required before the glyph task is minted.
+**Glyphs — settled:** `○ ● ⊘ ⏸ ◐ ✓` in exact state order. Removes `♪`. No carnival theme.
 
-## Open questions
+## Open questions — settled 2026-09-17 (Ata: "yeah sounds good")
 
-These four are preserved for the lead/operator. They are not invitations for a builder to choose. The implementation plan is a contingent dossier and must not be executed until the relevant confirmations are recorded.
+1. **Storage.** Real beads status `review` in `.beads/policy.yaml`, written via `br update`. Forbidden: keep `in_progress` and only paint. Named temporary shim `legacyConvergedEpicOperatorReview` is allowed for already-converged epics until migrated.
+2. **What flips it.** Explicit lead action (`br update <id> --status review`). Not auto-enter when children close.
+3. **Right-pane clicks.** Loaded DEPENDENCIES rows (blocking, resolved, non-blocking including parent, reverse `blocks`) plus a cross-rig ID only if that exact ID is locally loaded. Missing/unloaded visible, not clickable. No children widget. No molecule IDs.
+4. **Glyphs.** Ready `○` Working `●` Waiting/Blocked `⊘` Deferred `⏸` Operator Review `◐` Done `✓`.
 
-1. **How is Operator Review stored?** Prefer a real beads status `review` declared in `.beads/policy.yaml` and set via `br update`; forbidden: keep `in_progress` and only paint it differently, except a named temporary read-compat shim. Evidence: br 0.5.11 accepts custom statuses through `workflow.statuses`, `br update --status` is the write path, `br create -s` lists only the four initial statuses `open, deferred, in_progress, closed`, and this repo has no policy file today.
-2. **What flips a row into Operator Review?** Choose explicit lead action versus automatic entry when a campaign frontier converges. Recommended default: explicit `br update` plus a documented ready-front rule; live `mard-nob` and `mard-r43` remain `in_progress` at 7/7 and 10/10 closed children, proving the substrate does not auto-enter a gate. The old settled-epic inference may survive only as the named temporary compatibility shim from question 1.
-3. **Which right-pane rows are click targets?** Proposed inspected set: loaded local bead references already rendered under DEPENDENCIES—blocking, resolved, non-blocking (including parent), and reverse `blocks` dependents—plus a cross-rig reference only when that exact ID is locally loaded. Missing blockers and unloaded cross-rig IDs stay visible but cannot select; epic Progress and molecule rows contain no bead IDs; no children widget is added.
-4. **What are the exact six glyphs?** Proposal in exact state order is Ready `○`, Working `●`, Waiting/Blocked `⊘`, Deferred `⏸`, Operator Review `◐`, Done `✓`. This removes `♪` and stays in the existing dark/light `Exec*` rebake path; treat it as proposed, not closed.
+**Hover-scroll (same turn, Task 6):** wheel over a pane scrolls that pane without moving focus. Click still moves focus.

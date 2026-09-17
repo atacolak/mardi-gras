@@ -15,14 +15,14 @@
 
 ## Execution gate and shared contract
 
-This plan is file-exact but **not executable yet**. Before minting Task 1, the lead must record the operator answers copied verbatim in [Open questions preserved from the spec](#open-questions-preserved-from-the-spec):
+This plan is file-exact and Task 1 is executable. Operator answers recorded 2026-09-17 (Ata: "yeah sounds good") in [Open questions](#open-questions-preserved-from-the-spec):
 
-- the stored representation and any policy transitions/ready group
-- explicit action versus auto-enter, including the lifespan of the named compatibility shim
-- the exact inspected right-reference target set
-- the exact six glyphs
+- stored representation: `review` in `.beads/policy.yaml`; ready group stays `open` only
+- flip: explicit `br update --status review`; named shim `legacyConvergedEpicOperatorReview` for already-converged epics
+- right-reference target set: loaded DEPENDENCIES + local cross-rig IDs only
+- glyphs: Ready `○` Working `●` Waiting/Blocked `⊘` Deferred `⏸` Operator Review `◐` Done `✓`
 
-The code snippets below use the spec's recommendation (`review`, explicit lead action, `legacyConvergedEpicOperatorReview`, and glyphs `○ ● ⊘ ⏸ ◐ ✓`). If Ata chooses differently, the planner must revise this dossier before a builder starts; builders do not substitute a different product decision.
+Hover-scroll (same turn): wheel over a pane scrolls that pane and does **not** steal focus. Task 6 owns it. Builders do not reopen these.
 
 All tasks run **serially on one shared tree** because isolation is off. Do not parallelize builders. Task ordering deliberately keeps the high-collision files single-owner at a time:
 
@@ -661,7 +661,7 @@ git commit -m "feat: expose existing detail bead references for navigation"
 - Test: `internal/app/keys_test.go`
 - Test: `internal/app/view_height_test.go`
 
-**Verification (anti-gameable):** real Bubble Tea v2 `tea.MouseClickMsg` / `tea.MouseWheelMsg` values at nonzero scroll offsets select the expected full ID and change focus. The app's returned `tea.View` requests `MouseModeCellMotion`. Overlay/modal cases prove no underlying selection moves.
+**Verification (anti-gameable):** real Bubble Tea v2 `tea.MouseClickMsg` / `tea.MouseWheelMsg` values at nonzero scroll offsets select the expected full ID (click) or scroll the pane under the pointer (wheel) WITHOUT changing `activPane` / `detail.Focused`. The app's returned `tea.View` requests `MouseModeCellMotion`. Overlay/modal cases prove no underlying selection moves.
 
 - [ ] **Step 1: Write failing View and click tests**
 
@@ -688,7 +688,7 @@ Require:
 ```go
 func TestMouseClickParadeSelectsScrolledRowAndFocusesParade(t *testing.T)
 func TestMouseClickDetailReferenceNavigatesAndFocusesDetail(t *testing.T)
-func TestMouseWheelMovesPaneUnderPointer(t *testing.T)
+func TestMouseWheelScrollsPaneUnderPointerWithoutStealingFocus(t *testing.T)
 func TestMouseIgnoresHeaderFooterPaddingAndScrollCue(t *testing.T)
 func TestMouseDoesNotLeakThroughHelpOrForms(t *testing.T)
 ```
@@ -735,8 +735,8 @@ In `Update`, after modal/form/input ownership checks and before focused-detail f
 
 - left click: set `activPane=PaneParade`, `detail.Focused=false`, call `parade.IssueAtViewportRow`, expand a collapsed epic if required, select by full ID, then `syncSelection`
 - right click: set `activPane=PaneDetail`, `detail.Focused=true`; if `detail.ReferenceAt(bodyRow)` returns an issue, set detail issue and synchronize parade cursor only if `restoreParadeSelection` finds it
-- left wheel: focus Parade and call `MoveUp` / `MoveDown` plus `syncSelection`
-- right wheel: focus Detail and call `Viewport.ScrollUp(1)` / `ScrollDown(1)`
+- left wheel: scroll Parade (`MoveUp` / `MoveDown` + `syncSelection`) without changing `activPane` / `detail.Focused`
+- right wheel: scroll Detail (`Viewport.ScrollUp(1)` / `ScrollDown(1)`) without changing `activPane` / `detail.Focused`
 
 Do not clear filters, scope, focus mode, or collapse state. Do not intercept mouse while help, palette, create/edit forms, prompts, dialogs, or right-panel overlays own the surface.
 
@@ -873,9 +873,9 @@ Required evidence:
 
 ## Open questions preserved from the spec
 
-1. **How is Operator Review stored?** Prefer a real beads status `review` declared in `.beads/policy.yaml` and set via `br update`; forbidden: keep `in_progress` and only paint it differently, except a named temporary read-compat shim. Evidence: br 0.5.11 accepts custom statuses through `workflow.statuses`, `br update --status` is the write path, `br create -s` lists only the four initial statuses `open, deferred, in_progress, closed`, and this repo has no policy file today.
-2. **What flips a row into Operator Review?** Choose explicit lead action versus automatic entry when a campaign frontier converges. Recommended default: explicit `br update` plus a documented ready-front rule; live `mard-nob` and `mard-r43` remain `in_progress` at 7/7 and 10/10 closed children, proving the substrate does not auto-enter a gate. The old settled-epic inference may survive only as the named temporary compatibility shim from question 1.
-3. **Which right-pane rows are click targets?** Proposed inspected set: loaded local bead references already rendered under DEPENDENCIES—blocking, resolved, non-blocking (including parent), and reverse `blocks` dependents—plus a cross-rig reference only when that exact ID is locally loaded. Missing blockers and unloaded cross-rig IDs stay visible but cannot select; epic Progress and molecule rows contain no bead IDs; no children widget is added.
-4. **What are the exact six glyphs?** Proposal in exact state order is Ready `○`, Working `●`, Waiting/Blocked `⊘`, Deferred `⏸`, Operator Review `◐`, Done `✓`. This removes `♪` and stays in the existing dark/light `Exec*` rebake path; treat it as proposed, not closed.
+1. **Storage — settled.** Real beads status `review` in `.beads/policy.yaml`, written via `br update`. Forbidden: keep `in_progress` and only paint. Named shim `legacyConvergedEpicOperatorReview` for already-converged epics until migrated.
+2. **What flips it — settled.** Explicit lead action (`br update <id> --status review`). Not auto-enter when children close.
+3. **Right-pane clicks — settled.** Loaded DEPENDENCIES rows (blocking, resolved, non-blocking including parent, reverse `blocks`) plus a cross-rig ID only if that exact ID is locally loaded. Missing/unloaded visible, not clickable. No children widget. No molecule IDs.
+4. **Glyphs — settled.** Ready `○` Working `●` Waiting/Blocked `⊘` Deferred `⏸` Operator Review `◐` Done `✓`.
 
-No builder may answer these four. The lead routes them to Ata, then updates the spec/plan decision text before minting the affected task.
+Hover-scroll (Ata, same turn): wheel over left or right scrolls that pane and does not move keyboard/click focus. Task 6. Click still moves focus.
