@@ -149,39 +149,58 @@ func (p *Parade) rebuildItems() {
 			if p.ShowClosed {
 				ordered, depth := data.OrderHierarchically(issues)
 				for _, iss := range ordered {
-					eval := iss.EvaluateDependencies(p.issueMap, p.blockingTypes)
-					ageDays := int(iss.Age().Hours() / 24)
-					agePct := min(ageDays*100/30, 100)
-					idStyle := ui.GradientHeat.At(agePct)
-					p.Items = append(p.Items, ParadeItem{
-						Issue:      iss,
-						Section:    sec,
-						Eval:       &eval,
-						RenderedID: idStyle.Render(iss.ID),
-						Depth:      depth[iss.ID],
-					})
+					p.appendIssueRow(iss, sec, depth[iss.ID])
 				}
 			}
 		} else {
 			ordered, depth := data.OrderHierarchically(issues)
 			for _, iss := range ordered {
-				eval := iss.EvaluateDependencies(p.issueMap, p.blockingTypes)
-				ageDays := int(iss.Age().Hours() / 24)
-				agePct := min(ageDays*100/30, 100)
-				idStyle := ui.GradientHeat.At(agePct)
-				p.Items = append(p.Items, ParadeItem{
-					Issue:      iss,
-					Section:    sec,
-					Eval:       &eval,
-					RenderedID: idStyle.Render(iss.ID),
-					Depth:      depth[iss.ID],
-				})
+				p.appendIssueRow(iss, sec, depth[iss.ID])
 			}
 		}
 
 		// Footer (bottom border)
 		p.Items = append(p.Items, ParadeItem{IsFooter: true, Section: sec})
 	}
+}
+
+// appendIssueRow appends one issue row. Both the open and the Done sections
+// build their rows here so the two paths can never disagree about a row's
+// label or indent.
+//
+// The label comes from relativeDisplayID: under its parent the dotted prefix
+// is redundant, and data.RelativeDisplayID is the single definition of
+// "redundant" — it verifies the parent-child EDGE before compacting, so a
+// reparented issue keeps its stale dotted ID in full and an edge-only child
+// keeps its undotted one. Depth is passed through untouched; indent behaviour
+// belongs to data.OrderHierarchically.
+func (p *Parade) appendIssueRow(iss *data.Issue, sec paradeSection, depth int) {
+	eval := iss.EvaluateDependencies(p.issueMap, p.blockingTypes)
+	p.Items = append(p.Items, ParadeItem{
+		Issue:      iss,
+		Section:    sec,
+		Eval:       &eval,
+		RenderedID: idStyleForAge(iss).Render(relativeDisplayID(iss, depth)),
+		Depth:      depth,
+	})
+}
+
+// idStyleForAge returns the ID's heat colour: fresh green through stale red
+// over 30 days.
+func idStyleForAge(iss *data.Issue) lipgloss.Style {
+	ageDays := int(iss.Age().Hours() / 24)
+	agePct := min(ageDays*100/30, 100) // 30 days = fully stale
+	return ui.GradientHeat.At(agePct)
+}
+
+// relativeDisplayID is the one place a row's label is chosen: a root row (depth
+// 0 in its section) always shows its full ID, and a nested row defers to
+// data.RelativeDisplayID's edge-checked judgment.
+func relativeDisplayID(iss *data.Issue, depth int) string {
+	if depth <= 0 {
+		return iss.ID
+	}
+	return data.RelativeDisplayID(iss)
 }
 
 // MoveUp moves the cursor up, skipping headers and footers.
@@ -669,16 +688,15 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	}
 
 	// Age-based color for issue ID (fresh=green, aging=gold, stale=red);
-	// closed issues skip the heat gradient and stay muted.
+	// closed issues skip the heat gradient and stay muted. Both branches take
+	// the label from relativeDisplayID so a nested row reads the same closed as
+	// it does open — only the styling differs.
 	if isClosed {
-		item.RenderedID = lipgloss.NewStyle().Foreground(ui.Muted).Render(issue.ID)
+		item.RenderedID = lipgloss.NewStyle().Foreground(ui.Muted).Render(relativeDisplayID(issue, item.Depth))
 	}
 	renderedID := item.RenderedID
 	if renderedID == "" {
-		ageDays := int(issue.Age().Hours() / 24)
-		agePct := min(ageDays*100/30, 100) // 30 days = fully stale
-		idStyle := ui.GradientHeat.At(agePct)
-		renderedID = idStyle.Render(issue.ID)
+		renderedID = idStyleForAge(issue).Render(relativeDisplayID(issue, item.Depth))
 	}
 
 	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s %s",

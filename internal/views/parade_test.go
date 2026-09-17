@@ -263,6 +263,99 @@ func TestParadeIndentUsesParentRelationships(t *testing.T) {
 	}
 }
 
+// Under an epic the dotted prefix is redundant — the row already sits in the
+// epic's own section — so "mard-nob.7" renders as ".7". The parade does not
+// decide this itself: data.RelativeDisplayID compares the issue's dotted prefix
+// against its own parent-child EDGE, so a reparented issue keeps its stale
+// dotted ID in full and an edge-only child keeps its undotted one. A root row
+// is never compacted. The row stays keyed by its real ID either way; only the
+// label changes.
+func TestParadeRelativeDisplayID(t *testing.T) {
+	epic := data.Issue{ID: "mard-nob", Title: "Epic", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeEpic}
+	nested := data.Issue{
+		ID: "mard-nob.7", Title: "Nested child", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{{IssueID: "mard-nob.7", DependsOnID: "mard-nob", Type: "parent-child"}},
+	}
+	reparented := data.Issue{
+		ID: "legacy.2", Title: "Reparented child", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{{IssueID: "legacy.2", DependsOnID: "mard-nob", Type: "parent-child"}},
+	}
+	edgeOnly := data.Issue{
+		ID: "edge-child", Title: "Edge-only child", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{{IssueID: "edge-child", DependsOnID: "mard-nob", Type: "parent-child"}},
+	}
+
+	p := NewParade([]data.Issue{epic, nested, reparented, edgeOnly}, 100, 30, data.DefaultBlockingTypes)
+
+	got := make(map[string]string)
+	for _, item := range p.Items {
+		if item.Issue == nil {
+			continue
+		}
+		got[item.Issue.ID] = ansi.Strip(item.RenderedID)
+		if item.Issue.ID == "mard-nob.7" {
+			t.Logf("nested row: %s", ansi.Strip(p.renderIssue(item, false, 0)))
+		}
+	}
+
+	want := map[string]string{
+		"mard-nob":   "mard-nob",
+		"mard-nob.7": ".7",
+		"legacy.2":   "legacy.2",
+		"edge-child": "edge-child",
+	}
+	for id, wantID := range want {
+		if got[id] != wantID {
+			t.Errorf("rendered ID for %s = %q, want %q", id, got[id], wantID)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("rendered %d issue rows, want %d: %v", len(got), len(want), got)
+	}
+
+	// A compacted label is display only. The row must keep its real ID — it is
+	// the key the cursor, multi-select, and change indicators resolve through.
+	for _, item := range p.Items {
+		if item.Issue == nil || item.Issue.ID != "mard-nob.7" {
+			continue
+		}
+		if got := item.Issue.ID; got != "mard-nob.7" {
+			t.Errorf("nested row key = %q, want the full ID", got)
+		}
+		if item.Depth != 1 {
+			t.Errorf("nested row depth = %d, want 1", item.Depth)
+		}
+		if !item.isSelectable() {
+			t.Error("nested row must stay selectable")
+		}
+	}
+}
+
+// The Done section builds its rows through the same append, so a nested closed
+// row compacts under its epic as well. The observable is the rendered row: the
+// closed path re-renders the label in the muted style, and that re-render must
+// not quietly discard the compaction.
+func TestParadeRelativeDisplayIDClosed(t *testing.T) {
+	epic := data.Issue{ID: "mard-nob", Title: "Epic", Status: data.StatusClosed, Priority: data.PriorityMedium, IssueType: data.TypeEpic}
+	nested := data.Issue{
+		ID: "mard-nob.7", Title: "Closed child", Status: data.StatusClosed, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{{IssueID: "mard-nob.7", DependsOnID: "mard-nob", Type: "parent-child"}},
+	}
+	p := NewParade([]data.Issue{epic, nested}, 100, 30, data.DefaultBlockingTypes)
+	p.ToggleClosed()
+
+	out := ansi.Strip(p.View())
+	if !strings.Contains(out, ".7 Closed child") {
+		t.Errorf("closed nested row should show the compacted ID:\n%s", out)
+	}
+	if strings.Contains(out, "mard-nob.7") {
+		t.Errorf("closed nested row should not repeat the redundant prefix:\n%s", out)
+	}
+	if !strings.Contains(out, "mard-nob Epic") {
+		t.Errorf("depth-0 root should keep its full ID:\n%s", out)
+	}
+}
+
 // An issue whose execution state cannot be derived is carried on the parade,
 // not folded into a bucket. Rendering it is an open product question, so it
 // must not appear as Ready work — and must not vanish from the data either.
