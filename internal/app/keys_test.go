@@ -1432,3 +1432,91 @@ func TestKeyboardGreaterThanStillToggles(t *testing.T) {
 		t.Fatal("keyboard > must still expand the selected branch")
 	}
 }
+
+func TestMouseDoubleClickExpandsAndSelectsUnselectedParent(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	m.parade.ToggleNode("epic")
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("precondition: epic should start collapsed")
+	}
+	if !m.restoreParadeSelection("other") {
+		t.Fatal("precondition: other root not found")
+	}
+	m.syncSelection()
+	click := titleClick(paradeViewportRowOf(t, m, "epic"))
+
+	model, _ := m.Update(click)
+	m = model.(Model)
+	if m.parade.Collapsed["epic"] {
+		// First of the pair is an ordinary selection click.
+		if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic" {
+			t.Fatalf("single click selection = %v, want epic", m.parade.SelectedIssue)
+		}
+	}
+
+	model, _ = m.Update(click)
+	m = model.(Model)
+	if m.parade.Collapsed["epic"] {
+		t.Fatal("double click on a collapsed parent must expand it")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic" {
+		t.Fatalf("double click selection = %v, want epic selected too", m.parade.SelectedIssue)
+	}
+}
+
+func TestMouseDoubleClickCollapsesExpandedSelectedParent(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("epic") {
+		t.Fatal("precondition: epic row not found")
+	}
+	m.syncSelection()
+	if m.parade.Collapsed["epic"] {
+		t.Fatal("precondition: epic should start expanded")
+	}
+	if m.detail.Issue == nil || m.detail.Issue.ID != "epic" {
+		t.Fatalf("precondition: detail pane should show epic, got %v", m.detail.Issue)
+	}
+	click := titleClick(paradeViewportRowOf(t, m, "epic"))
+
+	model, _ := m.Update(click)
+	m = model.(Model)
+	model, _ = m.Update(click)
+	m = model.(Model)
+
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("double click on an already-expanded parent must collapse it")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic" {
+		t.Fatalf("selection after collapse = %v, want epic still selected", m.parade.SelectedIssue)
+	}
+}
+
+func TestMouseSlowSecondClickDoesNotToggle(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	click := titleClick(paradeViewportRowOf(t, m, "epic"))
+
+	model, _ := m.Update(click)
+	m = model.(Model)
+	m.lastClickAt = time.Now().Add(-2 * time.Second)
+	model, _ = m.Update(click)
+	m = model.(Model)
+	if m.parade.Collapsed["epic"] {
+		t.Fatal("clicks outside the double-click window must not toggle")
+	}
+}
+
+func TestMouseDoubleClickOnLeafOnlySelects(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	click := titleClick(paradeViewportRowOf(t, m, "epic.1"))
+
+	model, _ := m.Update(click)
+	m = model.(Model)
+	model, _ = m.Update(click)
+	m = model.(Model)
+	if m.parade.Collapsed["epic.1"] {
+		t.Fatal("a leaf has nothing to collapse")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic.1" {
+		t.Fatalf("leaf double click selection = %v, want epic.1", m.parade.SelectedIssue)
+	}
+}

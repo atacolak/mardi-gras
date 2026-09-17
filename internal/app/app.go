@@ -58,6 +58,10 @@ const (
 	// minPaneWidth is the floor each body pane keeps when the operator drags the
 	// divider, so neither pane can be dragged out of existence (ask 12).
 	minPaneWidth = 30
+	// doubleClickWindow is how close two clicks on the same row must be to count
+	// as a double click. tea.MouseClickMsg carries no click count, so the model
+	// keeps the last click itself.
+	doubleClickWindow = 400 * time.Millisecond
 )
 
 // Model is the root BubbleTea model.
@@ -251,6 +255,10 @@ type Model struct {
 	// to disk, exactly like collapse state.
 	paradeWidthOverride int
 	draggingDivider     bool
+
+	lastClickAt  time.Time
+	lastClickRow int
+	lastClickX   int
 
 	// Bead string shimmer animation
 	beadOffset int
@@ -2118,6 +2126,23 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail.Focused = false
 			m.restoreParadeSelection(issue.ID)
 			m.syncSelection()
+
+			now := time.Now()
+			double := !m.lastClickAt.IsZero() &&
+				now.Sub(m.lastClickAt) <= doubleClickWindow &&
+				m.lastClickRow == bodyRow && m.lastClickX == x
+			if double && m.parade.HasChildrenAtViewportRow(bodyRow) {
+				// Zeroed so a third click starts a fresh pair rather than
+				// toggling again. The row stays visible either way, so
+				// ToggleNode's by-ID restore keeps it selected (ask 3).
+				m.lastClickAt = time.Time{}
+				m.parade.ToggleNode(issue.ID)
+				m.syncSelection()
+				return m, nil
+			}
+			m.lastClickAt = now
+			m.lastClickRow = bodyRow
+			m.lastClickX = x
 			return m, nil
 		}
 		if mouse.Button == tea.MouseRight && right {
