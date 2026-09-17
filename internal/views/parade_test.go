@@ -263,6 +263,31 @@ func TestParadeIndentUsesParentRelationships(t *testing.T) {
 	}
 }
 
+// An issue whose execution state cannot be derived is carried on the parade,
+// not folded into a bucket. Rendering it is an open product question, so it
+// must not appear as Ready work — and must not vanish from the data either.
+func TestParadeCarriesUnmappedIssues(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "open-1", Title: "Ready", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask},
+		{ID: "draft-1", Title: "Draft", Status: data.StatusDraft, Priority: data.PriorityMedium, IssueType: data.TypeTask},
+	}
+	p := NewParade(issues, 80, 20, data.DefaultBlockingTypes)
+
+	if len(p.Unmapped) != 1 || p.Unmapped[0].ID != "draft-1" {
+		t.Fatalf("expected draft-1 carried as unmapped, got %v", p.Unmapped)
+	}
+	for _, state := range data.StateOrder() {
+		for _, iss := range p.Groups[state] {
+			if iss.ID == "draft-1" {
+				t.Fatalf("unmapped issue counted as %s", state.Label())
+			}
+		}
+	}
+	if out := ansi.Strip(p.View()); strings.Contains(out, "draft-1") {
+		t.Errorf("unmapped issue should not render as a state row:\n%s", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Comment count badge
 // ---------------------------------------------------------------------------

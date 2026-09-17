@@ -216,13 +216,16 @@ func (d *Detail) renderContent() string {
 	lines = append(lines, ui.DetailTitle.Render(issue.Title))
 	lines = append(lines, "")
 
-	// Status row
-	isBlocked := issue.EvaluateDependencies(d.IssueMap, bt).IsBlocked
-
-	statusSym := statusSymbol(issue, isBlocked)
-	statusLabel := paradeLabel(issue, isBlocked)
-	statusStyle := lipgloss.NewStyle().Foreground(statusColor(issue, isBlocked))
-	lines = append(lines, d.row("Status:", statusStyle.Render(statusSym+" "+statusLabel+" ("+string(issue.Status)+")")))
+	// Status row. The state is derived once, from the same graph the parade
+	// buckets by, so a settled in_progress epic reads "Awaiting Review" rather
+	// than the raw-status collapse. An issue whose state cannot be derived
+	// renders its raw status alone — never a state label it has not earned.
+	if state, ok := data.DeriveState(issue, d.IssueMap, bt); ok {
+		statusStyle := lipgloss.NewStyle().Foreground(statusColor(state))
+		lines = append(lines, d.row("Status:", statusStyle.Render(statusSymbol(state)+" "+state.Label()+" ("+string(issue.Status)+")")))
+	} else {
+		lines = append(lines, d.row("Status:", lipgloss.NewStyle().Foreground(ui.Muted).Render(string(issue.Status))))
+	}
 
 	// Type
 	typeColor := ui.IssueTypeColor(string(issue.IssueType))
@@ -906,23 +909,6 @@ func (d *Detail) epicProgress(issue *data.Issue) (issueProgress, bool) {
 		return issueProgress{}, false
 	}
 	return progress, true
-}
-
-func paradeLabel(issue *data.Issue, isBlocked bool) string {
-	switch issue.Status {
-	case data.StatusClosed:
-		return "Past the Stand"
-	case data.StatusInProgress:
-		if isBlocked {
-			return "Stalled"
-		}
-		return "Rolling"
-	default:
-		if isBlocked {
-			return "Stalled"
-		}
-		return "Lined Up"
-	}
 }
 
 func truncate(s string, maxLen int) string {

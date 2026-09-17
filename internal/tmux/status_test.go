@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -8,49 +9,63 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 )
 
-func TestStatusLineFormat(t *testing.T) {
+var tmuxMarkup = regexp.MustCompile(`#\[[^\]]*\]`)
+
+// stripMarkup drops tmux #[...] directives so the rendered counts can be
+// compared as one ordered sequence.
+func stripMarkup(s string) string {
+	return tmuxMarkup.ReplaceAllString(s, "")
+}
+
+// sampleGroups loads the sample fixture and buckets it by derived state.
+func sampleGroups(t *testing.T) map[data.SemanticState][]data.Issue {
+	t.Helper()
 	issues, _, err := data.LoadIssues("../../testdata/sample.jsonl")
 	if err != nil {
 		t.Fatalf("LoadIssues: %v", err)
 	}
+	groups, unmapped := data.GroupBySemanticState(issues, data.DefaultBlockingTypes)
+	if len(unmapped) != 0 {
+		t.Fatalf("sample fixture has unmapped issues: %v", unmapped)
+	}
+	return groups
+}
 
-	groups := data.GroupByParade(issues, data.DefaultBlockingTypes)
-	got := StatusLine(groups)
+func TestStatusLineFormat(t *testing.T) {
+	got := StatusLine(sampleGroups(t))
 
-	// Verify tmux markup present
 	if !strings.Contains(got, "#[fg=") {
 		t.Errorf("expected tmux fg markup, got: %s", got)
 	}
 
-	// Verify all symbols present
-	for _, sym := range []string{ui.FleurDeLis, ui.SymRolling, ui.SymLinedUp, ui.SymStalled, ui.SymPassed} {
-		if !strings.Contains(got, sym) {
-			t.Errorf("missing symbol %q in: %s", sym, got)
+	// Fleur plus six states, each with its own color segment.
+	if n := strings.Count(got, "#[fg="); n != len(data.StateOrder())+1 {
+		t.Errorf("expected %d fg segments, got %d: %s", len(data.StateOrder())+1, n, got)
+	}
+	for i, colour := range []string{"colour42", "colour208", "colour220", "colour240", "colour196", "colour244"} {
+		if !strings.Contains(got, colour) {
+			t.Errorf("missing color %s for %s: %s", colour, data.StateOrder()[i].Label(), got)
 		}
 	}
 
-	// Verify correct counts
-	for _, want := range []string{"3" + ui.SymRolling, "12" + ui.SymLinedUp, "3" + ui.SymStalled, "3" + ui.SymPassed} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing count %q in: %s", want, got)
-		}
+	// The six counts, in StateOrder. Four buckets cannot produce this line.
+	if plain := stripMarkup(got); !strings.Contains(plain, "3● 0◐ 12♪ 0⏸ 3⊘ 3✓") {
+		t.Errorf("expected six ordered counts, got: %q", plain)
+	}
+	if !strings.Contains(got, ui.FleurDeLis) {
+		t.Errorf("missing fleur in: %s", got)
 	}
 }
 
 func TestStatusLineEmptyGroups(t *testing.T) {
-	groups := map[data.ParadeStatus][]data.Issue{
-		data.ParadeRolling:      {},
-		data.ParadeLinedUp:      {},
-		data.ParadeStalled:      {},
-		data.ParadePastTheStand: {},
+	groups := map[data.SemanticState][]data.Issue{}
+	for _, state := range data.StateOrder() {
+		groups[state] = []data.Issue{}
 	}
 
 	got := StatusLine(groups)
 
-	// All counts should be 0
-	for _, want := range []string{"0" + ui.SymRolling, "0" + ui.SymLinedUp, "0" + ui.SymStalled, "0" + ui.SymPassed} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing zero count %q in: %s", want, got)
-		}
+	if plain := stripMarkup(got); !strings.Contains(plain, "0● 0◐ 0♪ 0⏸ 0⊘ 0✓") {
+		t.Errorf("expected six zero counts, got: %q", plain)
 	}
 }

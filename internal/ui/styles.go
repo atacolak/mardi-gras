@@ -21,18 +21,6 @@ var (
 	BeadStyleGold   lipgloss.Style
 	BeadStyleGreen  lipgloss.Style
 
-	// Section headers in parade list (used for title text color within borders)
-	SectionRolling lipgloss.Style
-	SectionLinedUp lipgloss.Style
-	SectionStalled lipgloss.Style
-	SectionPassed  lipgloss.Style
-
-	// Pre-rendered status indicators
-	StatusRollingStr string
-	StatusLinedUpStr string
-	StatusStalledStr string
-	StatusPassedStr  string
-
 	// Semantic execution state section headers (see ExecSectionStyle)
 	SectionExecWorking        lipgloss.Style
 	SectionExecAwaitingReview lipgloss.Style
@@ -205,29 +193,6 @@ func rebuildStyles() {
 	BeadStylePurple = lipgloss.NewStyle().Foreground(Purple)
 	BeadStyleGold = lipgloss.NewStyle().Foreground(Gold)
 	BeadStyleGreen = lipgloss.NewStyle().Foreground(Green)
-
-	// Section headers in parade list
-	SectionRolling = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(StatusRolling)
-
-	SectionLinedUp = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(StatusLinedUp)
-
-	SectionStalled = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(StatusStalled)
-
-	SectionPassed = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(StatusPassed)
-
-	// Pre-rendered status indicators
-	StatusRollingStr = lipgloss.NewStyle().Foreground(StatusRolling).Render(SymRolling)
-	StatusLinedUpStr = lipgloss.NewStyle().Foreground(StatusLinedUp).Render(SymLinedUp)
-	StatusStalledStr = lipgloss.NewStyle().Foreground(StatusStalled).Render(SymStalled)
-	StatusPassedStr = lipgloss.NewStyle().Foreground(StatusPassed).Render(SymPassed)
 
 	// Semantic execution state section headers
 	SectionExecWorking = lipgloss.NewStyle().

@@ -1,11 +1,34 @@
 package components
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
 )
+
+func TestHeaderCountsSixSemanticStates(t *testing.T) {
+	issues, _, err := data.LoadIssues(filepath.Join("..", "..", "testdata", "sample.jsonl"))
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+	groups, unmapped := data.GroupBySemanticState(issues, data.DefaultBlockingTypes)
+	if len(unmapped) != 0 {
+		t.Fatalf("sample fixture has unmapped issues: %v", unmapped)
+	}
+
+	h := Header{Width: 200, Groups: groups}
+	out := ansi.Strip(h.View())
+
+	// Six counts in StateOrder. A four-count header cannot satisfy this, and
+	// can no longer be written: the field is keyed by semantic state.
+	if !strings.Contains(out, "3● 0◐ 12♪ 0⏸ 3⊘ 3✓") {
+		t.Fatalf("header should show six ordered counts, got:\n%s", out)
+	}
+}
 
 func TestHeaderRigCountMultiRig(t *testing.T) {
 	h := Header{

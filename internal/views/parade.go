@@ -22,19 +22,28 @@ type paradeSection struct {
 	Symbol         string
 	Style          lipgloss.Style
 	Color          color.Color
-	Status         data.ParadeStatus
+	State          data.SemanticState
 	BorderVertical string
 }
 
 // sections is built per call (not a package var) so a theme switch at startup
-// is reflected in the captured styles and pre-rendered borders.
+// is reflected in the captured styles and pre-rendered borders. It iterates
+// data.StateOrder() so the parade, the header, and the tmux widget can never
+// disagree about which states exist or in what order.
 func sections() []paradeSection {
-	return []paradeSection{
-		{Title: "Rolling", Symbol: ui.SymRolling, Style: ui.SectionRolling, Color: ui.StatusRolling, Status: data.ParadeRolling, BorderVertical: lipgloss.NewStyle().Foreground(ui.StatusRolling).Render(ui.BoxVertical)},
-		{Title: "Lined Up", Symbol: ui.SymLinedUp, Style: ui.SectionLinedUp, Color: ui.StatusLinedUp, Status: data.ParadeLinedUp, BorderVertical: lipgloss.NewStyle().Foreground(ui.StatusLinedUp).Render(ui.BoxVertical)},
-		{Title: "Stalled", Symbol: ui.SymStalled, Style: ui.SectionStalled, Color: ui.StatusStalled, Status: data.ParadeStalled, BorderVertical: lipgloss.NewStyle().Foreground(ui.StatusStalled).Render(ui.BoxVertical)},
-		{Title: "Past the Stand", Symbol: ui.SymPassed, Style: ui.SectionPassed, Color: ui.StatusPassed, Status: data.ParadePastTheStand, BorderVertical: lipgloss.NewStyle().Foreground(ui.StatusPassed).Render(ui.BoxVertical)},
+	var out []paradeSection
+	for _, state := range data.StateOrder() {
+		c := ui.ExecColor(int(state))
+		out = append(out, paradeSection{
+			Title:          state.Label(),
+			Symbol:         ui.ExecSymbol(int(state)),
+			Style:          ui.ExecSectionStyle(int(state)),
+			Color:          c,
+			State:          state,
+			BorderVertical: lipgloss.NewStyle().Foreground(c).Render(ui.BoxVertical),
+		})
 	}
+	return out
 }
 
 // ParadeItem is a renderable entry — a section header, footer, or issue.
@@ -62,7 +71,8 @@ type Parade struct {
 	Height          int
 	ScrollOffset    int
 	AllIssues       []data.Issue
-	Groups          map[data.ParadeStatus][]data.Issue
+	Groups          map[data.SemanticState][]data.Issue
+	Unmapped        []data.Issue // issues DeriveState cannot classify; not rendered this wave
 	issueMap        map[string]*data.Issue
 	blockingTypes   map[string]bool
 	SelectedIssue   *data.Issue
@@ -77,21 +87,22 @@ type Parade struct {
 
 // NewParade creates a parade view from a set of issues.
 func NewParade(issues []data.Issue, width, height int, blockingTypes map[string]bool) Parade {
-	groups := data.GroupByParade(issues, blockingTypes)
+	groups, unmapped := data.GroupBySemanticState(issues, blockingTypes)
 	issueMap := data.BuildIssueMap(issues)
-	return NewParadeWithData(issues, groups, issueMap, width, height, blockingTypes)
+	return NewParadeWithData(issues, groups, unmapped, issueMap, width, height, blockingTypes)
 }
 
 // NewParadeWithData creates a parade view using precomputed grouping data.
 func NewParadeWithData(
 	issues []data.Issue,
-	groups map[data.ParadeStatus][]data.Issue,
+	groups map[data.SemanticState][]data.Issue,
+	unmapped []data.Issue,
 	issueMap map[string]*data.Issue,
 	width, height int,
 	blockingTypes map[string]bool,
 ) Parade {
 	if groups == nil {
-		groups = data.GroupByParade(issues, blockingTypes)
+		groups, unmapped = data.GroupBySemanticState(issues, blockingTypes)
 	}
 	if issueMap == nil {
 		issueMap = data.BuildIssueMap(issues)
@@ -103,6 +114,7 @@ func NewParadeWithData(
 		Height:        height,
 		AllIssues:     issues,
 		Groups:        groups,
+		Unmapped:      unmapped,
 		issueMap:      issueMap,
 		blockingTypes: blockingTypes,
 	}
@@ -124,7 +136,7 @@ func NewParadeWithData(
 func (p *Parade) rebuildItems() {
 	p.Items = nil
 	for _, sec := range sections() {
-		issues := p.Groups[sec.Status]
+		issues := p.Groups[sec.State]
 		if len(issues) == 0 {
 			continue
 		}
@@ -133,7 +145,7 @@ func (p *Parade) rebuildItems() {
 		p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
 
 		// Closed section: show collapsed count or expanded list
-		if sec.Status == data.ParadePastTheStand {
+		if sec.State == data.StateDone {
 			if p.ShowClosed {
 				ordered, depth := data.OrderHierarchically(issues)
 				for _, iss := range ordered {
@@ -368,21 +380,26 @@ func (p *Parade) View() string {
 // at the bottom of the pane.
 func (p *Parade) renderLegend() string {
 	dim := lipgloss.NewStyle().Foreground(ui.Dim)
-	legend := "  " + ui.StatusRollingStr + dim.Render(" rolling   ") +
-		ui.StatusLinedUpStr + dim.Render(" lined up   ") +
-		ui.StatusStalledStr + dim.Render(" stalled   ") +
-		ui.StatusPassedStr + dim.Render(" passed")
-	return ansi.Truncate(legend, p.Width, "")
+	var legend strings.Builder
+	legend.WriteString("  ")
+	for i, state := range data.StateOrder() {
+		if i > 0 {
+			legend.WriteString("   ")
+		}
+		legend.WriteString(ui.ExecIndicator(int(state)))
+		legend.WriteString(dim.Render(" " + strings.ToLower(state.Label())))
+	}
+	return ansi.Truncate(legend.String(), p.Width, "")
 }
 
-// renderBorderTop builds a top border line: ╭─ ● Rolling (2) ────────╮
+// renderBorderTop builds a top border line: ╭─ ● Working (2) ────────╮
 func (p *Parade) renderBorderTop(sec paradeSection) string {
-	count := len(p.Groups[sec.Status])
+	count := len(p.Groups[sec.State])
 	borderStyle := lipgloss.NewStyle().Foreground(sec.Color)
 
 	// Build the title content
 	var titleText string
-	if sec.Status == data.ParadePastTheStand {
+	if sec.State == data.StateDone {
 		toggle := ui.Collapsed
 		if p.ShowClosed {
 			toggle = ui.Expanded
@@ -456,23 +473,9 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		isBlocked = eval.IsBlocked
 	}
 
-	var symStr string
-	switch issue.Status {
-	case data.StatusClosed:
-		symStr = ui.StatusPassedStr
-	case data.StatusInProgress:
-		if isBlocked {
-			symStr = ui.StatusStalledStr
-		} else {
-			symStr = ui.StatusRollingStr
-		}
-	default:
-		if isBlocked {
-			symStr = ui.StatusStalledStr
-		} else {
-			symStr = ui.StatusLinedUpStr
-		}
-	}
+	// The row's glyph is its own derived state's — never re-derived from raw
+	// status, which is what made a settled epic read as active work.
+	symStr := ui.ExecIndicator(int(sec.State))
 
 	var prioStr string
 	switch issue.Priority {
@@ -716,36 +719,14 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	return leftBorder + " " + content + " " + rightBorder
 }
 
-func statusSymbol(issue *data.Issue, isBlocked bool) string {
-	switch issue.Status {
-	case data.StatusClosed:
-		return ui.SymPassed
-	case data.StatusInProgress:
-		if isBlocked {
-			return ui.SymStalled
-		}
-		return ui.SymRolling
-	default:
-		if isBlocked {
-			return ui.SymStalled
-		}
-		return ui.SymLinedUp
-	}
+// statusSymbol returns the glyph for an issue's derived execution state. The
+// state comes from data.DeriveState — an issue whose state cannot be derived
+// has no symbol here, and callers render its raw status instead.
+func statusSymbol(state data.SemanticState) string {
+	return ui.ExecSymbol(int(state))
 }
 
-func statusColor(issue *data.Issue, isBlocked bool) color.Color {
-	switch issue.Status {
-	case data.StatusClosed:
-		return ui.StatusPassed
-	case data.StatusInProgress:
-		if isBlocked {
-			return ui.StatusStalled
-		}
-		return ui.StatusRolling
-	default:
-		if isBlocked {
-			return ui.StatusStalled
-		}
-		return ui.StatusLinedUp
-	}
+// statusColor returns the palette color for an issue's derived execution state.
+func statusColor(state data.SemanticState) color.Color {
+	return ui.ExecColor(int(state))
 }

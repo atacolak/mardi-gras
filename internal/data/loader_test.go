@@ -34,36 +34,6 @@ func TestLoadSampleIssues(t *testing.T) {
 	}
 }
 
-func TestGroupByParade(t *testing.T) {
-	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
-	issues, _, err := LoadIssues(path)
-	if err != nil {
-		t.Fatalf("LoadIssues: %v", err)
-	}
-
-	groups := GroupByParade(issues, DefaultBlockingTypes)
-
-	rolling := groups[ParadeRolling]
-	linedUp := groups[ParadeLinedUp]
-	stalled := groups[ParadeStalled]
-	passed := groups[ParadePastTheStand]
-
-	if len(rolling) != 3 {
-		t.Errorf("expected 3 rolling, got %d: %v", len(rolling), issueIDs(rolling))
-	}
-	// mg-006 (open, blocked by mg-001), mg-011 (dangling dep), mg-012 (in_progress, blocked)
-	if len(stalled) != 3 {
-		t.Errorf("expected 3 stalled, got %d: %v", len(stalled), issueIDs(stalled))
-	}
-	// Original 6 + mg-015, mg-016, mg-017, mg-007.1, mg-007.2.1, mg-018
-	if len(linedUp) != 12 {
-		t.Errorf("expected 12 lined up, got %d: %v", len(linedUp), issueIDs(linedUp))
-	}
-	if len(passed) != 3 {
-		t.Errorf("expected 3 past the stand, got %d: %v", len(passed), issueIDs(passed))
-	}
-}
-
 func TestGroupBySemanticStateSample(t *testing.T) {
 	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
 	issues, _, err := LoadIssues(path)
@@ -218,78 +188,6 @@ func TestEvaluateDependencies_DeDupe(t *testing.T) {
 	}
 }
 
-func TestParadeGroup_InProgressBlocked(t *testing.T) {
-	// mg-012: in_progress but blocked by mg-001 → should be Stalled, not Rolling
-	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
-	issues, _, err := LoadIssues(path)
-	if err != nil {
-		t.Fatalf("LoadIssues: %v", err)
-	}
-	issueMap := BuildIssueMap(issues)
-
-	mg012 := issueMap["mg-012"]
-	if mg012 == nil {
-		t.Fatal("mg-012 not found")
-	}
-	if mg012.Status != StatusInProgress {
-		t.Fatalf("expected mg-012 to be in_progress, got %s", mg012.Status)
-	}
-
-	group := mg012.ParadeGroup(issueMap, DefaultBlockingTypes)
-	if group != ParadeStalled {
-		t.Errorf("expected mg-012 to be Stalled, got %d", group)
-	}
-}
-
-func TestParadeGroup_DanglingDep(t *testing.T) {
-	// mg-011: open, depends on mg-999 (not found) → Stalled
-	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
-	issues, _, err := LoadIssues(path)
-	if err != nil {
-		t.Fatalf("LoadIssues: %v", err)
-	}
-	issueMap := BuildIssueMap(issues)
-
-	mg011 := issueMap["mg-011"]
-	if mg011 == nil {
-		t.Fatal("mg-011 not found")
-	}
-
-	group := mg011.ParadeGroup(issueMap, DefaultBlockingTypes)
-	if group != ParadeStalled {
-		t.Errorf("expected mg-011 to be Stalled (dangling dep), got %d", group)
-	}
-}
-
-func TestParadeGroup_CustomBlockTypes(t *testing.T) {
-	// When "discovered-from" is added to blocking types, mg-014 should be Stalled
-	path := filepath.Join("..", "..", "testdata", "sample.jsonl")
-	issues, _, err := LoadIssues(path)
-	if err != nil {
-		t.Fatalf("LoadIssues: %v", err)
-	}
-	issueMap := BuildIssueMap(issues)
-
-	customTypes := map[string]bool{"blocks": true, "discovered-from": true}
-
-	mg014 := issueMap["mg-014"]
-	if mg014 == nil {
-		t.Fatal("mg-014 not found")
-	}
-
-	// With default types: Lined Up (non-blocking dep type)
-	group := mg014.ParadeGroup(issueMap, DefaultBlockingTypes)
-	if group != ParadeLinedUp {
-		t.Errorf("expected mg-014 to be LinedUp with default types, got %d", group)
-	}
-
-	// With custom types including "discovered-from": should be Stalled
-	group = mg014.ParadeGroup(issueMap, customTypes)
-	if group != ParadeStalled {
-		t.Errorf("expected mg-014 to be Stalled with custom block types, got %d", group)
-	}
-}
-
 func TestDeriveStateCustomBlockTypes(t *testing.T) {
 	// When "discovered-from" is added to blocking types, mg-014 becomes
 	// Waiting/Blocked: the custom set decides which edges are blockers.
@@ -405,12 +303,9 @@ func TestLoadRealBeads(t *testing.T) {
 		t.Error("expected at least 1 issue from real data")
 	}
 
-	groups := GroupByParade(issues, DefaultBlockingTypes)
-	t.Logf("Real data: %d total, %d rolling, %d lined up, %d stalled, %d passed",
-		len(issues),
-		len(groups[ParadeRolling]),
-		len(groups[ParadeLinedUp]),
-		len(groups[ParadeStalled]),
-		len(groups[ParadePastTheStand]),
-	)
+	groups, unmapped := GroupBySemanticState(issues, DefaultBlockingTypes)
+	t.Logf("Real data: %d total, %d unmapped", len(issues), len(unmapped))
+	for _, state := range StateOrder() {
+		t.Logf("  %s: %d", state.Label(), len(groups[state]))
+	}
 }

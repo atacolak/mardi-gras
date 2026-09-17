@@ -16,7 +16,7 @@ import (
 // Header renders the top title bar with bead string and counts.
 type Header struct {
 	Width            int
-	Groups           map[data.ParadeStatus][]data.Issue
+	Groups           map[data.SemanticState][]data.Issue
 	AgentCount       int
 	TownStatus       *gastown.TownStatus
 	GasTownAvailable bool
@@ -27,19 +27,21 @@ type Header struct {
 
 // View renders the header.
 func (h Header) View() string {
-	rolling := len(h.Groups[data.ParadeRolling])
-	linedUp := len(h.Groups[data.ParadeLinedUp])
-	stalled := len(h.Groups[data.ParadeStalled])
-	total := rolling + linedUp + stalled + len(h.Groups[data.ParadePastTheStand])
+	// One count per semantic state, in StateOrder — the same order the parade
+	// sections and the tmux widget use, so a four-bucket header cannot be
+	// written and the three surfaces cannot drift apart.
+	var countsB strings.Builder
+	total := 0
+	for _, state := range data.StateOrder() {
+		count := len(h.Groups[state])
+		total += count
+		fmt.Fprintf(&countsB, " %d%s", count, ui.ExecSymbol(int(state)))
+	}
 
 	titleStr := fmt.Sprintf("%s MARDI GRAS %s", ui.FleurDeLis, ui.FleurDeLis)
 	title := ui.HeaderStyle.Render(ui.ApplyMardiGrasGradient(titleStr))
 
-	// Tight number+glyph pairs, in the parade's section order (audit #16).
-	counts := ui.HeaderCounts.Render(fmt.Sprintf(
-		" %d●  %d♪  %d⊘  %d✓ ",
-		rolling, linedUp, stalled, len(h.Groups[data.ParadePastTheStand]),
-	))
+	counts := ui.HeaderCounts.Render(countsB.String())
 
 	agentInfo := ""
 	if h.AgentCount > 0 {
@@ -98,7 +100,7 @@ func (h Header) View() string {
 		problemInfo = warnStyle.Render(fmt.Sprintf(" %s%d", ui.SymWarning, h.ProblemCount))
 	}
 
-	bar := h.renderProgressBar(total, len(h.Groups[data.ParadePastTheStand]), 20)
+	bar := h.renderProgressBar(total, len(h.Groups[data.StateDone]), 20)
 
 	titleLine := lipgloss.JoinHorizontal(
 		lipgloss.Center,

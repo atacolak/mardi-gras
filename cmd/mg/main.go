@@ -122,7 +122,10 @@ func main() {
 
 	if *statusMode {
 		visible := data.ExcludeByLabel(data.ExcludeByType(issues, excludeTypes), excludeLabels)
-		groups := data.GroupByParade(visible, blockingTypes)
+		// Issues DeriveState cannot classify are not counted as any state —
+		// rendering them is an open product question, so they are omitted
+		// rather than folded into a bucket they have not earned.
+		groups, _ := data.GroupBySemanticState(visible, blockingTypes)
 		fmt.Print(tmux.StatusLine(groups))
 		return
 	}

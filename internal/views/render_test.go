@@ -33,95 +33,100 @@ func blockedIssue(id string, status data.Status) data.Issue {
 	return iss
 }
 
+// semanticParadeIssues returns one issue per derived semantic state — the
+// six-way fixture the section renderer, the header, and the tmux widget are
+// each checked against.
+//
+// The epic is the hard case: in_progress with its only child closed is not
+// Working, and raw status alone cannot say so. The deferred issue is open with
+// a future defer_until, which is the only way an open issue is not Ready.
+func semanticParadeIssues() []data.Issue {
+	until := time.Now().Add(48 * time.Hour)
+
+	epic := testIssue("review-1", data.StatusInProgress)
+	epic.IssueType = data.TypeEpic
+	child := testIssue("review-1.1", data.StatusClosed)
+	child.Dependencies = []data.Dependency{{IssueID: child.ID, DependsOnID: epic.ID, Type: "parent-child"}}
+
+	deferred := testIssue("later-1", data.StatusOpen)
+	deferred.DeferUntil = &until
+
+	return []data.Issue{
+		testIssue("work-1", data.StatusInProgress), // Working
+		epic,                                       // Awaiting Review
+		child,                                      // Done
+		testIssue("ready-1", data.StatusOpen),      // Ready
+		deferred,                                   // Deferred
+		testIssue("stop-1", data.StatusBlocked),    // Waiting/Blocked
+		testIssue("done-1", data.StatusClosed),     // Done
+	}
+}
+
 func TestStatusSymbol(t *testing.T) {
-	bt := data.DefaultBlockingTypes
-	emptyMap := map[string]*data.Issue{}
+	issues := append(semanticParadeIssues(),
+		blockedIssue("blocked-ip-1", data.StatusInProgress),
+		blockedIssue("blocked-open-1", data.StatusOpen),
+	)
+	issueMap := data.BuildIssueMap(issues)
 
 	tests := []struct {
-		name   string
-		issue  data.Issue
+		id     string
 		expect string
 	}{
-		{
-			name:   "closed",
-			issue:  testIssue("closed-1", data.StatusClosed),
-			expect: ui.SymPassed,
-		},
-		{
-			name:   "in_progress not blocked",
-			issue:  testIssue("rolling-1", data.StatusInProgress),
-			expect: ui.SymRolling,
-		},
-		{
-			name:   "in_progress blocked",
-			issue:  blockedIssue("stalled-ip-1", data.StatusInProgress),
-			expect: ui.SymStalled,
-		},
-		{
-			name:   "open not blocked",
-			issue:  testIssue("open-1", data.StatusOpen),
-			expect: ui.SymLinedUp,
-		},
-		{
-			name:   "open blocked",
-			issue:  blockedIssue("stalled-open-1", data.StatusOpen),
-			expect: ui.SymStalled,
-		},
+		{id: "work-1", expect: ui.SymExecWorking},
+		{id: "review-1", expect: ui.SymExecAwaitingReview},
+		{id: "ready-1", expect: ui.SymExecReady},
+		{id: "later-1", expect: ui.SymExecDeferred},
+		// Raw blocked and blocked-by-dependency are the same state: an
+		// unresolved blocker is what Waiting/Blocked means either way.
+		{id: "stop-1", expect: ui.SymExecWaiting},
+		{id: "blocked-ip-1", expect: ui.SymExecWaiting},
+		{id: "blocked-open-1", expect: ui.SymExecWaiting},
+		{id: "done-1", expect: ui.SymExecDone},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			isBlocked := tc.issue.EvaluateDependencies(emptyMap, bt).IsBlocked
-			got := statusSymbol(&tc.issue, isBlocked)
-			if got != tc.expect {
-				t.Fatalf("statusSymbol(%s) = %q, want %q", tc.issue.ID, got, tc.expect)
+		t.Run(tc.id, func(t *testing.T) {
+			state, ok := data.DeriveState(issueMap[tc.id], issueMap, data.DefaultBlockingTypes)
+			if !ok {
+				t.Fatalf("%s should be decidable", tc.id)
+			}
+			if got := statusSymbol(state); got != tc.expect {
+				t.Fatalf("statusSymbol(%s) = %q, want %q", tc.id, got, tc.expect)
 			}
 		})
 	}
 }
 
 func TestStatusColor(t *testing.T) {
-	bt := data.DefaultBlockingTypes
-	emptyMap := map[string]*data.Issue{}
+	issues := append(semanticParadeIssues(),
+		blockedIssue("blocked-ip-1", data.StatusInProgress),
+		blockedIssue("blocked-open-1", data.StatusOpen),
+	)
+	issueMap := data.BuildIssueMap(issues)
 
 	tests := []struct {
-		name   string
-		issue  data.Issue
+		id     string
 		expect color.Color
 	}{
-		{
-			name:   "closed",
-			issue:  testIssue("closed-1", data.StatusClosed),
-			expect: ui.StatusPassed,
-		},
-		{
-			name:   "in_progress not blocked",
-			issue:  testIssue("rolling-1", data.StatusInProgress),
-			expect: ui.StatusRolling,
-		},
-		{
-			name:   "in_progress blocked",
-			issue:  blockedIssue("stalled-ip-1", data.StatusInProgress),
-			expect: ui.StatusStalled,
-		},
-		{
-			name:   "open not blocked",
-			issue:  testIssue("open-1", data.StatusOpen),
-			expect: ui.StatusLinedUp,
-		},
-		{
-			name:   "open blocked",
-			issue:  blockedIssue("stalled-open-1", data.StatusOpen),
-			expect: ui.StatusStalled,
-		},
+		{id: "work-1", expect: ui.ExecWorking},
+		{id: "review-1", expect: ui.ExecAwaitingReview},
+		{id: "ready-1", expect: ui.ExecReady},
+		{id: "later-1", expect: ui.ExecDeferred},
+		{id: "stop-1", expect: ui.ExecWaiting},
+		{id: "blocked-ip-1", expect: ui.ExecWaiting},
+		{id: "blocked-open-1", expect: ui.ExecWaiting},
+		{id: "done-1", expect: ui.ExecDone},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			isBlocked := tc.issue.EvaluateDependencies(emptyMap, bt).IsBlocked
-			got := statusColor(&tc.issue, isBlocked)
-			if got != tc.expect {
-				t.Fatalf("statusColor(%s) = %v, want %v", tc.issue.ID, got, tc.expect)
+		t.Run(tc.id, func(t *testing.T) {
+			state, ok := data.DeriveState(issueMap[tc.id], issueMap, data.DefaultBlockingTypes)
+			if !ok {
+				t.Fatalf("%s should be decidable", tc.id)
+			}
+			if got := statusColor(state); got != tc.expect {
+				t.Fatalf("statusColor(%s) = %v, want %v", tc.id, got, tc.expect)
 			}
 		})
 	}
@@ -136,19 +141,87 @@ func TestParadeViewEmpty(t *testing.T) {
 }
 
 func TestParadeViewSections(t *testing.T) {
-	issues := []data.Issue{
-		testIssue("roll-1", data.StatusInProgress),
-		testIssue("open-1", data.StatusOpen),
-	}
-	p := NewParade(issues, 80, 40, data.DefaultBlockingTypes)
-	out := p.View()
+	issues := semanticParadeIssues()
+	p := NewParade(issues, 120, 60, data.DefaultBlockingTypes)
+	out := ansi.Strip(p.View())
 
-	if !strings.Contains(out, "Rolling") {
-		t.Fatal("parade output should contain 'Rolling' section title")
+	// Every one of the six semantic states renders its own section, under the
+	// exact operator-facing label, in StateOrder. A four-bucket parade cannot
+	// render these six titles at all.
+	labels := []string{"● Working", "◐ Awaiting Review", "♪ Ready", "⏸ Deferred", "⊘ Waiting/Blocked", "✓ Done"}
+	prev := -1
+	for _, label := range labels {
+		idx := strings.Index(out, label)
+		if idx < 0 {
+			t.Fatalf("parade output missing section %q:\n%s", label, out)
+		}
+		if idx < prev {
+			t.Errorf("section %q rendered out of StateOrder:\n%s", label, out)
+		}
+		prev = idx
 	}
-	if !strings.Contains(out, "Lined Up") {
-		t.Fatal("parade output should contain 'Lined Up' section title")
+
+	// Each row sits in the section its own derived state names, and carries
+	// that state's glyph — the settled epic must not be filed as Working.
+	issueMap := data.BuildIssueMap(issues)
+	rows := 0
+	for _, item := range p.Items {
+		if item.Issue == nil {
+			continue
+		}
+		rows++
+		want, ok := data.DeriveState(item.Issue, issueMap, data.DefaultBlockingTypes)
+		if !ok {
+			t.Fatalf("%s should be decidable", item.Issue.ID)
+		}
+		if item.Section.State != want {
+			t.Errorf("%s filed under %q, want %q", item.Issue.ID, item.Section.State.Label(), want.Label())
+		}
+		if got := ansi.Strip(p.renderIssue(item, false, 0)); !strings.Contains(got, ui.ExecSymbol(int(want))) {
+			t.Errorf("%s row should carry %q, got: %s", item.Issue.ID, ui.ExecSymbol(int(want)), got)
+		}
 	}
+	// Seven fixture issues, two of them closed with the Done section collapsed.
+	if rows != 5 {
+		t.Errorf("expected 5 visible rows, got %d", rows)
+	}
+
+	// The Deferred and Awaiting Review rows are not Ready work, and they are
+	// where their own state says they are.
+	for _, tc := range []struct{ title, id string }{
+		{"◐ Awaiting Review", "review-1"},
+		{"⏸ Deferred", "later-1"},
+		{"⊘ Waiting/Blocked", "stop-1"},
+	} {
+		if body := sectionBody(out, tc.title); !strings.Contains(body, tc.id) {
+			t.Errorf("%s should sit in %q, got:\n%s", tc.id, tc.title, body)
+		}
+	}
+	ready := sectionBody(out, "♪ Ready")
+	for _, notReady := range []string{"later-1", "review-1", "stop-1"} {
+		if strings.Contains(ready, notReady) {
+			t.Errorf("%s must not sit in the Ready section:\n%s", notReady, ready)
+		}
+	}
+}
+
+// sectionBody returns the rows under the section header containing title, up to
+// the next header.
+func sectionBody(out, title string) string {
+	lines := strings.Split(out, "\n")
+	var body []string
+	found := false
+	for _, line := range lines {
+		if !found {
+			found = strings.Contains(line, title)
+			continue
+		}
+		if strings.Contains(line, "╭") {
+			break
+		}
+		body = append(body, line)
+	}
+	return strings.Join(body, "\n")
 }
 
 func TestParadeViewClosedHidden(t *testing.T) {
@@ -520,12 +593,12 @@ func TestRenderIssueHierarchicalIndent(t *testing.T) {
 			// Parent should not have extra indent (no leading spaces before sym)
 		case "mg-007.1":
 			// Depth 1 → 2 spaces of indent
-			if !strings.Contains(out, "  "+ui.SymLinedUp) {
+			if !strings.Contains(out, "  "+ui.SymExecReady) {
 				t.Errorf("child issue should be indented, got: %s", out)
 			}
 		case "mg-007.1.1":
 			// Depth 2 → 4 spaces of indent
-			if !strings.Contains(out, "    "+ui.SymLinedUp) {
+			if !strings.Contains(out, "    "+ui.SymExecReady) {
 				t.Errorf("grandchild issue should be double-indented, got: %s", out)
 			}
 		}

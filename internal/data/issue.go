@@ -50,16 +50,6 @@ const (
 	PriorityBacklog  Priority = 4
 )
 
-// ParadeStatus maps issues to their parade float group.
-type ParadeStatus int
-
-const (
-	ParadeRolling      ParadeStatus = iota // in_progress
-	ParadeLinedUp                          // open, not blocked
-	ParadeStalled                          // open, blocked
-	ParadePastTheStand                     // closed
-)
-
 // Dependency represents a relationship between two issues.
 type Dependency struct {
 	IssueID     string `json:"issue_id"`
@@ -226,27 +216,6 @@ func (i *Issue) AgeLabel() string {
 		return fmt.Sprintf("%d days", days)
 	default:
 		return fmt.Sprintf("%d weeks", days/7)
-	}
-}
-
-// ParadeGroup determines which parade section this issue belongs to.
-// Stalled wins over Rolling: an in_progress issue with unresolved blockers is Stalled.
-func (i *Issue) ParadeGroup(issueMap map[string]*Issue, blockingTypes map[string]bool) ParadeStatus {
-	switch i.Status {
-	case StatusClosed:
-		return ParadePastTheStand
-	case StatusInProgress:
-		if i.EvaluateDependencies(issueMap, blockingTypes).IsBlocked {
-			return ParadeStalled
-		}
-		return ParadeRolling
-	case StatusOpen:
-		if i.EvaluateDependencies(issueMap, blockingTypes).IsBlocked {
-			return ParadeStalled
-		}
-		return ParadeLinedUp
-	default:
-		return ParadeLinedUp
 	}
 }
 

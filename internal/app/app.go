@@ -55,7 +55,8 @@ const (
 // Model is the root BubbleTea model.
 type Model struct {
 	issues        []data.Issue
-	groups        map[data.ParadeStatus][]data.Issue
+	groups        map[data.SemanticState][]data.Issue
+	unmapped      []data.Issue // issues DeriveState cannot classify; never counted as work
 	parade        views.Parade
 	detail        views.Detail
 	header        components.Header
@@ -285,7 +286,7 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 	if len(filters) > 0 {
 		f = filters[0]
 	}
-	groups := data.GroupByParade(data.ExcludeByLabel(data.ExcludeByType(issues, f.ExcludeTypes), f.ExcludeLabels), blockingTypes)
+	groups, unmapped := data.GroupBySemanticState(data.ExcludeByLabel(data.ExcludeByType(issues, f.ExcludeTypes), f.ExcludeLabels), blockingTypes)
 
 	watchPath := source.Path
 	pathExplicit := source.Explicit
@@ -314,6 +315,7 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 	return Model{
 		issues:         issues,
 		groups:         groups,
+		unmapped:       unmapped,
 		activPane:      PaneParade,
 		watchPath:      watchPath,
 		pathExplicit:   pathExplicit,
@@ -1232,7 +1234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.issues = msg.Issues
-		m.groups = data.GroupByParade(msg.Issues, m.blockingTypes)
+		m.groups, m.unmapped = data.GroupBySemanticState(msg.Issues, m.blockingTypes)
 		if !msg.LastMod.IsZero() {
 			m.lastFileMod = msg.LastMod
 		}
@@ -1541,7 +1543,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.watchPath = ""
 			m.healthChecking = false
 			m.issues = msg.Issues
-			m.groups = data.GroupByParade(msg.Issues, m.blockingTypes)
+			m.groups, m.unmapped = data.GroupBySemanticState(msg.Issues, m.blockingTypes)
 			m.lastFileMod = time.Now()
 			m.rebuildParade()
 			toast, toastCmd := components.ShowToast(
@@ -3420,7 +3422,7 @@ func (m *Model) layout() {
 
 	if len(m.parade.Items) == 0 {
 		visibleIssues := data.ExcludeByLabel(data.ExcludeByType(m.issues, m.excludeTypes), m.excludeLabels)
-		m.parade = views.NewParadeWithData(visibleIssues, m.groups, detailIssueMap, paradeW, bodyH, m.blockingTypes)
+		m.parade = views.NewParadeWithData(visibleIssues, m.groups, m.unmapped, detailIssueMap, paradeW, bodyH, m.blockingTypes)
 		m.syncSelection()
 		if m.pendingCurrentID != "" {
 			m.restoreParadeSelection(m.pendingCurrentID)
@@ -3468,10 +3470,11 @@ func (m *Model) rebuildParade() {
 		filteredIssues = data.FocusFilter(filteredIssues, m.blockingTypes)
 	}
 	groups := m.groups
+	unmapped := m.unmapped
 	detailIssueMap := data.BuildIssueMap(m.issues)
 	paradeIssueMap := detailIssueMap
 	if m.filterInput.Value() != "" || m.focusMode || len(m.excludeTypes) > 0 || len(m.excludeLabels) > 0 {
-		groups = data.GroupByParade(filteredIssues, m.blockingTypes)
+		groups, unmapped = data.GroupBySemanticState(filteredIssues, m.blockingTypes)
 		paradeIssueMap = data.BuildIssueMap(filteredIssues)
 	}
 
@@ -3486,7 +3489,7 @@ func (m *Model) rebuildParade() {
 		CurrentIssueID:   m.currentIssueID,
 	}
 
-	m.parade = views.NewParadeWithData(filteredIssues, groups, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
+	m.parade = views.NewParadeWithData(filteredIssues, groups, unmapped, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
 	m.parade.MatchHighlights = highlights
 	if oldShowClosed {
 		m.parade.ToggleClosed()

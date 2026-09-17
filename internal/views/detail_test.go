@@ -1,6 +1,7 @@
 package views
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -11,36 +12,64 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 )
 
-func TestParadeLabel(t *testing.T) {
-	issues := []data.Issue{
-		{ID: "mg-001", Title: "Blocker", Status: data.StatusOpen, Priority: data.PriorityHigh, IssueType: data.TypeTask},
-		{ID: "mg-002", Title: "Blocked", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
-			Dependencies: []data.Dependency{{IssueID: "mg-002", DependsOnID: "mg-001", Type: "blocks"}}},
-		{ID: "mg-003", Title: "Rolling", Status: data.StatusInProgress, Priority: data.PriorityHigh, IssueType: data.TypeTask},
-		{ID: "mg-004", Title: "Closed", Status: data.StatusClosed, Priority: data.PriorityMedium, IssueType: data.TypeTask},
-	}
-	issueMap := data.BuildIssueMap(issues)
-	bt := data.DefaultBlockingTypes
-
-	tests := []struct {
-		name   string
-		issue  *data.Issue
-		expect string
-	}{
-		{name: "open unblocked", issue: issueMap["mg-001"], expect: "Lined Up"},
-		{name: "open blocked", issue: issueMap["mg-002"], expect: "Stalled"},
-		{name: "in_progress", issue: issueMap["mg-003"], expect: "Rolling"},
-		{name: "closed", issue: issueMap["mg-004"], expect: "Past the Stand"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			isBlocked := tc.issue.EvaluateDependencies(issueMap, bt).IsBlocked
-			got := paradeLabel(tc.issue, isBlocked)
-			if got != tc.expect {
-				t.Fatalf("paradeLabel(%s) = %q, want %q", tc.issue.ID, got, tc.expect)
-			}
+// settledEpicIssues is the live mard-nob shape: an in_progress epic whose
+// children are every one closed, linked only by parent-child edges. Raw status
+// alone reads this as active work.
+func settledEpicIssues(children int) []data.Issue {
+	now := time.Now()
+	issues := []data.Issue{{
+		ID: "mard-nob", Title: "Operator observability", Status: data.StatusInProgress,
+		Priority: data.PriorityHigh, IssueType: data.TypeEpic, CreatedAt: now, UpdatedAt: now,
+	}}
+	for i := 1; i <= children; i++ {
+		id := "mard-nob." + strconv.Itoa(i)
+		issues = append(issues, data.Issue{
+			ID: id, Title: "child " + strconv.Itoa(i), Status: data.StatusClosed,
+			Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now, UpdatedAt: now,
+			Dependencies: []data.Dependency{{IssueID: id, DependsOnID: "mard-nob", Type: "parent-child"}},
 		})
+	}
+	return issues
+}
+
+// statusRow returns the detail panel's Status line, stripped of styling.
+func statusRow(content string) string {
+	for _, line := range strings.Split(ansi.Strip(content), "\n") {
+		if strings.Contains(line, "Status:") {
+			return line
+		}
+	}
+	return ""
+}
+
+func TestSemanticStatusHardExample(t *testing.T) {
+	issues := settledEpicIssues(7)
+	d := NewDetail(80, 30, issues)
+	d.SetIssue(&issues[0])
+
+	row := statusRow(d.renderContent())
+	if !strings.Contains(row, "◐ Awaiting Review (in_progress)") {
+		t.Fatalf("settled in_progress epic should read %q, got %q", "◐ Awaiting Review (in_progress)", row)
+	}
+}
+
+func TestSemanticStatusUnmappedRendersRawOnly(t *testing.T) {
+	now := time.Now()
+	issues := []data.Issue{{
+		ID: "draft-1", Title: "unfinished thought", Status: data.StatusDraft,
+		Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now, UpdatedAt: now,
+	}}
+	d := NewDetail(80, 30, issues)
+	d.SetIssue(&issues[0])
+
+	row := statusRow(d.renderContent())
+	if !strings.Contains(row, string(data.StatusDraft)) {
+		t.Fatalf("unmapped issue should still show its raw status, got %q", row)
+	}
+	for _, state := range data.StateOrder() {
+		if strings.Contains(row, state.Label()) {
+			t.Errorf("unmapped issue must not render the state label %q: %q", state.Label(), row)
+		}
 	}
 }
 
