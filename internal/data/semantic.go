@@ -10,27 +10,27 @@ type SemanticState int
 // internal/ui keys ExecSymbol/ExecColor/ExecSectionStyle by this integer
 // order, so the constants are a shared contract, not an implementation detail.
 const (
-	StateWorking SemanticState = iota
-	StateAwaitingReview
-	StateReady
-	StateDeferred
+	StateReady SemanticState = iota
+	StateWorking
 	StateWaitingBlocked
+	StateDeferred
+	StateOperatorReview
 	StateDone
 )
 
 // Label returns Ata's exact state name.
 func (s SemanticState) Label() string {
 	switch s {
-	case StateWorking:
-		return "Working"
-	case StateAwaitingReview:
-		return "Awaiting Review"
 	case StateReady:
 		return "Ready"
-	case StateDeferred:
-		return "Deferred"
+	case StateWorking:
+		return "Working"
 	case StateWaitingBlocked:
 		return "Waiting/Blocked"
+	case StateDeferred:
+		return "Deferred"
+	case StateOperatorReview:
+		return "Operator Review"
 	case StateDone:
 		return "Done"
 	}
@@ -41,11 +41,11 @@ func (s SemanticState) Label() string {
 // each state exactly once, in the order the constants declare.
 func StateOrder() []SemanticState {
 	return []SemanticState{
-		StateWorking,
-		StateAwaitingReview,
 		StateReady,
-		StateDeferred,
+		StateWorking,
 		StateWaitingBlocked,
+		StateDeferred,
+		StateOperatorReview,
 		StateDone,
 	}
 }
@@ -57,7 +57,7 @@ func StateOrder() []SemanticState {
 // because which of the six they should render as is an open product question.
 func mappedStatus(s Status) bool {
 	switch s {
-	case StatusOpen, StatusInProgress, StatusBlocked, StatusDeferred, StatusClosed:
+	case StatusOpen, StatusInProgress, StatusBlocked, StatusDeferred, StatusClosed, StatusReview:
 		return true
 	}
 	return false
@@ -72,7 +72,6 @@ func mappedStatus(s Status) bool {
 // and in particular never becomes StateReady. Rows 2-5 are checked before every
 // bucket, so an unmapped status cannot leak in through a later rule.
 func DeriveState(i *Issue, issueMap map[string]*Issue, blockingTypes map[string]bool) (SemanticState, bool) {
-	// Rows 1-5: the raw status decides first, before any graph-derived bucket.
 	if i.Status == StatusClosed {
 		return StateDone, true
 	}
@@ -80,39 +79,37 @@ func DeriveState(i *Issue, issueMap map[string]*Issue, blockingTypes map[string]
 		return StateWorking, false
 	}
 
-	// Row 6: blocked wins over every remaining bucket — an unresolved blocker
-	// (and a blocker that is not loaded at all) outranks Working, Deferred, and
-	// the epic rule alike.
+	// Stored review is authoritative and must be decided before blockers.
+	if i.Status == StatusReview {
+		return StateOperatorReview, true
+	}
+
+	// Blocked wins over every remaining bucket — an unresolved blocker (and a
+	// blocker that is not loaded at all) outranks Working, Deferred, and the
+	// legacy epic compatibility rule alike.
 	if i.EvaluateDependencies(issueMap, blockingTypes).IsBlocked {
 		return StateWaitingBlocked, true
 	}
-
-	// Row 7: the raw status still counts on its own.
 	if i.Status == StatusBlocked {
 		return StateWaitingBlocked, true
 	}
 
-	// Row 8, carrying row 13 with it: the settled-descendants rule cannot be
-	// evaluated honestly when a descendant has a status this wave does not map,
-	// so such an epic is unmapped rather than guessed. Blocked-wins has already
-	// been applied above, so a blocked epic never reaches here.
-	if i.IssueType == TypeEpic {
-		awaiting, decidable := EpicAwaitingReview(i, issueMap)
+	// Compatibility for already-converged epics created before review became a
+	// persisted status. Delete this branch once mard-nob and mard-r43 are stored
+	// with status review; direct review above is the permanent path.
+	if i.IssueType == TypeEpic && i.Status != StatusReview {
+		operatorReview, decidable := legacyConvergedEpicOperatorReview(i, issueMap)
 		if !decidable {
 			return StateWorking, false
 		}
-		if awaiting {
-			return StateAwaitingReview, true
+		if operatorReview {
+			return StateOperatorReview, true
 		}
 	}
 
-	// Rows 9-10: deferral is visible on the row badge whether or not it is the
-	// derived state, so blocked already having won is non-lossy.
 	if i.Status == StatusDeferred || i.IsDeferred() {
 		return StateDeferred, true
 	}
-
-	// Rows 11-12.
 	if i.Status == StatusInProgress {
 		return StateWorking, true
 	}
@@ -120,19 +117,13 @@ func DeriveState(i *Issue, issueMap map[string]*Issue, blockingTypes map[string]
 		return StateReady, true
 	}
 
-	// Unreachable for the mapped set, but returning a bucket here would let an
-	// unrecognized status leak into one, so the conservative default stands.
 	return StateWorking, false
 }
 
-// EpicAwaitingReview reports the Brief's settled-descendants rule: an epic that
-// is not itself closed, has at least one loaded descendant, and whose every
-// executable descendant is closed, is awaiting operator acceptance.
-//
-// decidable is false when a descendant carries a status DeriveState cannot
-// classify, so the epic's own state cannot be honestly computed either. An
-// empty epic is not settled: `br epic status` withholds eligibility at 0/0.
-func EpicAwaitingReview(i *Issue, issueMap map[string]*Issue) (awaiting, decidable bool) {
+// legacyConvergedEpicOperatorReview preserves the settled-descendants rule for
+// non-review epics created before review became a persisted status. Delete this
+// shim once mard-nob and mard-r43 are stored with status review.
+func legacyConvergedEpicOperatorReview(i *Issue, issueMap map[string]*Issue) (operatorReview, decidable bool) {
 	if i.IssueType != TypeEpic || i.Status == StatusClosed {
 		return false, true
 	}

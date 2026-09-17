@@ -37,9 +37,10 @@ func blockedIssue(id string, status data.Status) data.Issue {
 // six-way fixture the section renderer, the header, and the tmux widget are
 // each checked against.
 //
-// The epic is the hard case: in_progress with its only child closed is not
-// Working, and raw status alone cannot say so. The deferred issue is open with
-// a future defer_until, which is the only way an open issue is not Ready.
+// The epic is the legacy compatibility case: in_progress with its only child
+// closed remains Operator Review until the row is stored as review. The
+// deferred issue is open with a future defer_until, which is the only way an
+// open issue is not Ready.
 func semanticParadeIssues() []data.Issue {
 	until := time.Now().Add(48 * time.Hour)
 
@@ -53,12 +54,12 @@ func semanticParadeIssues() []data.Issue {
 
 	return []data.Issue{
 		testIssue("work-1", data.StatusInProgress), // Working
-		epic,                                       // Awaiting Review
-		child,                                      // Done
-		testIssue("ready-1", data.StatusOpen),      // Ready
-		deferred,                                   // Deferred
-		testIssue("stop-1", data.StatusBlocked),    // Waiting/Blocked
-		testIssue("done-1", data.StatusClosed),     // Done
+		epic,                                    // Operator Review
+		child,                                   // Done
+		testIssue("ready-1", data.StatusOpen),   // Ready
+		deferred,                                // Deferred
+		testIssue("stop-1", data.StatusBlocked), // Waiting/Blocked
+		testIssue("done-1", data.StatusClosed),  // Done
 	}
 }
 
@@ -74,7 +75,7 @@ func TestStatusSymbol(t *testing.T) {
 		expect string
 	}{
 		{id: "work-1", expect: ui.SymExecWorking},
-		{id: "review-1", expect: ui.SymExecAwaitingReview},
+		{id: "review-1", expect: ui.SymExecOperatorReview},
 		{id: "ready-1", expect: ui.SymExecReady},
 		{id: "later-1", expect: ui.SymExecDeferred},
 		// Raw blocked and blocked-by-dependency are the same state: an
@@ -110,7 +111,7 @@ func TestStatusColor(t *testing.T) {
 		expect color.Color
 	}{
 		{id: "work-1", expect: ui.ExecWorking},
-		{id: "review-1", expect: ui.ExecAwaitingReview},
+		{id: "review-1", expect: ui.ExecOperatorReview},
 		{id: "ready-1", expect: ui.ExecReady},
 		{id: "later-1", expect: ui.ExecDeferred},
 		{id: "stop-1", expect: ui.ExecWaiting},
@@ -147,8 +148,7 @@ func TestParadeViewSections(t *testing.T) {
 
 	// Every one of the six semantic states renders its own section, under the
 	// exact operator-facing label, in StateOrder. A four-bucket parade cannot
-	// render these six titles at all.
-	labels := []string{"● Working", "◐ Awaiting Review", "♪ Ready", "⏸ Deferred", "⊘ Waiting/Blocked", "✓ Done"}
+	labels := []string{"○ Ready", "● Working", "⊘ Waiting/Blocked", "⏸ Deferred", "◐ Operator Review", "✓ Done"}
 	prev := -1
 	for _, label := range labels {
 		idx := strings.Index(out, label)
@@ -186,10 +186,10 @@ func TestParadeViewSections(t *testing.T) {
 		t.Errorf("expected 5 visible rows, got %d", rows)
 	}
 
-	// The Deferred and Awaiting Review rows are not Ready work, and they are
-	// where their own state says they are.
+	// The Deferred, Waiting/Blocked, and Operator Review rows are not Ready work.
+	// They are where their own state says they are.
 	for _, tc := range []struct{ title, id string }{
-		{"◐ Awaiting Review", "review-1"},
+		{"◐ Operator Review", "review-1"},
 		{"⏸ Deferred", "later-1"},
 		{"⊘ Waiting/Blocked", "stop-1"},
 	} {
@@ -197,7 +197,7 @@ func TestParadeViewSections(t *testing.T) {
 			t.Errorf("%s should sit in %q, got:\n%s", tc.id, tc.title, body)
 		}
 	}
-	ready := sectionBody(out, "♪ Ready")
+	ready := sectionBody(out, "○ Ready")
 	for _, notReady := range []string{"later-1", "review-1", "stop-1"} {
 		if strings.Contains(ready, notReady) {
 			t.Errorf("%s must not sit in the Ready section:\n%s", notReady, ready)

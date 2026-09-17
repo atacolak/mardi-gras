@@ -124,13 +124,12 @@ var (
 
 	// Semantic execution state colors (see ExecColor). Derived in
 	// applyDerived from primitives both palettes already define.
-	ExecWorking        color.Color
-	ExecAwaitingReview color.Color
 	ExecReady          color.Color
-	ExecDeferred       color.Color
+	ExecWorking        color.Color
 	ExecWaiting        color.Color
+	ExecDeferred       color.Color
+	ExecOperatorReview color.Color
 	ExecDone           color.Color
-
 	// Overlay/toast ink colors (no brand-name equivalent; theme-tuned)
 	HelpBg         color.Color // overlay background (help, palette, dialogs)
 	HelpSubtitleFg color.Color
@@ -174,11 +173,11 @@ func applyDerived() {
 	// Semantic execution states: live work is green, operator-gated is
 	// orange, ready is gold, deferred is dim, blocked is the stalled red,
 	// settled work is muted.
-	ExecWorking = BrightGreen
-	ExecAwaitingReview = Orange
 	ExecReady = BrightGold
-	ExecDeferred = Dim
+	ExecWorking = BrightGreen
 	ExecWaiting = StatusStalled
+	ExecDeferred = Dim
+	ExecOperatorReview = Orange
 	ExecDone = Muted
 }
 
@@ -352,32 +351,31 @@ func AgentStateColor(state string) color.Color {
 }
 
 // ExecColor returns the theme color for a semantic execution state. state is
-// the data package's SemanticState integer order — Working=0, AwaitingReview=1,
-// Ready=2, Deferred=3, WaitingBlocked=4, Done=5 — because ui is a leaf package
-// and does not import that type. The bindings live in applyDerived, so both
-// palettes get them.
+// the data package's SemanticState integer order — Ready=0, Working=1,
+// WaitingBlocked=2, Deferred=3, OperatorReview=4, Done=5 — because ui is a
+// leaf package and does not import that type. The bindings live in applyDerived,
+// so both palettes get them.
 //
 // Out of range falls back to Muted, matching the neutral default of the other
 // color lookups (see ExecSymbol).
 func ExecColor(state int) color.Color {
 	switch state {
 	case 0:
-		return ExecWorking
-	case 1:
-		return ExecAwaitingReview
-	case 2:
 		return ExecReady
+	case 1:
+		return ExecWorking
+	case 2:
+		return ExecWaiting
 	case 3:
 		return ExecDeferred
 	case 4:
-		return ExecWaiting
+		return ExecOperatorReview
 	case 5:
 		return ExecDone
 	default:
 		return Muted
 	}
 }
-
 func IssueTypeColor(t string) color.Color {
 	switch t {
 	case "bug":

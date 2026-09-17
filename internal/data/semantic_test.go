@@ -13,10 +13,9 @@ func blockingEdge(issue, blocker string) []Dependency {
 	return []Dependency{{IssueID: issue, DependsOnID: blocker, Type: "blocks"}}
 }
 
-// TestDeriveStateMardNobHardExample is the acceptance test for the defect the
-// Brief names: an in_progress epic whose every child is closed has no live work
-// left, so it is awaiting operator acceptance — not Working.
-func TestDeriveStateMardNobHardExample(t *testing.T) {
+// TestDeriveStateLegacyConvergedEpicCompatibility preserves the legacy
+// mard-nob/mard-r43 shape until those rows are stored as review explicitly.
+func TestDeriveStateLegacyConvergedEpicCompatibility(t *testing.T) {
 	issues := []Issue{{ID: "mard-nob", Status: StatusInProgress, IssueType: TypeEpic}}
 	for n := 1; n <= 7; n++ {
 		id := fmt.Sprintf("mard-nob.%d", n)
@@ -30,8 +29,63 @@ func TestDeriveStateMardNobHardExample(t *testing.T) {
 	if got == StateWorking {
 		t.Fatal("hard-example epic rendered Working")
 	}
-	if got != StateAwaitingReview {
-		t.Fatalf("got %v, want Awaiting Review", got)
+	if got != SemanticState(4) {
+		t.Fatalf("got %v, want Operator Review", got)
+	}
+}
+
+// TestStateOrderAndLabel pins the render order and Ata's exact state names.
+// The integer order is shared with internal/ui's Exec* vocabulary, so it is
+// pinned here too.
+func TestStateOrderAndLabel(t *testing.T) {
+	want := []struct {
+		state SemanticState
+		label string
+	}{
+		{StateReady, "Ready"},
+		{StateWorking, "Working"},
+		{StateWaitingBlocked, "Waiting/Blocked"},
+		{StateDeferred, "Deferred"},
+		{SemanticState(4), "Operator Review"},
+		{StateDone, "Done"},
+	}
+
+	order := StateOrder()
+	if len(order) != len(want) {
+		t.Fatalf("StateOrder() has %d states, want %d", len(order), len(want))
+	}
+	for i, w := range want {
+		if order[i] != w.state {
+			t.Errorf("StateOrder()[%d] = %d, want %d", i, order[i], w.state)
+		}
+		if int(w.state) != i {
+			t.Errorf("%s has value %d, want %d — internal/ui keys ExecSymbol by this order", w.label, int(w.state), i)
+		}
+		if got := w.state.Label(); got != w.label {
+			t.Errorf("Label(%d) = %q, want %q", w.state, got, w.label)
+		}
+	}
+	if got := SemanticState(99).Label(); got != "" {
+		t.Errorf("Label(99) = %q, want empty", got)
+	}
+}
+
+func TestDeriveStateOperatorReviewIsStored(t *testing.T) {
+	issue := &Issue{ID: "review", Status: Status("review"), IssueType: TypeTask}
+	state, ok := DeriveState(issue, map[string]*Issue{issue.ID: issue}, DefaultBlockingTypes)
+	if !ok || state != SemanticState(4) {
+		t.Fatalf("DeriveState(review) = (%v, %v), want (Operator Review, true)", state, ok)
+	}
+}
+
+func TestDeriveStateUnknownCustomStatusStaysHidden(t *testing.T) {
+	issue := &Issue{ID: "qa", Status: Status("qa_gate"), IssueType: TypeTask}
+	state, ok := DeriveState(issue, map[string]*Issue{issue.ID: issue}, DefaultBlockingTypes)
+	if ok {
+		t.Fatalf("DeriveState(qa_gate) returned ok=true with state %v", state)
+	}
+	if state == StateReady || state == SemanticState(4) {
+		t.Fatalf("DeriveState(qa_gate) leaked into visible state %v", state)
 	}
 }
 
@@ -48,6 +102,7 @@ func TestDeriveStatePrecedence(t *testing.T) {
 	}{
 		{"closed", Issue{ID: "x", Status: StatusClosed}, nil, StateDone},
 		{"raw blocked", Issue{ID: "x", Status: StatusBlocked}, nil, StateWaitingBlocked},
+		{"stored operator review", Issue{ID: "x", Status: Status("review")}, nil, SemanticState(4)},
 		{"raw deferred", Issue{ID: "x", Status: StatusDeferred}, nil, StateDeferred},
 		{"working", Issue{ID: "x", Status: StatusInProgress}, nil, StateWorking},
 		{"ready", Issue{ID: "x", Status: StatusOpen}, nil, StateReady},
@@ -108,32 +163,22 @@ func TestDeriveStatePrecedence(t *testing.T) {
 		{
 			"unresolved blocker beats the epic rule",
 			Issue{ID: "x", Status: StatusInProgress, IssueType: TypeEpic, Dependencies: blockingEdge("x", "y")},
-			[]Issue{
-				{ID: "y", Status: StatusOpen},
-				{ID: "x.1", Status: StatusClosed, Dependencies: parentEdge("x.1", "x")},
-			},
+			[]Issue{{ID: "y", Status: StatusOpen}, {ID: "x.1", Status: StatusClosed, Dependencies: parentEdge("x.1", "x")}},
 			StateWaitingBlocked,
 		},
 		{
-			// The epic rule (row 8) outranks deferral (rows 9-10): the epic's
-			// own raw status or DeferUntil says nothing about whether its work
-			// is finished and waiting on the operator. Swapping the deferred
-			// block above the epic block leaves the rest of this table green.
-			"deferred epic with every child closed is awaiting review",
+			"deferred epic with every child closed is operator review",
 			Issue{ID: "x", Status: StatusDeferred, IssueType: TypeEpic},
 			[]Issue{{ID: "x.1", Status: StatusClosed, Dependencies: parentEdge("x.1", "x")}},
-			StateAwaitingReview,
+			SemanticState(4),
 		},
 		{
-			"future defer on an epic with every child closed is awaiting review",
+			"future defer on an epic with every child closed is operator review",
 			Issue{ID: "x", Status: StatusInProgress, IssueType: TypeEpic, DeferUntil: &future},
 			[]Issue{{ID: "x.1", Status: StatusClosed, Dependencies: parentEdge("x.1", "x")}},
-			StateAwaitingReview,
+			SemanticState(4),
 		},
 		{
-			// `parent-child` is hierarchy, not a blocker. Every real child
-			// carries one, so if it ever blocked, every nested row on a real
-			// board would render Waiting/Blocked instead of its own state.
 			"parent-child edge to an open parent is not blocking",
 			Issue{ID: "x", Status: StatusOpen, Dependencies: parentEdge("x", "p")},
 			[]Issue{{ID: "p", Status: StatusOpen, IssueType: TypeEpic}},
@@ -208,7 +253,6 @@ func TestDeriveStateUnmappedStatusesStayUnmapped(t *testing.T) {
 	}
 }
 
-// TestDeriveStateEpicRules pins the boundaries of the settled-descendants rule.
 func TestDeriveStateEpicRules(t *testing.T) {
 	settledEpic := []Issue{
 		{ID: "e", Status: StatusInProgress, IssueType: TypeEpic},
@@ -226,13 +270,13 @@ func TestDeriveStateEpicRules(t *testing.T) {
 			"epic with every descendant closed",
 			Issue{ID: "e", Status: StatusInProgress, IssueType: TypeEpic},
 			settledEpic[1:],
-			StateAwaitingReview,
+			SemanticState(4),
 		},
 		{
 			"open epic with every descendant closed",
 			Issue{ID: "e", Status: StatusOpen, IssueType: TypeEpic},
 			settledEpic[1:],
-			StateAwaitingReview,
+			SemanticState(4),
 		},
 		{
 			"epic with zero loaded descendants",
@@ -243,28 +287,19 @@ func TestDeriveStateEpicRules(t *testing.T) {
 		{
 			"epic with one open descendant",
 			Issue{ID: "e", Status: StatusInProgress, IssueType: TypeEpic},
-			[]Issue{
-				{ID: "e.1", Status: StatusClosed, Dependencies: parentEdge("e.1", "e")},
-				{ID: "e.2", Status: StatusOpen, Dependencies: parentEdge("e.2", "e")},
-			},
+			[]Issue{{ID: "e.1", Status: StatusClosed, Dependencies: parentEdge("e.1", "e")}, {ID: "e.2", Status: StatusOpen, Dependencies: parentEdge("e.2", "e")}},
 			StateWorking,
 		},
 		{
 			"a grandchild still counts",
 			Issue{ID: "e", Status: StatusInProgress, IssueType: TypeEpic},
-			[]Issue{
-				{ID: "e.1", Status: StatusClosed, Dependencies: parentEdge("e.1", "e")},
-				{ID: "e.2", Status: StatusOpen, Dependencies: parentEdge("e.2", "e.1")},
-			},
+			[]Issue{{ID: "e.1", Status: StatusClosed, Dependencies: parentEdge("e.1", "e")}, {ID: "e.2", Status: StatusOpen, Dependencies: parentEdge("e.2", "e.1")}},
 			StateWorking,
 		},
 		{
 			"a closed descendant in another epic is not a descendant",
 			Issue{ID: "e", Status: StatusInProgress, IssueType: TypeEpic},
-			[]Issue{
-				{ID: "other", Status: StatusOpen, IssueType: TypeEpic},
-				{ID: "other.1", Status: StatusClosed, Dependencies: parentEdge("other.1", "other")},
-			},
+			[]Issue{{ID: "other", Status: StatusOpen, IssueType: TypeEpic}, {ID: "other.1", Status: StatusClosed, Dependencies: parentEdge("other.1", "other")}},
 			StateWorking,
 		},
 	}
@@ -276,9 +311,6 @@ func TestDeriveStateEpicRules(t *testing.T) {
 			got, ok := DeriveState(m["e"], m, DefaultBlockingTypes)
 			if !ok {
 				t.Fatalf("DeriveState returned ok=false, want %v", tc.want.Label())
-			}
-			if got == StateAwaitingReview && tc.want != StateAwaitingReview {
-				t.Fatalf("epic with %s wrongly settled as Awaiting Review", tc.name)
 			}
 			if got != tc.want {
 				t.Fatalf("got %v (%s), want %v (%s)", got, got.Label(), tc.want, tc.want.Label())
@@ -327,9 +359,9 @@ func TestDeriveStateEpicWithOpenAndUnmappedDescendants(t *testing.T) {
 	}
 }
 
-// TestEpicAwaitingReview tests the settled-descendants rule on its own, without
-// the blocked-wins row that DeriveState applies first.
-func TestEpicAwaitingReview(t *testing.T) {
+// TestLegacyConvergedEpicOperatorReview tests the compatibility shim's
+// settled-descendants rule without the blocked-wins row in DeriveState.
+func TestLegacyConvergedEpicOperatorReview(t *testing.T) {
 	tests := []struct {
 		name          string
 		issue         Issue
@@ -364,10 +396,7 @@ func TestEpicAwaitingReview(t *testing.T) {
 		{
 			"blocked epic is still settled",
 			Issue{ID: "e", Status: StatusInProgress, IssueType: TypeEpic, Dependencies: blockingEdge("e", "b")},
-			[]Issue{
-				{ID: "b", Status: StatusOpen},
-				{ID: "e.1", Status: StatusClosed, Dependencies: parentEdge("e.1", "e")},
-			},
+			[]Issue{{ID: "b", Status: StatusOpen}, {ID: "e.1", Status: StatusClosed, Dependencies: parentEdge("e.1", "e")}},
 			true, true,
 		},
 		{
@@ -388,10 +417,10 @@ func TestEpicAwaitingReview(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			issues := append([]Issue{tc.issue}, tc.extra...)
 			m := BuildIssueMap(issues)
-			awaiting, decidable := EpicAwaitingReview(m["e"], m)
-			if awaiting != tc.wantAwaiting || decidable != tc.wantDecidable {
-				t.Fatalf("got (awaiting=%v, decidable=%v), want (awaiting=%v, decidable=%v)",
-					awaiting, decidable, tc.wantAwaiting, tc.wantDecidable)
+			operatorReview, decidable := legacyConvergedEpicOperatorReview(m["e"], m)
+			if operatorReview != tc.wantAwaiting || decidable != tc.wantDecidable {
+				t.Fatalf("got (operatorReview=%v, decidable=%v), want (operatorReview=%v, decidable=%v)",
+					operatorReview, decidable, tc.wantAwaiting, tc.wantDecidable)
 			}
 		})
 	}
@@ -400,39 +429,6 @@ func TestEpicAwaitingReview(t *testing.T) {
 // TestStateOrderAndLabel pins the render order and Ata's exact state names.
 // The integer order is shared with internal/ui's Exec* vocabulary, so it is
 // pinned here too.
-func TestStateOrderAndLabel(t *testing.T) {
-	want := []struct {
-		state SemanticState
-		label string
-	}{
-		{StateWorking, "Working"},
-		{StateAwaitingReview, "Awaiting Review"},
-		{StateReady, "Ready"},
-		{StateDeferred, "Deferred"},
-		{StateWaitingBlocked, "Waiting/Blocked"},
-		{StateDone, "Done"},
-	}
-
-	order := StateOrder()
-	if len(order) != len(want) {
-		t.Fatalf("StateOrder() has %d states, want %d", len(order), len(want))
-	}
-	for i, w := range want {
-		if order[i] != w.state {
-			t.Errorf("StateOrder()[%d] = %d, want %d", i, order[i], w.state)
-		}
-		if int(w.state) != i {
-			t.Errorf("%s has value %d, want %d — internal/ui keys ExecSymbol by this order", w.label, int(w.state), i)
-		}
-		if got := w.state.Label(); got != w.label {
-			t.Errorf("Label(%d) = %q, want %q", w.state, got, w.label)
-		}
-	}
-	if got := SemanticState(99).Label(); got != "" {
-		t.Errorf("Label(99) = %q, want empty", got)
-	}
-}
-
 // TestGroupBySemanticStatePreinitializesAllKeys: callers range StateOrder()
 // without a nil-map guard, so every key must exist even when empty.
 func TestGroupBySemanticStatePreinitializesAllKeys(t *testing.T) {

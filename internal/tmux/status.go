@@ -14,16 +14,16 @@ import (
 // state. ui.ExecColor cannot be used here: tmux markup carries no lipgloss.
 func execColour(state data.SemanticState) string {
 	switch state {
-	case data.StateWorking:
-		return "colour42" // BrightGreen
-	case data.StateAwaitingReview:
-		return "colour208" // Orange
 	case data.StateReady:
 		return "colour220" // BrightGold
-	case data.StateDeferred:
-		return "colour240" // Dim
+	case data.StateWorking:
+		return "colour42" // BrightGreen
 	case data.StateWaitingBlocked:
 		return "colour196" // Red
+	case data.StateDeferred:
+		return "colour240" // Dim
+	case data.StateOperatorReview:
+		return "colour208" // Orange
 	case data.StateDone:
 		return "colour244" // Muted
 	}

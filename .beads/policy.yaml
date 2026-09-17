@@ -1,0 +1,14 @@
+workflow:
+  statuses:
+    - open
+    - in_progress
+    - blocked
+    - deferred
+    - draft
+    - closed
+    - tombstone
+    - pinned
+    - review
+  status_groups:
+    ready:
+      - open

@@ -575,6 +575,7 @@ func TestContractAllStatusValues(t *testing.T) {
 		StatusClosed,
 		StatusTombstone,
 		StatusPinned,
+		StatusReview,
 	}
 	for _, s := range statuses {
 		t.Run(string(s), func(t *testing.T) {

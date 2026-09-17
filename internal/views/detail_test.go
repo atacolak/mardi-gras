@@ -48,8 +48,8 @@ func TestSemanticStatusHardExample(t *testing.T) {
 	d.SetIssue(&issues[0])
 
 	row := statusRow(d.renderContent())
-	if !strings.Contains(row, "◐ Awaiting Review (in_progress)") {
-		t.Fatalf("settled in_progress epic should read %q, got %q", "◐ Awaiting Review (in_progress)", row)
+	if !strings.Contains(row, "◐ Operator Review") || strings.Contains(row, "(in_progress)") {
+		t.Fatalf("settled in_progress epic should read %q without raw parenthetical, got %q", "◐ Operator Review", row)
 	}
 }
 

@@ -22,19 +22,19 @@ var (
 	BeadStyleGreen  lipgloss.Style
 
 	// Semantic execution state section headers (see ExecSectionStyle)
-	SectionExecWorking        lipgloss.Style
-	SectionExecAwaitingReview lipgloss.Style
 	SectionExecReady          lipgloss.Style
-	SectionExecDeferred       lipgloss.Style
+	SectionExecWorking        lipgloss.Style
 	SectionExecWaiting        lipgloss.Style
+	SectionExecDeferred       lipgloss.Style
+	SectionExecOperatorReview lipgloss.Style
 	SectionExecDone           lipgloss.Style
 
 	// Pre-rendered semantic execution indicators (see ExecIndicator)
-	ExecWorkingStr        string
-	ExecAwaitingReviewStr string
 	ExecReadyStr          string
-	ExecDeferredStr       string
+	ExecWorkingStr        string
 	ExecWaitingStr        string
+	ExecDeferredStr       string
+	ExecOperatorReviewStr string
 	ExecDoneStr           string
 
 	// Issue items in the list
@@ -195,42 +195,23 @@ func rebuildStyles() {
 	BeadStyleGreen = lipgloss.NewStyle().Foreground(Green)
 
 	// Semantic execution state section headers
-	SectionExecWorking = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ExecWorking)
-
-	SectionExecAwaitingReview = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ExecAwaitingReview)
-
-	SectionExecReady = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ExecReady)
-
-	SectionExecDeferred = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ExecDeferred)
-
-	SectionExecWaiting = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ExecWaiting)
-
-	SectionExecDone = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ExecDone)
+	SectionExecReady = lipgloss.NewStyle().Bold(true).Foreground(ExecReady)
+	SectionExecWorking = lipgloss.NewStyle().Bold(true).Foreground(ExecWorking)
+	SectionExecWaiting = lipgloss.NewStyle().Bold(true).Foreground(ExecWaiting)
+	SectionExecDeferred = lipgloss.NewStyle().Bold(true).Foreground(ExecDeferred)
+	SectionExecOperatorReview = lipgloss.NewStyle().Bold(true).Foreground(ExecOperatorReview)
+	SectionExecDone = lipgloss.NewStyle().Bold(true).Foreground(ExecDone)
 
 	// Pre-rendered semantic execution indicators
-	ExecWorkingStr = lipgloss.NewStyle().Foreground(ExecWorking).Render(SymExecWorking)
-	ExecAwaitingReviewStr = lipgloss.NewStyle().Foreground(ExecAwaitingReview).Render(SymExecAwaitingReview)
 	ExecReadyStr = lipgloss.NewStyle().Foreground(ExecReady).Render(SymExecReady)
-	ExecDeferredStr = lipgloss.NewStyle().Foreground(ExecDeferred).Render(SymExecDeferred)
+	ExecWorkingStr = lipgloss.NewStyle().Foreground(ExecWorking).Render(SymExecWorking)
 	ExecWaitingStr = lipgloss.NewStyle().Foreground(ExecWaiting).Render(SymExecWaiting)
+	ExecDeferredStr = lipgloss.NewStyle().Foreground(ExecDeferred).Render(SymExecDeferred)
+	ExecOperatorReviewStr = lipgloss.NewStyle().Foreground(ExecOperatorReview).Render(SymExecOperatorReview)
 	ExecDoneStr = lipgloss.NewStyle().Foreground(ExecDone).Render(SymExecDone)
 
 	// Contract-violation fallback
-	execSectionFallback = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(Muted)
+	execSectionFallback = lipgloss.NewStyle().Bold(true).Foreground(Muted)
 	execIndicatorFallback = lipgloss.NewStyle().Foreground(Muted).Render(SymMissing)
 
 	// Issue items in the list
@@ -516,7 +497,7 @@ func StateBadge(state string) string {
 }
 
 // ExecSectionStyle returns the section-header style for a semantic execution
-// state. state is the data package's SemanticState integer order — Working=0
+// state. state is the data package's SemanticState integer order — Ready=0
 // through Done=5 — because ui is a leaf package and does not import that type.
 // The styles are baked by rebuildStyles, so a theme switch rebakes them.
 //
@@ -525,15 +506,15 @@ func StateBadge(state string) string {
 func ExecSectionStyle(state int) lipgloss.Style {
 	switch state {
 	case 0:
-		return SectionExecWorking
-	case 1:
-		return SectionExecAwaitingReview
-	case 2:
 		return SectionExecReady
+	case 1:
+		return SectionExecWorking
+	case 2:
+		return SectionExecWaiting
 	case 3:
 		return SectionExecDeferred
 	case 4:
-		return SectionExecWaiting
+		return SectionExecOperatorReview
 	case 5:
 		return SectionExecDone
 	default:
@@ -547,15 +528,15 @@ func ExecSectionStyle(state int) lipgloss.Style {
 func ExecIndicator(state int) string {
 	switch state {
 	case 0:
-		return ExecWorkingStr
-	case 1:
-		return ExecAwaitingReviewStr
-	case 2:
 		return ExecReadyStr
+	case 1:
+		return ExecWorkingStr
+	case 2:
+		return ExecWaitingStr
 	case 3:
 		return ExecDeferredStr
 	case 4:
-		return ExecWaitingStr
+		return ExecOperatorReviewStr
 	case 5:
 		return ExecDoneStr
 	default:

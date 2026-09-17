@@ -217,16 +217,15 @@ func (d *Detail) renderContent() string {
 	lines = append(lines, "")
 
 	// Status row. The state is derived once, from the same graph the parade
-	// buckets by, so a settled in_progress epic reads "Awaiting Review" rather
+	// buckets by, so a settled in_progress epic reads "Operator Review" rather
 	// than the raw-status collapse. An issue whose state cannot be derived
 	// renders its raw status alone — never a state label it has not earned.
 	if state, ok := data.DeriveState(issue, d.IssueMap, bt); ok {
 		statusStyle := lipgloss.NewStyle().Foreground(statusColor(state))
-		lines = append(lines, d.row("Status:", statusStyle.Render(statusSymbol(state)+" "+state.Label()+" ("+string(issue.Status)+")")))
+		lines = append(lines, d.row("Status:", statusStyle.Render(statusSymbol(state)+" "+state.Label())))
 	} else {
 		lines = append(lines, d.row("Status:", lipgloss.NewStyle().Foreground(ui.Muted).Render(string(issue.Status))))
 	}
-
 	// Type
 	typeColor := ui.IssueTypeColor(string(issue.IssueType))
 	lines = append(lines, d.row("Type:", lipgloss.NewStyle().Foreground(typeColor).Render(string(issue.IssueType))))

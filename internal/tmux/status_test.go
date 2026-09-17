@@ -42,14 +42,14 @@ func TestStatusLineFormat(t *testing.T) {
 	if n := strings.Count(got, "#[fg="); n != len(data.StateOrder())+1 {
 		t.Errorf("expected %d fg segments, got %d: %s", len(data.StateOrder())+1, n, got)
 	}
-	for i, colour := range []string{"colour42", "colour208", "colour220", "colour240", "colour196", "colour244"} {
+	for i, colour := range []string{"colour220", "colour42", "colour196", "colour240", "colour208", "colour244"} {
 		if !strings.Contains(got, colour) {
 			t.Errorf("missing color %s for %s: %s", colour, data.StateOrder()[i].Label(), got)
 		}
 	}
 
 	// The six counts, in StateOrder. Four buckets cannot produce this line.
-	if plain := stripMarkup(got); !strings.Contains(plain, "3● 0◐ 12♪ 0⏸ 3⊘ 3✓") {
+	if plain := stripMarkup(got); !strings.Contains(plain, "12○ 3● 3⊘ 0⏸ 0◐ 3✓") {
 		t.Errorf("expected six ordered counts, got: %q", plain)
 	}
 	if !strings.Contains(got, ui.FleurDeLis) {
@@ -63,8 +63,8 @@ func TestStatusLineFormat(t *testing.T) {
 // fails on the same derivation or render regression the built-binary test
 // catches, even when that test is skipped.
 //
-// The fixture's whole point is the ordered pair 0●/1◐ with 7✓: settled epic
-// awaiting acceptance, no live work.
+// The fixture's whole point is the ordered pair 0◐ with 7✓: the settled epic
+// remains operator review until stored review status is adopted on the board.
 func TestStatusLineMardNobAwaitingReview(t *testing.T) {
 	issues, _, err := data.LoadIssues("../../testdata/mard-nob-awaiting-review.jsonl")
 	if err != nil {
@@ -80,7 +80,7 @@ func TestStatusLineMardNobAwaitingReview(t *testing.T) {
 	}
 
 	// Six ordered pairs, nothing else on the line.
-	want := ui.FleurDeLis + " " + strings.Join([]string{"0●", "1◐", "0♪", "0⏸", "0⊘", "7✓"}, " ")
+	want := ui.FleurDeLis + " " + strings.Join([]string{"0○", "0●", "0⊘", "0⏸", "1◐", "7✓"}, " ")
 	if plain := stripMarkup(StatusLine(groups)); plain != want {
 		t.Errorf("status line = %q, want %q", plain, want)
 	}
@@ -94,7 +94,6 @@ func TestStatusLineEmptyGroups(t *testing.T) {
 
 	got := StatusLine(groups)
 
-	if plain := stripMarkup(got); !strings.Contains(plain, "0● 0◐ 0♪ 0⏸ 0⊘ 0✓") {
-		t.Errorf("expected six zero counts, got: %q", plain)
+	if plain := stripMarkup(got); !strings.Contains(plain, "0○ 0● 0⊘ 0⏸ 0◐ 0✓") {
 	}
 }

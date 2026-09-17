@@ -105,22 +105,21 @@ const (
 
 	// Geometric indicators
 	SymDiamond = "◆"
-
 	// Semantic execution states (see ExecSymbol). Deliberately distinct from
 	// the Gas Town agent-state symbols above: an issue's derived execution
 	// state is not an agent's state.
+	SymExecReady          = "○"
 	SymExecWorking        = "●"
-	SymExecAwaitingReview = "◐"
-	SymExecReady          = "♪"
-	SymExecDeferred       = "⏸"
 	SymExecWaiting        = "⊘"
+	SymExecDeferred       = "⏸"
+	SymExecOperatorReview = "◐"
 	SymExecDone           = "✓"
 )
 
 // ExecSymbol returns the glyph for a semantic execution state. state is the
-// data package's SemanticState integer order — Working=0, AwaitingReview=1,
-// Ready=2, Deferred=3, WaitingBlocked=4, Done=5 — because ui is a leaf package
-// and does not import that type.
+// data package's SemanticState integer order — Ready=0, Working=1,
+// WaitingBlocked=2, Deferred=3, OperatorReview=4, Done=5 — because ui is a
+// leaf package and does not import that type.
 //
 // A value outside 0-5 is a broken contract, not a seventh state: it renders
 // the existing "missing" marker so the row reads as unrecognized rather than
@@ -128,15 +127,15 @@ const (
 func ExecSymbol(state int) string {
 	switch state {
 	case 0:
-		return SymExecWorking
-	case 1:
-		return SymExecAwaitingReview
-	case 2:
 		return SymExecReady
+	case 1:
+		return SymExecWorking
+	case 2:
+		return SymExecWaiting
 	case 3:
 		return SymExecDeferred
 	case 4:
-		return SymExecWaiting
+		return SymExecOperatorReview
 	case 5:
 		return SymExecDone
 	default:

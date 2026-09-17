@@ -8,7 +8,7 @@ import (
 )
 
 // execStates pins the shared six-state execution vocabulary to its integer
-// order: Working=0, AwaitingReview=1, Ready=2, Deferred=3, WaitingBlocked=4,
+// order: Ready=0, Working=1, WaitingBlocked=2, Deferred=3, OperatorReview=4,
 // Done=5. That order is the data package's SemanticState; ui is a leaf package
 // and does not import it, so every Exec* lookup takes the bare int.
 //
@@ -21,11 +21,11 @@ var execStates = []struct {
 	glyph   string
 	palette func() color.Color
 }{
-	{"working", 0, "●", func() color.Color { return BrightGreen }},
-	{"awaiting review", 1, "◐", func() color.Color { return Orange }},
-	{"ready", 2, "♪", func() color.Color { return BrightGold }},
+	{"ready", 0, "○", func() color.Color { return BrightGold }},
+	{"working", 1, "●", func() color.Color { return BrightGreen }},
+	{"waiting/blocked", 2, "⊘", func() color.Color { return StatusStalled }},
 	{"deferred", 3, "⏸", func() color.Color { return Dim }},
-	{"waiting/blocked", 4, "⊘", func() color.Color { return StatusStalled }},
+	{"operator review", 4, "◐", func() color.Color { return Orange }},
 	{"done", 5, "✓", func() color.Color { return Muted }},
 }
 
