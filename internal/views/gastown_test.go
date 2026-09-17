@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
 )
 
@@ -508,6 +509,24 @@ func TestGasTownConvoyExpandCollapse(t *testing.T) {
 	g, _ = g.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if g.expandedConvoy != -1 {
 		t.Fatalf("after second enter, expanded = %d, want -1", g.expandedConvoy)
+	}
+}
+
+func TestGasTownOpenTrackedIssueUsesReadyGlyph(t *testing.T) {
+	g := NewGasTown(100, 30)
+	g.SetStatus(&gastown.TownStatus{Agents: []gastown.AgentRuntime{}}, gastown.Env{Available: true})
+	g.SetConvoyDetails([]gastown.ConvoyDetail{{
+		ID: "cv-1", Title: "Sprint", Status: "open",
+		Tracked: []gastown.TrackedIssueInfo{{ID: "bd-1", Title: "Open task", Status: "open"}},
+	}})
+	g.section = SectionConvoys
+	g, _ = g.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	plain := ansi.Strip(g.View())
+	if !strings.Contains(plain, "○ bd-1 Open task") {
+		t.Fatalf("open tracked issue should use Ready glyph: %q", plain)
+	}
+	if strings.Contains(plain, string(rune(0x266A))) {
+		t.Fatalf("open tracked issue retained legacy glyph: %q", plain)
 	}
 }
 

@@ -86,6 +86,8 @@ func allSections() []helpSection {
 				{key: "g / G", desc: "Jump to top/bottom"},
 				{key: "enter", desc: "Focus detail pane"},
 				{key: ">", desc: "Collapse / expand selected branch"},
+				{key: "click", desc: "Select a bead and focus the pane under the pointer"},
+				{key: "wheel", desc: "Move the pane under the pointer"},
 				{key: "/", desc: "Enter filter mode (fuzzy)"},
 				{key: "f", desc: "Toggle focus mode (my work + top priority)"},
 				{key: "E", desc: "Scope to selected epic subtree"},

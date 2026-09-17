@@ -11,7 +11,7 @@
 
 **Your Beads issues deserve a parade, not a spreadsheet.**
 
-Mardi Gras (`mg`) is a terminal UI for [Beads](https://github.com/gastownhall/beads), the issue tracker built for coding agents. It reads the same issues your agents write and shows them as a parade: what's being worked, what's waiting on you, what's ready to pick up, what's parked, what's blocked, and what's done. When something changes, the parade reshuffles in front of you.
+Mardi Gras (`mg`) is a terminal UI for [Beads](https://github.com/gastownhall/beads), the issue tracker built for coding agents. It reads the same issues your agents write and shows them as a work cockpit: what's being worked, what's waiting on you, what's ready to pick up, what's parked, what's blocked, what's under operator review, and what's done. When something changes, the work tree reshuffles in front of you.
 
 One static binary. No daemon, no config file. Run `mg` in a Beads project and you're watching.
 
@@ -23,15 +23,17 @@ One static binary. No daemon, no config file. Run `mg` in a Beads project and yo
 Every issue is on the route somewhere:
 
 ```
+○  Ready              open, nothing in its way, not deferred
 ●  Working            in progress, with live work under it
-◐  Awaiting Review    work is finished; operator acceptance is pending
-♪  Ready              open, nothing in its way, not deferred
-⏸  Deferred           parked until its defer date passes
 ⊘  Waiting/Blocked    waiting on something that isn't done yet
-✓  Done               closed, folded away until you press c
+⏸  Deferred           parked until its defer date passes
+◐  Operator Review    work is finished; operator acceptance is pending
+✓  Done               closed, nested under its parent
 ```
 
-The route is honest. A Waiting/Blocked row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
+The tree is honest. Work is priority-sorted in one tree: Ready, Working, Operator Review, and Done stay together under their parent, while Waiting/Blocked and Deferred appear as attention sections when needed. A Waiting/Blocked row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
+
+Operator Review is an explicit stored Beads state. The lead moves an epic into it with `br update <epic> --status review`; `review` is absent from Ready. Closing children does not automatically enter review.
 
 Blocked is computed from dependency edges, not from a status field somebody forgot to update. `blocks` and `conditional-blocks` count by default; widen that with `--block-types` if your project uses others.
 
@@ -87,8 +89,11 @@ mg
 | `o` | Actor society pane: who is live, what they own, what they're doing (needs the `actor` CLI) |
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
 | `f` | Focus mode: your work and the top priorities, nothing else |
-| `E` | Epic scope: the selected issue's whole epic subtree, cleared by `esc` |
-| `c` | Fold or unfold the Done section |
+| `E` | Scope to selected epic subtree |
+| `esc` | Clear scope first, then existing focus behavior |
+| `>` | Collapse or expand the selected branch |
+| `click` | Select a bead and focus the pane under the pointer |
+| `wheel` | Move the pane under the pointer |
 | `:` or `ctrl+k` | Command palette, with everything mg can do |
 | `?` | Help overlay, paged by section |
 | `q` | Leave the parade |

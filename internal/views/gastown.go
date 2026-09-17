@@ -1038,7 +1038,7 @@ func (g *GasTown) renderConvoyDetails(width int) string {
 					sym = ui.SymWorking
 					issueColor = ui.BrightGold
 				case "open":
-					sym = ui.SymLinedUp
+					sym = ui.SymIdle
 				}
 				style := lipgloss.NewStyle().Foreground(issueColor)
 

@@ -21,6 +21,14 @@ func TestHelpViewRendersContent(t *testing.T) {
 	if !strings.Contains(view, "Collapse / expand selected branch") {
 		t.Fatal("should show the > collapse binding")
 	}
+	for _, want := range []string{
+		"Select a bead and focus the pane under the pointer",
+		"Move the pane under the pointer",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("should show mouse binding %q", want)
+		}
+	}
 	if strings.Contains(view, "Toggle "+"closed issues") {
 		t.Fatal("should not show the removed closed-issues toggle")
 	}

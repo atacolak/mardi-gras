@@ -30344,12 +30344,12 @@
             }
           },
           {
-            "description": "Sort order by sequence: asc (oldest-first, default) or desc (newest-first).",
+            "description": "Sort order by sequence: asc (ascending by default) or desc (descending).",
             "explode": false,
             "in": "query",
             "name": "order",
             "schema": {
-              "description": "Sort order by sequence: asc (oldest-first, default) or desc (newest-first).",
+              "description": "Sort order by sequence: asc (ascending by default) or desc (descending).",
               "enum": [
                 "asc",
                 "desc"

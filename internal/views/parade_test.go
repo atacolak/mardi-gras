@@ -291,7 +291,7 @@ func TestParadeRelativeDisplayID(t *testing.T) {
 	}
 }
 
-// The Done section builds its rows through the same append, so a nested closed
+// The main tree builds these rows through the same append, so a nested closed
 // row compacts under its epic as well. The observable is the rendered row: the
 // closed path re-renders the label in the muted style, and that re-render must
 // not quietly discard the compaction.

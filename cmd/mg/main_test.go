@@ -475,33 +475,31 @@ func TestStatusCommandWaitDelayBoundsThePipe(t *testing.T) {
 	}
 }
 
-// TestStatusModeMardNobAwaitingReview is the built-binary acceptance test for
-// the defect the Brief names: an epic whose every executable descendant is
-// closed, with operator acceptance still pending, is Awaiting Review — never
-// Working. It runs the real binary over a real fixture, so the loader,
-// hierarchy, derivation, grouping, and tmux render must all be correct at once.
-// A stubbed unit expectation cannot satisfy it.
+// TestStatusModeOperatorReviewStoredState is the built-binary acceptance test
+// for an explicitly stored review gate: the epic must count as Operator Review,
+// never Working. It runs the real binary over a real fixture, so loading,
+// hierarchy, derivation, grouping, and tmux rendering are all covered.
 //
-// The six counts are asserted ORDERED, not as a set: the widget reads left to
-// right in StateOrder and a render that permutes them is the regression the
-// process test must catch. tmux's #[fg=...] markup sits between the tokens in
-// the raw stream, so the sequence is only contiguous once that markup is gone.
-func TestStatusModeMardNobAwaitingReview(t *testing.T) {
+// The six counts are asserted in order: the widget reads left to right in
+// StateOrder, and tmux's #[fg=...] markup sits between the tokens in the raw
+// stream, so the sequence is only contiguous once that markup is removed.
+func TestStatusModeOperatorReviewStoredState(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), mardNobStatusTimeout)
 	defer cancel()
 
-	out, err := statusCommand(ctx, "testdata/mard-nob-awaiting-review.jsonl").CombinedOutput()
+	out, err := statusCommand(ctx, "testdata/operator-review-tree.jsonl").CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			t.Fatalf("go run exceeded %s: %s", mardNobStatusTimeout, out)
 		}
 		t.Fatalf("%v: %s", err, out)
 	}
+
 	plain := tmuxMarkup.ReplaceAllString(string(out), "")
-	if want := "0● 1◐ 0♪ 0⏸ 0⊘ 7✓"; !strings.Contains(plain, want) {
+	if want := "2○ 0● 1⊘ 1⏸ 1◐ 1✓"; !strings.Contains(plain, want) {
 		t.Errorf("status line does not carry the ordered counts %q: %q", want, plain)
 	}
 	if strings.Contains(plain, "1●") {
-		t.Fatalf("hard-example epic rendered Working: %s", out)
+		t.Fatalf("stored review epic rendered Working: %s", out)
 	}
 }

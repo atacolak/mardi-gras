@@ -57,30 +57,29 @@ func TestStatusLineFormat(t *testing.T) {
 	}
 }
 
-// TestStatusLineMardNobAwaitingReview pins the frozen hard-example fixture to
-// the tmux surface without spawning a process. The counts come from loading the
-// fixture and deriving states, so an expectation edit cannot satisfy it: this
-// fails on the same derivation or render regression the built-binary test
-// catches, even when that test is skipped.
-//
-// The fixture's whole point is the ordered pair 0◐ with 7✓: the settled epic
-// remains operator review until stored review status is adopted on the board.
-func TestStatusLineMardNobAwaitingReview(t *testing.T) {
-	issues, _, err := data.LoadIssues("../../testdata/mard-nob-awaiting-review.jsonl")
+// TestStatusLineOperatorReview pins the stored-review fixture to the tmux
+// surface without spawning a process. The mixed tree proves the review epic
+// is counted as Operator Review, never Working, while descendants retain
+// their own semantic states.
+func TestStatusLineOperatorReview(t *testing.T) {
+	issues, _, err := data.LoadIssues("../../testdata/operator-review-tree.jsonl")
 	if err != nil {
 		t.Fatalf("LoadIssues: %v", err)
 	}
 
 	groups, unmapped := data.GroupBySemanticState(issues, data.DefaultBlockingTypes)
 	if len(unmapped) != 0 {
-		t.Fatalf("hard-example fixture has unmapped issues: %v", unmapped)
+		t.Fatalf("stored-review fixture has unmapped issues: %v", unmapped)
+	}
+	if review := groups[data.StateOperatorReview]; len(review) != 1 || review[0].ID != "mard-nfy" {
+		t.Fatalf("stored review group = %+v, want mard-nfy", review)
 	}
 	if work := groups[data.StateWorking]; len(work) != 0 {
-		t.Fatalf("hard-example epic rendered Working: %+v", work)
+		t.Fatalf("stored review epic rendered Working: %+v", work)
 	}
 
 	// Six ordered pairs, nothing else on the line.
-	want := ui.FleurDeLis + " " + strings.Join([]string{"0○", "0●", "0⊘", "0⏸", "1◐", "7✓"}, " ")
+	want := ui.FleurDeLis + " " + strings.Join([]string{"2○", "0●", "1⊘", "1⏸", "1◐", "1✓"}, " ")
 	if plain := stripMarkup(StatusLine(groups)); plain != want {
 		t.Errorf("status line = %q, want %q", plain, want)
 	}

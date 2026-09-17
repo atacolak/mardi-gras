@@ -11,7 +11,6 @@ const (
 
 	// Status indicators
 	SymRolling = "●"
-	SymLinedUp = "♪"
 	SymStalled = "⊘"
 	SymPassed  = "✓"
 
