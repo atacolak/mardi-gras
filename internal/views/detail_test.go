@@ -48,8 +48,8 @@ func TestSemanticStatusHardExample(t *testing.T) {
 	d.SetIssue(&issues[0])
 
 	row := statusRow(d.renderContent())
-	if !strings.Contains(row, "◐ Operator Review") || strings.Contains(row, "(in_progress)") {
-		t.Fatalf("settled in_progress epic should read %q without raw parenthetical, got %q", "◐ Operator Review", row)
+	if strings.Contains(row, "(") || !strings.Contains(row, "◐ Operator Review") {
+		t.Fatalf("status row = %q", row)
 	}
 }
 
@@ -760,6 +760,91 @@ func TestCrossRigDepsNotRenderedForLocalDeps(t *testing.T) {
 	}
 }
 
+func detailReferenceIssues() []data.Issue {
+	now := time.Now()
+	return []data.Issue{
+		{
+			ID: "detail-selected", Title: "Selected issue", Status: data.StatusClosed,
+			Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now,
+			Dependencies: []data.Dependency{
+				{IssueID: "detail-selected", DependsOnID: "detail-unresolved", Type: "blocks"},
+				{IssueID: "detail-selected", DependsOnID: "detail-missing", Type: "blocks"},
+				{IssueID: "detail-selected", DependsOnID: "detail-resolved", Type: "blocks"},
+				{IssueID: "detail-selected", DependsOnID: "detail-related", Type: "related"},
+				{IssueID: "detail-selected", DependsOnID: "detail-parent", Type: "parent-child"},
+				{IssueID: "detail-selected", DependsOnID: "external:other-rig:detail-cross-rig", Type: "blocks"},
+			},
+		},
+		{ID: "detail-unresolved", Title: "Unresolved blocker", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now},
+		{ID: "detail-resolved", Title: "Resolved blocker", Status: data.StatusClosed, Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now},
+		{ID: "detail-related", Title: "Related issue", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now},
+		{ID: "detail-parent", Title: "Parent issue", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeEpic, CreatedAt: now},
+		{
+			ID: "detail-dependent", Title: "Reverse dependent", Status: data.StatusOpen,
+			Priority: data.PriorityMedium, IssueType: data.TypeTask, CreatedAt: now,
+			Dependencies: []data.Dependency{
+				{IssueID: "detail-dependent", DependsOnID: "detail-selected", Type: "blocks"},
+			},
+		},
+	}
+}
+
+func detailReferenceLine(t *testing.T, content, id string) int {
+	t.Helper()
+	for line, text := range strings.Split(ansi.Strip(content), "\n") {
+		if strings.Contains(text, id) {
+			return line
+		}
+	}
+	t.Fatalf("rendered content does not contain reference ID %q:\n%s", id, content)
+	return -1
+}
+
+func TestDetailReferenceAt(t *testing.T) {
+	issues := detailReferenceIssues()
+	d := NewDetail(100, 80, issues)
+	d.SetIssue(&issues[0])
+	content := d.renderContent()
+
+	for _, target := range []string{
+		"detail-unresolved", "detail-resolved", "detail-related", "detail-parent", "detail-dependent",
+	} {
+		line := detailReferenceLine(t, content, target)
+		if got := d.ReferenceAt(line - d.Viewport.YOffset()); got == nil || got.ID != target {
+			t.Fatalf("ReferenceAt(%q) = %#v, want loaded issue", target, got)
+		}
+	}
+}
+
+func TestDetailReferenceAtScrolled(t *testing.T) {
+	issues := detailReferenceIssues()
+	d := NewDetail(100, 10, issues)
+	d.SetIssue(&issues[0])
+	content := d.renderContent()
+
+	line := detailReferenceLine(t, content, "detail-dependent")
+	d.Viewport.SetYOffset(line - 1)
+	if d.Viewport.YOffset() == 0 {
+		t.Fatal("test setup: expected a non-zero viewport offset")
+	}
+	if got := d.ReferenceAt(line - d.Viewport.YOffset()); got == nil || got.ID != "detail-dependent" {
+		t.Fatalf("ReferenceAt(scrolled row) = %#v, want detail-dependent", got)
+	}
+}
+
+func TestDetailMissingReference(t *testing.T) {
+	issues := detailReferenceIssues()
+	d := NewDetail(100, 80, issues)
+	d.SetIssue(&issues[0])
+	content := d.renderContent()
+
+	for _, id := range []string{"detail-missing", "detail-cross-rig"} {
+		line := detailReferenceLine(t, content, id)
+		if got := d.ReferenceAt(line - d.Viewport.YOffset()); got != nil {
+			t.Fatalf("ReferenceAt(%q) = %#v, want nil for unloaded target", id, got)
+		}
+	}
+}
 func TestFormulaRecommendationNotRenderedForClosed(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "bd-001", Title: "Add authentication middleware", Status: data.StatusClosed,

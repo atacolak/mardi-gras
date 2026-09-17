@@ -36,6 +36,7 @@ type Detail struct {
 	AgentOutput      []string // live captured lines from agent's tmux pane
 	AgentOutputID    string   // which issue the agent output belongs to
 	mdRenderer       goldmark.Markdown
+	referenceLines   map[int]string
 }
 
 // NewDetail creates a detail panel.
@@ -140,6 +141,15 @@ func (d *Detail) SetSize(width, height int) {
 	}
 }
 
+// ReferenceAt returns the loaded issue referenced by a visible detail row.
+func (d *Detail) ReferenceAt(viewportRow int) *data.Issue {
+	if viewportRow < 0 || viewportRow >= d.Viewport.Height() {
+		return nil
+	}
+	id := d.referenceLines[d.Viewport.YOffset()+viewportRow]
+	return d.IssueMap[id]
+}
+
 // View renders the detail panel.
 func (d *Detail) View() string {
 	// The left border doubles as the pane divider and the focus cue: it
@@ -200,6 +210,7 @@ func (d *Detail) renderMarkdown(text string) string {
 }
 
 func (d *Detail) renderContent() string {
+	d.referenceLines = make(map[int]string)
 	issue := d.Issue
 	if issue == nil {
 		return ""
@@ -211,6 +222,15 @@ func (d *Detail) renderContent() string {
 	}
 
 	var lines []string
+	recordReference := func(id string) {
+		if _, ok := d.IssueMap[id]; ok {
+			referenceLine := len(lines)
+			for _, line := range lines {
+				referenceLine += strings.Count(line, "\n")
+			}
+			d.referenceLines[referenceLine] = id
+		}
+	}
 
 	// Title
 	lines = append(lines, ui.DetailTitle.Render(issue.Title))
@@ -379,6 +399,7 @@ func (d *Detail) renderContent() string {
 			if dep, ok := d.IssueMap[id]; ok {
 				title = dep.Title
 			}
+			recordReference(id)
 			lines = append(lines, ui.DepBlocked.Render(
 				fmt.Sprintf("  %s waiting on %s %s (%s)", ui.SymStalled, ui.DepArrow, id, truncate(title, 30)),
 			))
@@ -395,6 +416,7 @@ func (d *Detail) renderContent() string {
 			if dep, ok := d.IssueMap[id]; ok {
 				title = dep.Title
 			}
+			recordReference(id)
 			lines = append(lines, ui.DepResolved.Render(
 				fmt.Sprintf("  %s resolved %s %s (%s)", ui.SymResolved, ui.DepArrow, id, truncate(title, 30)),
 			))
@@ -406,6 +428,7 @@ func (d *Detail) renderContent() string {
 				title = dep.Title
 			}
 			sym, verb, style := depTypeDisplay(edge.Type)
+			recordReference(edge.DependsOnID)
 			lines = append(lines, style.Render(
 				fmt.Sprintf("  %s %s %s %s (%s)", sym, verb, ui.DepArrow, edge.DependsOnID, truncate(title, 25)),
 			))
@@ -416,6 +439,7 @@ func (d *Detail) renderContent() string {
 			if dep, ok := d.IssueMap[id]; ok {
 				title = dep.Title
 			}
+			recordReference(id)
 			lines = append(lines, ui.DepBlocks.Render(
 				fmt.Sprintf("  %s blocks %s %s (%s)", ui.SymRolling, ui.DepArrow, id, truncate(title, 30)),
 			))
@@ -430,6 +454,7 @@ func (d *Detail) renderContent() string {
 		for _, ref := range crossRigRefs {
 			rigStyle := lipgloss.NewStyle().Foreground(ui.BrightPurple).Bold(true)
 			idStyle := lipgloss.NewStyle().Foreground(ui.Light)
+			recordReference(ref.IssueID)
 			lines = append(lines, fmt.Sprintf("  %s %s %s %s",
 				ui.DepArrow,
 				rigStyle.Render(ref.Rig),
