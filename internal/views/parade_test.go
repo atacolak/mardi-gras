@@ -330,13 +330,11 @@ func TestParadeRelativeDisplayIDClosed(t *testing.T) {
 	}
 }
 
-// After t4 the blocked child's parent is in the same forest, so compacting to
-// ".7" is correct. Full ID at depth 0 was the deleted Waiting/Blocked ghetto.
-// Deferred is still an attention section (t6 later), so a deferred child of the
-// same loaded epic remains a depth-0 root and must keep its full ID — nothing
-// in that section repeats the prefix. relativeDisplayID still takes depth
-// because that out-of-section shape is real until deferred joins the forest.
-func TestParadeRelativeDisplayIDKeepsFullIDForOutOfSectionParent(t *testing.T) {
+// After t6 there is no out-of-section parent for deferred either. Both the
+// blocked and deferred children of a loaded epic sit in the same forest, so
+// compacting to ".7" / ".8" is correct. Full ID at depth 0 was the deleted
+// Waiting/Blocked and Deferred ghettos.
+func TestParadeRelativeDisplayIDCompactsBlockedAndDeferredChildren(t *testing.T) {
 	epic := data.Issue{ID: "mard-nob", Title: "Epic", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeEpic}
 	blocked := data.Issue{
 		ID: "mard-nob.7", Title: "Blocked child", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
@@ -377,11 +375,17 @@ func TestParadeRelativeDisplayIDKeepsFullIDForOutOfSectionParent(t *testing.T) {
 			}
 		case "mard-nob.8":
 			seenDeferred = true
-			if item.Depth != 0 {
-				t.Errorf("deferred child depth = %d, want 0 — Deferred is still an attention section", item.Depth)
+			if item.Depth != 1 {
+				t.Errorf("deferred child depth = %d, want 1 — its epic is in the same forest", item.Depth)
 			}
-			if got := ansi.Strip(item.RenderedID); got != "mard-nob.8" {
-				t.Errorf("deferred rendered ID = %q, want the full %q at depth 0", got, "mard-nob.8")
+			if item.Section != nil {
+				t.Errorf("deferred child still belongs to section %q, want the open forest", item.Section.Title)
+			}
+			if got := ansi.Strip(item.RenderedID); got != ".8" {
+				t.Errorf("deferred rendered ID = %q, want %q", got, ".8")
+			}
+			if item.State != data.StateDeferred {
+				t.Errorf("deferred child state = %v, want StateDeferred", item.State)
 			}
 		}
 	}
@@ -507,6 +511,37 @@ func TestParadeBlockedChildRendersUnderParent(t *testing.T) {
 	}
 }
 
+func TestParadeDeferredChildRendersUnderParent(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "mard-mdr", Title: "Epic", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "mard-mdr.4", Title: "Parked child", Status: data.StatusDeferred, Priority: 0,
+			Dependencies: paradeParentEdge("mard-mdr.4", "mard-mdr")},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+
+	var child ParadeItem
+	for _, item := range p.Items {
+		if item.IsHeader || item.IsFooter {
+			t.Fatalf("open forest must have no section rows, got %+v", item.Section)
+		}
+		if item.Issue != nil && item.Issue.ID == "mard-mdr.4" {
+			child = item
+		}
+	}
+	if child.Issue == nil {
+		t.Fatal("deferred child row missing")
+	}
+	if child.Depth != 1 || child.State != data.StateDeferred {
+		t.Fatalf("deferred child depth/state = %d/%v, want 1/StateDeferred", child.Depth, child.State)
+	}
+	out := ansi.Strip(p.View())
+	for _, header := range []string{"Waiting/Blocked", "Deferred ", "⏸ Deferred"} {
+		if strings.Contains(out, header) {
+			t.Fatalf("section header %q still rendered:\n%s", header, out)
+		}
+	}
+}
+
 func TestParadeTree(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "epic", Status: data.StatusReview, Priority: 1, IssueType: data.TypeEpic},
@@ -521,30 +556,6 @@ func TestParadeTree(t *testing.T) {
 	want := []string{"blocked", "epic", "epic.2", "epic.2.1", "epic.1", "epic.3", "later"}
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("issue order = %v, want %v", got, want)
-	}
-}
-
-func TestParadeAttentionSections(t *testing.T) {
-	issues := []data.Issue{
-		{ID: "ready", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeTask},
-		{ID: "blocked", Status: data.StatusBlocked, Priority: 0, IssueType: data.TypeTask},
-		{ID: "later", Status: data.StatusDeferred, Priority: 0, IssueType: data.TypeTask},
-	}
-	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
-	out := ansi.Strip(p.View())
-	for _, header := range []string{"● Ready", "◐ Working", "○ Operator Attention", "✓ Done"} {
-		if strings.Contains(out, header) {
-			t.Errorf("main-tree header %q should be omitted:\n%s", header, out)
-		}
-	}
-	if got := strings.Count(out, "⏸ Deferred"); got != 1 {
-		t.Errorf("Deferred header count = %d, want 1:\n%s", got, out)
-	}
-
-	readyOnly := NewParade([]data.Issue{{ID: "ready", Status: data.StatusOpen}}, 100, 20, data.DefaultBlockingTypes)
-	readyOut := ansi.Strip(readyOnly.View())
-	if strings.Contains(readyOut, "Waiting/Blocked") || strings.Contains(readyOut, "Deferred") {
-		t.Fatalf("empty attention sections should be omitted:\n%s", readyOut)
 	}
 }
 
@@ -637,11 +648,14 @@ func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
 	if !ok {
 		t.Fatal("Parade must expose IssueAtViewportRow")
 	}
-	if got := atRow.IssueAtViewportRow(0); got != nil {
-		t.Fatalf("header viewport row 0 = %v, want nil", got)
+	// After t6 there is no Deferred header. Both rows are forest issues;
+	// orderForest (priority then ID) puts later before ready. ScrollOffset=1
+	// makes viewport row 0 the second forest issue (ready).
+	if got := atRow.IssueAtViewportRow(0); got == nil || got.ID != "ready" {
+		t.Fatalf("scrolled viewport row 0 = %v, want ready", got)
 	}
-	if got := atRow.IssueAtViewportRow(1); got == nil || got.ID != "later" {
-		t.Fatalf("viewport row 1 = %v, want later after scroll offset", got)
+	if got := atRow.IssueAtViewportRow(1); got != nil {
+		t.Fatalf("viewport row 1 past the forest = %v, want nil", got)
 	}
 	if got := atRow.IssueAtViewportRow(-1); got != nil {
 		t.Fatalf("negative viewport row = %v, want nil", got)

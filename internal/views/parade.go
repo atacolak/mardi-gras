@@ -143,16 +143,6 @@ func (p *Parade) rebuildItems() {
 		}
 	}
 	p.appendForest(main)
-	for _, state := range []data.SemanticState{data.StateDeferred} {
-		issues := p.Groups[state]
-		if len(issues) == 0 {
-			continue
-		}
-		sec := sectionForState(state)
-		p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
-		p.appendForestWithSection(issues, sec, state)
-		p.Items = append(p.Items, ParadeItem{IsFooter: true, Section: sec})
-	}
 }
 
 // RebuildItems refreshes the flattened rows after restoring parade state.
@@ -162,18 +152,10 @@ func (p *Parade) RebuildItems() {
 
 func isMainTreeState(state data.SemanticState) bool {
 	return state == data.StateReady || state == data.StateWorking ||
-		state == data.StateWaitingBlocked || state == data.StateOperatorReview ||
-		state == data.StateDone
+		state == data.StateWaitingBlocked || state == data.StateDeferred ||
+		state == data.StateOperatorReview || state == data.StateDone
 }
 
-func sectionForState(state data.SemanticState) *paradeSection {
-	for _, sec := range sections() {
-		if sec.State == state {
-			return sec
-		}
-	}
-	return &paradeSection{State: state, Title: state.Label(), Symbol: ui.ExecSymbol(int(state)), Style: ui.ExecSectionStyle(int(state)), Color: ui.ExecColor(int(state)), BorderVertical: lipgloss.NewStyle().Foreground(ui.ExecColor(int(state))).Render(ui.BoxVertical)}
-}
 func orderForest(issues []data.Issue) (ordered []*data.Issue, depth map[string]int, hasChildren map[string]bool) {
 	depth = make(map[string]int, len(issues))
 	hasChildren = make(map[string]bool, len(issues))
@@ -244,10 +226,6 @@ func orderForest(issues []data.Issue) (ordered []*data.Issue, depth map[string]i
 
 func (p *Parade) appendForest(issues []data.Issue) {
 	p.appendForestRows(issues, nil, data.StateReady)
-}
-
-func (p *Parade) appendForestWithSection(issues []data.Issue, sec *paradeSection, state data.SemanticState) {
-	p.appendForestRows(issues, sec, state)
 }
 
 func (p *Parade) appendForestRows(issues []data.Issue, sec *paradeSection, fallback data.SemanticState) {
