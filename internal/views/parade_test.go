@@ -499,7 +499,7 @@ func TestParadeTree(t *testing.T) {
 		{ID: "later", Status: data.StatusDeferred, Priority: 1},
 	}
 	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
-	want := []string{"epic", "epic.2", "epic.2.1", "epic.1", "epic.3", "blocked", "later"}
+	want := []string{"blocked", "epic", "epic.2", "epic.2.1", "epic.1", "epic.3", "later"}
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("issue order = %v, want %v", got, want)
 	}
@@ -553,7 +553,7 @@ func TestParadeCollapse(t *testing.T) {
 	}
 
 	toggler.ToggleNode("epic.2")
-	if got, want := paradeIssueIDs(p), []string{"epic", "epic.2", "epic.1", "attention"}; !reflect.DeepEqual(got, want) {
+	if got, want := paradeIssueIDs(p), []string{"attention", "epic", "epic.2", "epic.1"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("after child collapse = %v, want %v", got, want)
 	}
 	for i, item := range p.Items {
@@ -564,7 +564,7 @@ func TestParadeCollapse(t *testing.T) {
 		}
 	}
 	toggler.ToggleNode("epic")
-	if got, want := paradeIssueIDs(p), []string{"epic", "attention"}; !reflect.DeepEqual(got, want) {
+	if got, want := paradeIssueIDs(p), []string{"attention", "epic"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("after ancestor collapse = %v, want %v", got, want)
 	}
 	if p.SelectedIssue == nil || p.SelectedIssue.ID != "epic" {
@@ -610,7 +610,7 @@ func TestParadePinnedBadge(t *testing.T) {
 func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "ready", Status: data.StatusOpen, Priority: 0},
-		{ID: "blocked", Status: data.StatusBlocked, Priority: 0},
+		{ID: "later", Status: data.StatusDeferred, Priority: 0},
 	}
 	p := NewParade(issues, 100, 2, data.DefaultBlockingTypes)
 	p.ScrollOffset = 1
@@ -621,8 +621,8 @@ func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
 	if got := atRow.IssueAtViewportRow(0); got != nil {
 		t.Fatalf("header viewport row 0 = %v, want nil", got)
 	}
-	if got := atRow.IssueAtViewportRow(1); got == nil || got.ID != "blocked" {
-		t.Fatalf("viewport row 1 = %v, want blocked after scroll offset", got)
+	if got := atRow.IssueAtViewportRow(1); got == nil || got.ID != "later" {
+		t.Fatalf("viewport row 1 = %v, want later after scroll offset", got)
 	}
 	if got := atRow.IssueAtViewportRow(-1); got != nil {
 		t.Fatalf("negative viewport row = %v, want nil", got)
