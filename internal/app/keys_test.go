@@ -1225,3 +1225,65 @@ func TestMouseDoesNotLeakThroughHelpOrForms(t *testing.T) {
 		t.Fatalf("form click leaked to parade: %v", m.parade.SelectedIssue)
 	}
 }
+
+func TestDividerDragResizesPanes(t *testing.T) {
+	m := setupMouseModel(t)
+	divider := m.parade.Width
+	if divider != m.width*2/5 {
+		t.Fatalf("precondition: parade width = %d, want the default %d", divider, m.width*2/5)
+	}
+
+	model, _ := m.Update(tea.MouseClickMsg{X: divider, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if !m.draggingDivider {
+		t.Fatal("a left press on the divider column must start a drag")
+	}
+
+	model, _ = m.Update(tea.MouseMotionMsg{X: 62, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.Width != 62 || m.detail.Width != m.width-62 {
+		t.Fatalf("after drag parade/detail = %d/%d, want 62/%d", m.parade.Width, m.detail.Width, m.width-62)
+	}
+
+	model, _ = m.Update(tea.MouseReleaseMsg{X: 62, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.draggingDivider {
+		t.Fatal("release must end the drag")
+	}
+
+	m.rebuildParade()
+	if m.parade.Width != 62 {
+		t.Fatalf("dragged width = %d after rebuild, want it to persist for the session", m.parade.Width)
+	}
+}
+
+func TestDividerDragClampsToPaneFloors(t *testing.T) {
+	m := setupMouseModel(t)
+	m.draggingDivider = true
+
+	model, _ := m.Update(tea.MouseMotionMsg{X: 2, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.Width != minPaneWidth {
+		t.Fatalf("left clamp = %d, want %d", m.parade.Width, minPaneWidth)
+	}
+
+	m.draggingDivider = true
+	model, _ = m.Update(tea.MouseMotionMsg{X: m.width - 1, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.Width != m.width-minPaneWidth {
+		t.Fatalf("right clamp = %d, want %d", m.parade.Width, m.width-minPaneWidth)
+	}
+	if m.detail.Width < minPaneWidth {
+		t.Fatalf("detail pane width = %d, want at least %d", m.detail.Width, minPaneWidth)
+	}
+}
+
+func TestDividerPressDoesNotChangeParadeSelection(t *testing.T) {
+	m := setupMouseModel(t)
+	selected := m.parade.SelectedIssue.ID
+	model, _ := m.Update(tea.MouseClickMsg{X: m.parade.Width, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != selected {
+		t.Fatalf("divider press changed selection to %v, want %s", m.parade.SelectedIssue, selected)
+	}
+}

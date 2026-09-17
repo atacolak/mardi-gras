@@ -55,6 +55,9 @@ const (
 const (
 	headerHeight = 2
 	footerHeight = 2
+	// minPaneWidth is the floor each body pane keeps when the operator drags the
+	// divider, so neither pane can be dragged out of existence (ask 12).
+	minPaneWidth = 30
 )
 
 // Model is the root BubbleTea model.
@@ -239,6 +242,12 @@ type Model struct {
 
 	// Layout preset (cycle with command palette)
 	layoutPreset LayoutPreset
+
+	// paradeWidthOverride is the operator's dragged divider column, session-only
+	// (0 = use the computed default). No config file: this wave persists nothing
+	// to disk, exactly like collapse state.
+	paradeWidthOverride int
+	draggingDivider     bool
 
 	// Bead string shimmer animation
 	beadOffset int
@@ -1206,6 +1215,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleMouse(msg)
 	}
+	if _, ok := msg.(tea.MouseMotionMsg); ok {
+		if m.showHelp || m.filtering {
+			return m, nil
+		}
+		return m.handleMouse(msg)
+	}
+	if _, ok := msg.(tea.MouseReleaseMsg); ok {
+		if m.showHelp || m.filtering {
+			return m, nil
+		}
+		return m.handleMouse(msg)
+	}
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -1214,6 +1235,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.draggingDivider = false
 		m.layout()
 		m.ready = true
 		return m, nil
@@ -2024,6 +2046,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	top, bodyHeight, paradeWidth := m.bodyBounds()
+
+	switch mouse := msg.(type) {
+	case tea.MouseReleaseMsg:
+		m.draggingDivider = false
+		return m, nil
+	case tea.MouseMotionMsg:
+		if !m.draggingDivider {
+			return m, nil
+		}
+		m.paradeWidthOverride = mouse.X
+		m.layout()
+		return m, nil
+	}
+
 	var x, y int
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
@@ -2034,6 +2070,15 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if x < 0 || x >= m.width || y < top || y >= top+bodyHeight {
+		return m, nil
+	}
+
+	// The divider is the detail pane's purple left border, drawn at column
+	// paradeWidth. Grabbing it is not a pane click: it must not move selection
+	// or focus, and it works with any right-hand panel open.
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft &&
+		x == paradeWidth && m.layoutPreset != LayoutWide {
+		m.draggingDivider = true
 		return m, nil
 	}
 
@@ -3536,8 +3581,11 @@ func (m Model) bodyBounds() (top, height, paradeWidth int) {
 		return top, height, m.width
 	}
 	paradeWidth = m.width * 2 / 5
-	if paradeWidth < 30 {
-		paradeWidth = 30
+	if paradeWidth < minPaneWidth {
+		paradeWidth = minPaneWidth
+	}
+	if m.paradeWidthOverride > 0 && m.width >= 2*minPaneWidth {
+		paradeWidth = min(max(m.paradeWidthOverride, minPaneWidth), m.width-minPaneWidth)
 	}
 	return top, height, paradeWidth
 }
