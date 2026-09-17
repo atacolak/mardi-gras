@@ -88,6 +88,8 @@ func allSections() []helpSection {
 				{key: "c", desc: "Toggle closed issues"},
 				{key: "/", desc: "Enter filter mode (fuzzy)"},
 				{key: "f", desc: "Toggle focus mode (my work + top priority)"},
+				{key: "E", desc: "Scope to selected epic subtree"},
+				{key: "esc", desc: "Clear epic scope, then focus mode, then return to parade"},
 				{key: "a", desc: "Launch agent (tmux: split pane)"},
 				{key: "A", desc: "Kill active agent on issue"},
 				{key: "M", desc: "Toggle codex (MCP) live transcript"},

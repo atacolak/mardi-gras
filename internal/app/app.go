@@ -4026,6 +4026,7 @@ func (m Model) View() tea.View {
 	default:
 		footer := components.NewFooter(m.width, m.activPane == PaneDetail, m.orchestratorAvailable(), m.actorsAvail)
 		footer.Focus = m.focusMode
+		footer.ScopeRootID = m.scopeRootID
 		footer.SourcePath = m.watchPath
 		footer.LastRefresh = m.lastFileMod
 		footer.PathExplicit = m.pathExplicit

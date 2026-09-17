@@ -29,6 +29,11 @@ type Footer struct {
 	BeadsContext *data.BeadsContext
 	SourceHealth *data.SourceHealth
 	Focus        bool // focus mode active — show a persistent badge (audit #12)
+	// ScopeRootID is the epic the parade is scoped to. It renders as a
+	// persistent chip so an emptied parade is explicable (the scope pass runs
+	// after every narrowing pass, so the root can be filtered out from under an
+	// active scope).
+	ScopeRootID string
 }
 
 // FooterModeChip renders a small gold mode indicator for bottom-bar overlays.
@@ -110,10 +115,18 @@ func (f Footer) View() string {
 		}
 	}
 
-	// Persistent focus-mode badge: without it the only signal is a transient
-	// toast (audit #12).
+	// Persistent mode badges: without them the only signal is a transient toast
+	// (audit #12). Scope leads — it is the narrower state, and the chip is the
+	// only thing that explains a parade its own filter passes emptied out.
+	var badges []string
+	if f.ScopeRootID != "" {
+		badges = append(badges, ui.FooterKey.Render(ui.FleurDeLis+" SCOPE "+f.ScopeRootID))
+	}
 	if f.Focus {
-		badge := ui.FooterKey.Render(ui.FleurDeLis + " FOCUS")
+		badges = append(badges, ui.FooterKey.Render(ui.FleurDeLis+" FOCUS"))
+	}
+	if len(badges) > 0 {
+		badge := strings.Join(badges, ui.FooterSource.Render(" · "))
 		if sourceInfo != "" {
 			sourceInfo = badge + ui.FooterSource.Render(" · ") + sourceInfo
 		} else {

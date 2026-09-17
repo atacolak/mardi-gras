@@ -29,9 +29,11 @@ Every issue is on the route somewhere:
 ✓  Past the Stand   closed, folded away until you press c
 ```
 
-The route is honest. A stalled row names what it's waiting on. Children nest under their parents. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
+The route is honest. A stalled row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
 
 Blocked is computed from dependency edges, not from a status field somebody forgot to update. `blocks` and `conditional-blocks` count by default; widen that with `--block-types` if your project uses others.
+
+`E` scopes the parade to the selected issue's epic subtree — the epic and everything beneath it — and `esc` clears it (scope first, then focus mode, then back to the parade). Scoping is live: it stacks on top of whatever filter and focus mode you already have instead of resetting them, and the footer holds a `⚜ SCOPE <epic-id>` chip for as long as it is on. So a scope pointed at an epic your current filter has since dropped out reads as deliberately empty rather than broken.
 
 ## Why this exists
 
@@ -83,6 +85,7 @@ mg
 | `o` | Actor society pane: who is live, what they own, what they're doing (needs the `actor` CLI) |
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
 | `f` | Focus mode: your work and the top priorities, nothing else |
+| `E` | Epic scope: the selected issue's whole epic subtree, cleared by `esc` |
 | `c` | Fold or unfold Past the Stand |
 | `:` or `ctrl+k` | Command palette, with everything mg can do |
 | `?` | Help overlay, paged by section |

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 )
 
@@ -310,5 +311,44 @@ func TestFooterViewJSONLIgnoresSourceLabel(t *testing.T) {
 	}
 	if !strings.Contains(output, "(legacy)") {
 		t.Fatalf("JSONL footer should keep the (legacy) mode, got: %s", output)
+	}
+}
+
+// The scope chip is the only affordance that explains an empty parade. The
+// scope pass runs after the fuzzy/exclude/focus passes, so narrowing the scope
+// root out of the loaded set leaves data.ScopeToSubtree returning nil, the
+// parade goes blank, and every header count reads zero — with nothing on
+// screen saying why. The chip has to be lit whenever a scope is active.
+func TestFooterRendersEpicScopeChip(t *testing.T) {
+	f := NewFooter(120, false, false, false)
+	f.ScopeRootID = "mard-r43"
+	if !strings.Contains(ansi.Strip(f.View()), "SCOPE mard-r43") {
+		t.Fatal("missing scope chip")
+	}
+}
+
+func TestFooterOmitsEmptyEpicScopeChip(t *testing.T) {
+	f := NewFooter(120, false, false, false)
+	if strings.Contains(ansi.Strip(f.View()), "SCOPE") {
+		t.Fatal("footer shows a scope chip with no scope active")
+	}
+}
+
+// An empty parade is the *common* shape of an active scope, not an edge case:
+// scope an epic whose tree a narrowing pass already dropped and every row is
+// gone. The chip must come from the scope field alone — never gated on there
+// being rows, groups, or bindings left to show. This footer carries the source
+// bar the app always sets and nothing else.
+func TestFooterShowsScopeChipWithEmptyParade(t *testing.T) {
+	f := Footer{
+		Width:       120,
+		Bindings:    nil,
+		SourceMode:  data.SourceCLI,
+		SourcePath:  "/home/sf/workspace/mardi-gras/.beads/issues.jsonl",
+		LastRefresh: time.Now(),
+		ScopeRootID: "mard-r43",
+	}
+	if !strings.Contains(ansi.Strip(f.View()), "SCOPE mard-r43") {
+		t.Fatal("scope chip must render even when the parade has no rows")
 	}
 }

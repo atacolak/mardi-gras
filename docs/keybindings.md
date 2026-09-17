@@ -11,11 +11,12 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `q`          | Quit application           |
 | `ctrl+c`     | Quit from anywhere, including forms, dialogs and input bars |
 | `tab`        | Switch active pane         |
-| `esc`        | Exit focus mode if on, otherwise return to the parade pane |
+| `esc`        | Clear the epic scope if one is active, else exit focus mode if on, else return to the parade pane |
 | `?`          | Toggle help overlay        |
 | `: / Ctrl+K` | Open command palette      |
 | `/`          | Enter filter mode          |
 | `f`          | Toggle focus mode (my work + top priority) |
+| `E`          | Scope the parade to the selected issue's epic subtree |
 | `c`          | Toggle closed issues       |
 | `ctrl+g`     | Toggle Gas Town panel **(orch)** |
 | `o`          | Toggle the actor society pane **(actor CLI)** |
@@ -35,10 +36,25 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `c`          | Toggle closed issues                      |
 | `/`          | Enter filter mode                         |
 | `f`          | Toggle focus mode (my work + top priority)|
+| `E`          | Scope the parade to the selected issue's epic subtree |
 | `a`          | Launch agent (tmux: new pane; orchestrator: sling) |
 | `A`          | Stop the active agent on the issue         |
 
 `a` picks its dispatch path from the environment: with an orchestrator it slings, on the Gas City backend it first prompts for a target agent, in tmux without an orchestrator it opens an agent pane, and outside tmux it suspends the TUI. Pressing `a` on an issue that already has a tmux agent switches to that pane instead of launching a second one. `A` asks the orchestrator to unsling when one is present and only falls back to killing the tmux pane when there is none.
+
+### Epic scope (`E`)
+
+`E` scopes the parade to the epic above the cursor — the epic itself plus every descendant, walked through real `parent-child` edges rather than dotted IDs. The epic is the selected issue if it is one, otherwise its nearest epic ancestor. An issue with no epic above it has nothing to scope to, and `E` leaves the view untouched.
+
+Scoping narrows rather than resets, so it composes with everything else: a fuzzy query, `--exclude-type` / `--exclude-label` and focus mode all still apply inside the scope, and the scope pass runs last, after all of them. `c` goes on folding the scoped Done rows as usual.
+
+`esc` unwinds one layer at a time, and the scope always goes first:
+
+1. The first press clears the epic scope — focus mode and the detail pane both survive it.
+2. The next press drops focus mode.
+3. The next press leaves the detail pane for the parade.
+
+Because the scope is the last pass, you can scope to an epic that an earlier pass already removed: `E` on a child while `--exclude-type epic` is hiding the epic, or under a focus mode that never picked the epic, or with a filter query that matches the child but not the epic's own title. The scope root is then not in the loaded set, so there is no subtree left to show and the parade renders empty with the header's counts at zero. That is the honest answer rather than a bug — and rather than silently widening back to the whole board — so mg keeps a `⚜ SCOPE <epic-id>` chip lit in the footer for as long as the scope is active, including when it has no rows to show. The empty parade plus the chip is the operator's cue to press `esc`.
 
 ## Quick Actions
 
