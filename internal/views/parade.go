@@ -24,6 +24,7 @@ type paradeSection struct {
 	Style          lipgloss.Style
 	Color          color.Color
 	State          data.SemanticState
+	Count          int
 	BorderVertical string
 }
 
@@ -132,17 +133,30 @@ func NewParadeWithData(
 	return p
 }
 
-// rebuildItems flattens groups into the renderable item list.
+// rebuildItems flattens the loaded issues into rows: one forest of open work,
+// then a Closed section holding closed epics with their children. There is no
+// Waiting/Blocked or Deferred section — a parented row of any state renders
+// under its parent.
 func (p *Parade) rebuildItems() {
 	p.Items = nil
-	var main []data.Issue
+	var open []data.Issue
+	var closedEpics []data.Issue
 	for _, issue := range p.AllIssues {
 		state, ok := data.DeriveState(&issue, p.issueMap, p.blockingTypes)
-		if ok && isMainTreeState(state) {
-			main = append(main, issue)
+		if !ok {
+			continue
+		}
+		switch {
+		case isClosedEpic(&issue):
+			closedEpics = append(closedEpics, issue)
+		case p.hasClosedEpicAncestor(issue.ID):
+			// Rendered inside the Closed section, under its epic.
+		case isMainTreeState(state):
+			open = append(open, issue)
 		}
 	}
-	p.appendForest(main)
+	p.appendForest(open)
+	p.appendClosedSection(closedEpics)
 }
 
 // RebuildItems refreshes the flattened rows after restoring parade state.
@@ -154,6 +168,86 @@ func isMainTreeState(state data.SemanticState) bool {
 	return state == data.StateReady || state == data.StateWorking ||
 		state == data.StateWaitingBlocked || state == data.StateDeferred ||
 		state == data.StateOperatorReview || state == data.StateDone
+}
+
+func isClosedEpic(iss *data.Issue) bool {
+	return iss != nil && iss.Status == data.StatusClosed && iss.IssueType == data.TypeEpic
+}
+
+// hasClosedEpicAncestor walks loaded parent edges. A row under a closed epic
+// belongs to that epic's family in the Closed section, not to the open forest.
+func (p *Parade) hasClosedEpicAncestor(issueID string) bool {
+	seen := map[string]bool{issueID: true}
+	for current := p.issueMap[issueID]; current != nil; {
+		parentID := current.ParentRelationshipID()
+		if parentID == "" || seen[parentID] {
+			return false
+		}
+		parent := p.issueMap[parentID]
+		if parent == nil {
+			return false
+		}
+		if isClosedEpic(parent) {
+			return true
+		}
+		seen[parentID] = true
+		current = parent
+	}
+	return false
+}
+
+// closedSection is the only section this wave renders. It is not a semantic
+// state bucket, so it carries its own count instead of reading p.Groups.
+func closedSection(count int) *paradeSection {
+	c := ui.ExecColor(int(data.StateDone))
+	return &paradeSection{
+		Title:          "Closed",
+		Symbol:         ui.ExecSymbol(int(data.StateDone)),
+		Style:          ui.ExecSectionStyle(int(data.StateDone)),
+		Color:          c,
+		State:          data.StateDone,
+		Count:          count,
+		BorderVertical: lipgloss.NewStyle().Foreground(c).Render(ui.BoxVertical),
+	}
+}
+
+func (p *Parade) appendClosedSection(epics []data.Issue) {
+	if len(epics) == 0 {
+		return
+	}
+	sort.Slice(epics, func(i, j int) bool {
+		if epics[i].Priority != epics[j].Priority {
+			return epics[i].Priority < epics[j].Priority
+		}
+		return epics[i].ID < epics[j].ID
+	})
+	sec := closedSection(len(epics))
+	p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
+	for _, epic := range epics {
+		family := append([]data.Issue{epic}, issueValues(data.Descendants(epic.ID, p.issueMap))...)
+		p.appendForestRows(family, sec, data.StateDone)
+	}
+	p.Items = append(p.Items, ParadeItem{IsFooter: true, Section: sec})
+}
+
+func issueValues(ptrs []*data.Issue) []data.Issue {
+	out := make([]data.Issue, 0, len(ptrs))
+	for _, ptr := range ptrs {
+		if ptr != nil {
+			out = append(out, *ptr)
+		}
+	}
+	return out
+}
+
+// isCollapsed is the single reader of collapse state. An explicit entry wins, so
+// the operator can expand anything; an absent entry means the default, and the
+// default is collapsed for a closed epic (ask 8) and expanded everywhere else.
+func (p *Parade) isCollapsed(issueID string) bool {
+	if v, ok := p.Collapsed[issueID]; ok {
+		return v
+	}
+	return isClosedEpic(p.issueMap[issueID])
 }
 
 func orderForest(issues []data.Issue) (ordered []*data.Issue, depth map[string]int, hasChildren map[string]bool) {
@@ -262,7 +356,7 @@ func (p *Parade) hasCollapsedAncestor(issueID string) bool {
 		if parentID == "" || seen[parentID] {
 			return false
 		}
-		if p.Collapsed[parentID] {
+		if p.isCollapsed(parentID) {
 			return true
 		}
 		seen[parentID] = true
@@ -324,7 +418,7 @@ func (p *Parade) ToggleNode(issueID string) {
 	if p.Collapsed == nil {
 		p.Collapsed = make(map[string]bool)
 	}
-	p.Collapsed[issueID] = !p.Collapsed[issueID]
+	p.Collapsed[issueID] = !p.isCollapsed(issueID)
 	p.rebuildItems()
 	p.restoreSelection(selectedID)
 }
@@ -495,7 +589,7 @@ func (p *Parade) View() string {
 
 // renderBorderTop builds a top border line for an attention section.
 func (p *Parade) renderBorderTop(sec *paradeSection) string {
-	count := len(p.Groups[sec.State])
+	count := sec.Count
 	borderStyle := lipgloss.NewStyle().Foreground(sec.Color)
 	titleText := fmt.Sprintf("%s %s%s", sec.Symbol, sec.Title, ui.Superscript(count))
 	coloredTitle := sec.Style.Render(titleText)
@@ -633,10 +727,10 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		}
 	}
 
-	// Hierarchical indent is computed per section by data.OrderHierarchically,
-	// which places each child directly beneath its parent. It is deliberately
-	// section-relative: a child whose parent sits in another section renders at
-	// depth 0 rather than appearing to belong to whatever row precedes it.
+	// Hierarchical indent comes from the forest walk: the open-work forest
+	// plus each Closed-section family. A child sits under its parent; a root
+	// — a closed epic in Closed, or a loose closed task still in the forest —
+	// stays at depth 0 rather than inheriting a neighbor's indent.
 	depth := item.Depth
 	indent := strings.Repeat("  ", depth)
 	indentWidth := depth * 2

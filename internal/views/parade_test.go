@@ -291,10 +291,9 @@ func TestParadeRelativeDisplayID(t *testing.T) {
 	}
 }
 
-// The main tree builds these rows through the same append, so a nested closed
-// row compacts under its epic as well. The observable is the rendered row: the
-// closed path re-renders the label in the muted style, and that re-render must
-// not quietly discard the compaction.
+// After t8 a closed epic lands collapsed in the Closed section, so the child
+// is hidden on arrival. Expand first, then assert compaction: the muted
+// re-render of the nested closed row must still print ".7", not the full ID.
 func TestParadeRelativeDisplayIDClosed(t *testing.T) {
 	epic := data.Issue{ID: "mard-nob", Title: "Epic", Status: data.StatusClosed, Priority: data.PriorityMedium, IssueType: data.TypeEpic}
 	nested := data.Issue{
@@ -302,6 +301,7 @@ func TestParadeRelativeDisplayIDClosed(t *testing.T) {
 		Dependencies: []data.Dependency{{IssueID: "mard-nob.7", DependsOnID: "mard-nob", Type: "parent-child"}},
 	}
 	p := NewParade([]data.Issue{epic, nested}, 100, 30, data.DefaultBlockingTypes)
+	p.ToggleNode("mard-nob")
 
 	out := ansi.Strip(p.View())
 	if strings.Contains(out, "mard-nob.7") {
@@ -599,6 +599,44 @@ func TestParadeCollapse(t *testing.T) {
 	}
 	if p.SelectedIssue == nil || p.SelectedIssue.ID != "epic" {
 		t.Fatalf("selection fallback = %v, want collapsed ancestor epic", p.SelectedIssue)
+	}
+}
+
+func TestParadeClosedEpicSection(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "open", Title: "Open epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "open.1", Title: "Done child of open epic", Status: data.StatusClosed, Priority: 0,
+			Dependencies: paradeParentEdge("open.1", "open")},
+		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "shut.1", Title: "Child of closed epic", Status: data.StatusClosed, Priority: 0,
+			Dependencies: paradeParentEdge("shut.1", "shut")},
+		{ID: "loose", Title: "Closed loose task", Status: data.StatusClosed, Priority: 2, IssueType: data.TypeTask},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+
+	want := []string{"open", "open.1", "loose", "shut"}
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
+		t.Fatalf("default rows = %v, want %v (closed epic collapsed in its section; done child of an open epic stays in the forest)", got, want)
+	}
+	out := ansi.Strip(p.View())
+	if !strings.Contains(out, "Closed"+ui.Superscript(1)) {
+		t.Fatalf("expected a Closed section header counting one closed epic:\n%s", out)
+	}
+	if strings.Contains(out, "Child of closed epic") {
+		t.Fatalf("closed epic must default to collapsed:\n%s", out)
+	}
+
+	p.ToggleNode("shut")
+	want = []string{"open", "open.1", "loose", "shut", "shut.1"}
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
+		t.Fatalf("after expanding the closed epic = %v, want %v", got, want)
+	}
+
+	bare := NewParade([]data.Issue{{ID: "solo", Title: "Solo", Status: data.StatusOpen}}, 100, 20, data.DefaultBlockingTypes)
+	for _, item := range bare.Items {
+		if item.IsHeader || item.IsFooter {
+			t.Fatalf("no closed epic on the board must mean no section rows, got %+v", item.Section)
+		}
 	}
 }
 
