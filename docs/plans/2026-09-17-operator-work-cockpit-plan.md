@@ -775,7 +775,7 @@ git commit -m "feat: focus and navigate cockpit panes with the mouse"
 
 **Verification (anti-gameable):** a built `/tmp/mg-nfy` over a stored-review fixture prints the exact confirmed six-glyph count order; a real PTY smoke launches the TUI, sends `>` and mouse SGR input, and observes selection/focus/collapse on the actual surface. Stale product-language searches are empty outside historical `docs/plans/2026-09-16-*` files.
 
-- [ ] **Step 1: Add failing process-level status acceptance**
+- [x] **Step 1: Add failing process-level status acceptance**
 
 Create or update a fixture with one `status:"review"` epic and mixed descendants. Add:
 
@@ -789,7 +789,7 @@ func TestStatusModeOperatorReviewStoredState(t *testing.T) {
 
 Keep a separate legacy fixture test only if the operator approved the temporary compatibility window. Name it `LegacyCompatibility` so it cannot be mistaken for primary storage.
 
-- [ ] **Step 2: Run process tests to verify they fail**
+- [x] **Step 2: Run process tests to verify they fail**
 
 Run:
 
@@ -799,7 +799,7 @@ go test ./cmd/mg ./internal/tmux -run 'TestStatusModeOperatorReviewStoredState|T
 
 Expected: missing fixture or stale ordered counts.
 
-- [ ] **Step 3: Write docs to the shipped behavior**
+- [x] **Step 3: Write docs to the shipped behavior**
 
 README state list uses the exact confirmed glyphs and `Operator Review`. Replace Done-section / `c` language with tree-first and `>` per-branch collapse. Document:
 
@@ -815,7 +815,7 @@ Document the explicit lead transition and ready-front rule exactly as approved, 
 
 Architecture updates `SemanticState` to `OperatorReview`, describes one tree + two attention sections, and removes newest-first/global Done fold claims.
 
-- [ ] **Step 4: Run targeted process and docs checks**
+- [x] **Step 4: Run targeted process and docs checks**
 
 Run:
 
@@ -828,7 +828,7 @@ rg -n 'Awaiting Review|StateAwaitingReview|ExecAwaitingReview|♪|Toggle closed|
 
 Expected: tests/build PASS; status line contains the exact approved ordered pairs; stale search empty. Historical `docs/plans/2026-09-16-*` is intentionally excluded.
 
-- [ ] **Step 5: Smoke the actual TUI in a PTY**
+- [x] **Step 5: Smoke the actual TUI in a PTY**
 
 Launch the built binary through a PTY against `testdata/operator-review-tree.jsonl` at a fixed size. Exercise:
 
@@ -840,7 +840,7 @@ Launch the built binary through a PTY against `testdata/operator-review-tree.jso
 
 Expected: observable screen captures satisfy all five. Do not replace this with a unit-test-only claim.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md docs/keybindings.md docs/ARCHITECTURE.md internal/components/help.go internal/components/help_test.go testdata cmd/mg/main_test.go internal/tmux/status_test.go
