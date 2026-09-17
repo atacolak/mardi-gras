@@ -19,18 +19,16 @@ func TestLoadSampleIssues(t *testing.T) {
 	if len(issues) != 21 {
 		t.Fatalf("expected 21 issues, got %d", len(issues))
 	}
-
-	// Verify sorting: active issues come first
-	for i, issue := range issues {
-		if issue.Status == StatusClosed {
-			// All remaining should be closed
-			for j := i; j < len(issues); j++ {
-				if issues[j].Status != StatusClosed {
-					t.Errorf("issue %d (%s) is active but comes after closed issue %d", j, issues[j].ID, i)
-				}
-			}
-			break
-		}
+	// Verify sorting: priority ascending, then ID ascending.
+	wantIDs := []string{
+		"mg-001", "mg-009",
+		"mg-002", "mg-007", "mg-010", "mg-012", "mg-016",
+		"mg-003", "mg-006", "mg-007.1", "mg-007.2", "mg-008", "mg-011", "mg-014", "mg-015", "mg-018",
+		"mg-004", "mg-007.2.1", "mg-013", "mg-017",
+		"mg-005",
+	}
+	if got := issueIDs(issues); !reflect.DeepEqual(got, wantIDs) {
+		t.Fatalf("sorted IDs = %v, want %v", got, wantIDs)
 	}
 }
 
