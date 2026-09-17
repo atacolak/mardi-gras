@@ -2,18 +2,20 @@
 
 ## The Parade
 
-Every Beads issue maps to a spot on the parade route:
+Every Beads issue appears in a tree-first work cockpit with one of six glyphs:
 
-| On the Route         | What It Means                         |
-| -------------------- | ------------------------------------- |
-| **Rolling** ●        | In progress — the float is moving     |
-| **Lined Up** ♪       | Open and unblocked — waiting its turn |
-| **Stalled** ⊘        | Blocked by a dependency               |
-| **Past the Stand** ✓ | Done — beads have been thrown         |
+| Glyph | State | What It Means |
+| ----- | ----- | ------------- |
+| ○ | **Ready** | Open, unblocked, and not deferred |
+| ● | **Working** | In progress, with live work under it |
+| ⊘ | **Waiting/Blocked** | Waiting on something that is not done yet |
+| ⏸ | **Deferred** | Parked until its defer date passes |
+| ◐ | **Operator Review** | Work is finished; operator acceptance is pending |
+| ✓ | **Done** | Closed and nested under its parent |
 
-Closed issues are collapsed by default (because in any real project, 90%+ of your issues are closed). Press `c` to expand them.
+Ready, Working, Operator Review, and Done stay together under their parent. Waiting/Blocked and Deferred are attention sections shown when needed. Children nest beneath their parents, and `>` collapses or expands the selected branch.
 
-Stalled issues show a "next blocker" hint so you can see at a glance what's holding things up. Issues with dead agent sessions show a ☠ zombie indicator. Issues on dead rigs show a 💀 orphan indicator. The detail panel breaks dependencies into four categories: waiting on (active blockers), missing (dangling references), resolved (closed blockers), and related (non-blocking dependency types).
+Waiting/Blocked issues show a "next blocker" hint so you can see at a glance what's holding things up. Issues with dead agent sessions show a ☠ zombie indicator. Issues on dead rigs show a 💀 orphan indicator. The detail panel breaks dependencies into four categories: waiting on (active blockers), missing (dangling references), resolved (closed blockers), and related (non-blocking dependency types).
 
 ## Detail Panel
 
