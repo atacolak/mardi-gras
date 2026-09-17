@@ -338,7 +338,10 @@ func TestFooterOmitsEmptyEpicScopeChip(t *testing.T) {
 // scope an epic whose tree a narrowing pass already dropped and every row is
 // gone. The chip must come from the scope field alone — never gated on there
 // being rows, groups, or bindings left to show. This footer carries the source
-// bar the app always sets and nothing else.
+// bar the app always sets and nothing else. Note the limit of the claim: it is
+// ungated *within the footer*, and the footer is only one of several bottom
+// bars — app.go swaps in the bulk bar, an input bar, or the filter bar, and no
+// chip is drawn while one of those is up.
 func TestFooterShowsScopeChipWithEmptyParade(t *testing.T) {
 	f := Footer{
 		Width:       120,

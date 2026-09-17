@@ -33,7 +33,7 @@ The route is honest. A stalled row names what it's waiting on. Children nest und
 
 Blocked is computed from dependency edges, not from a status field somebody forgot to update. `blocks` and `conditional-blocks` count by default; widen that with `--block-types` if your project uses others.
 
-`E` scopes the parade to the selected issue's epic subtree — the epic and everything beneath it — and `esc` clears it (scope first, then focus mode, then back to the parade). Scoping is live: it stacks on top of whatever filter and focus mode you already have instead of resetting them, and the footer holds a `⚜ SCOPE <epic-id>` chip for as long as it is on. So a scope pointed at an epic your current filter has since dropped out reads as deliberately empty rather than broken.
+`E` scopes the parade to the selected issue's epic subtree — the epic and everything beneath it — and `esc` clears it (scope first, then focus mode, then back to the parade). Scoping is live: it stacks on top of whatever filter and focus mode you already have instead of resetting them. While the footer is the bar on screen it holds a `⚜ SCOPE <epic-id>` chip for as long as the scope is on, including when the scope has no rows left to show. So a scope pointed at an epic your other filters have since dropped out reads as deliberately empty rather than broken — as long as you can see the chip. A filter query, a bulk-selection prompt, or an open input bar takes over the bottom row and the chip goes with it; in the filter case the `N/M match` count is the cue instead.
 
 ## Why this exists
 

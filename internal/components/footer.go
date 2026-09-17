@@ -118,6 +118,10 @@ func (f Footer) View() string {
 	// Persistent mode badges: without them the only signal is a transient toast
 	// (audit #12). Scope leads — it is the narrower state, and the chip is the
 	// only thing that explains a parade its own filter passes emptied out.
+	// The chip is ungated here — it follows ScopeRootID alone, with no row,
+	// group, or binding count in the way — but this footer is only one of
+	// several bottom bars: app.go swaps in the bulk bar, an input bar, or the
+	// filter bar instead, and none of those carry the chip.
 	var badges []string
 	if f.ScopeRootID != "" {
 		badges = append(badges, ui.FooterKey.Render(ui.FleurDeLis+" SCOPE "+f.ScopeRootID))
