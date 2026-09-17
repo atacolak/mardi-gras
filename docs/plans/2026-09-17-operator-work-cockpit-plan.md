@@ -663,7 +663,7 @@ git commit -m "feat: expose existing detail bead references for navigation"
 
 **Verification (anti-gameable):** real Bubble Tea v2 `tea.MouseClickMsg` / `tea.MouseWheelMsg` values at nonzero scroll offsets select the expected full ID (click) or scroll the pane under the pointer (wheel) WITHOUT changing `activPane` / `detail.Focused`. The app's returned `tea.View` requests `MouseModeCellMotion`. Overlay/modal cases prove no underlying selection moves.
 
-- [ ] **Step 1: Write failing View and click tests**
+- [x] **Step 1: Write failing View and click tests**
 
 Add:
 
@@ -695,7 +695,7 @@ func TestMouseDoesNotLeakThroughHelpOrForms(t *testing.T)
 
 The right-reference fixture must use Task 5's real DEPENDENCIES row. Assert selected issue IDs and viewport offsets, not helper calls.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -705,7 +705,7 @@ go test ./internal/app -run 'Test(ViewEnablesMouse|MouseClick|MouseWheel|MouseIg
 
 Expected: View mouse mode is None; mouse messages do not change selection/focus/scroll.
 
-- [ ] **Step 3: Enable mouse and centralize body geometry**
+- [x] **Step 3: Enable mouse and centralize body geometry**
 
 Update `altView`:
 
@@ -729,7 +729,7 @@ func (m Model) bodyBounds() (top, height, paradeWidth int)
 
 Wide layout returns parade width `m.width` and no detail hit region.
 
-- [ ] **Step 4: Route click and wheel messages**
+- [x] **Step 4: Route click and wheel messages**
 
 In `Update`, after modal/form/input ownership checks and before focused-detail forwarding, handle `tea.MouseClickMsg` and `tea.MouseWheelMsg`.
 
@@ -740,7 +740,7 @@ In `Update`, after modal/form/input ownership checks and before focused-detail f
 
 Do not clear filters, scope, focus mode, or collapse state. Do not intercept mouse while help, palette, create/edit forms, prompts, dialogs, or right-panel overlays own the surface.
 
-- [ ] **Step 5: Run targeted tests and screen-height regression**
+- [x] **Step 5: Run targeted tests and screen-height regression**
 
 Run:
 
@@ -750,7 +750,7 @@ go test ./internal/app -run 'Test(ViewEnablesMouse|MouseClick|MouseWheel|MouseIg
 
 Expected: PASS; screen remains exactly the requested terminal height.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/app/app.go internal/app/keys_test.go internal/app/view_height_test.go
