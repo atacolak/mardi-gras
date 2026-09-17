@@ -48,7 +48,7 @@ func TestSemanticStatusHardExample(t *testing.T) {
 	d.SetIssue(&issues[0])
 
 	row := statusRow(d.renderContent())
-	if strings.Contains(row, "(") || !strings.Contains(row, "◐ Operator Review") {
+	if strings.Contains(row, "(") || !strings.Contains(row, "○ Operator Attention") {
 		t.Fatalf("status row = %q", row)
 	}
 }

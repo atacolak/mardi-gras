@@ -483,7 +483,7 @@ func TestParadeAttentionSections(t *testing.T) {
 	}
 	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
 	out := ansi.Strip(p.View())
-	for _, header := range []string{"○ Ready", "● Working", "◐ Operator Review", "✓ Done"} {
+	for _, header := range []string{"● Ready", "◐ Working", "○ Operator Attention", "✓ Done"} {
 		if strings.Contains(out, header) {
 			t.Errorf("main-tree header %q should be omitted:\n%s", header, out)
 		}

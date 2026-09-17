@@ -38,7 +38,7 @@ func blockedIssue(id string, status data.Status) data.Issue {
 // each checked against.
 //
 // The epic is the legacy compatibility case: in_progress with its only child
-// closed remains Operator Review until the row is stored as review. The
+// closed remains Operator Attention until the row is stored as review. The
 // deferred issue is open with a future defer_until, which is the only way an
 // open issue is not Ready.
 func semanticParadeIssues() []data.Issue {
@@ -54,7 +54,7 @@ func semanticParadeIssues() []data.Issue {
 
 	return []data.Issue{
 		testIssue("work-1", data.StatusInProgress), // Working
-		epic,                                    // Operator Review
+		epic,                                    // Operator Attention
 		child,                                   // Done
 		testIssue("ready-1", data.StatusOpen),   // Ready
 		deferred,                                // Deferred

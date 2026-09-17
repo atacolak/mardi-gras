@@ -49,7 +49,7 @@ func TestStatusLineFormat(t *testing.T) {
 	}
 
 	// The six counts, in StateOrder. Four buckets cannot produce this line.
-	if plain := stripMarkup(got); !strings.Contains(plain, "12○ 3● 3⊘ 0⏸ 0◐ 3✓") {
+	if plain := stripMarkup(got); !strings.Contains(plain, "12● 3◐ 3⊘ 0⏸ 0○ 3✓") {
 		t.Errorf("expected six ordered counts, got: %q", plain)
 	}
 	if !strings.Contains(got, ui.FleurDeLis) {
@@ -59,7 +59,7 @@ func TestStatusLineFormat(t *testing.T) {
 
 // TestStatusLineOperatorReview pins the stored-review fixture to the tmux
 // surface without spawning a process. The mixed tree proves the review epic
-// is counted as Operator Review, never Working, while descendants retain
+// is counted as Operator Attention, never Working, while descendants retain
 // their own semantic states.
 func TestStatusLineOperatorReview(t *testing.T) {
 	issues, _, err := data.LoadIssues("../../testdata/operator-review-tree.jsonl")
@@ -79,7 +79,7 @@ func TestStatusLineOperatorReview(t *testing.T) {
 	}
 
 	// Six ordered pairs, nothing else on the line.
-	want := ui.FleurDeLis + " " + strings.Join([]string{"2○", "0●", "1⊘", "1⏸", "1◐", "1✓"}, " ")
+	want := ui.FleurDeLis + " " + strings.Join([]string{"2●", "0◐", "1⊘", "1⏸", "1○", "1✓"}, " ")
 	if plain := stripMarkup(StatusLine(groups)); plain != want {
 		t.Errorf("status line = %q, want %q", plain, want)
 	}
@@ -93,6 +93,6 @@ func TestStatusLineEmptyGroups(t *testing.T) {
 
 	got := StatusLine(groups)
 
-	if plain := stripMarkup(got); !strings.Contains(plain, "0○ 0● 0⊘ 0⏸ 0◐ 0✓") {
+	if plain := stripMarkup(got); !strings.Contains(plain, "0● 0◐ 0⊘ 0⏸ 0○ 0✓") {
 	}
 }

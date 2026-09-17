@@ -30,7 +30,7 @@ func TestDeriveStateLegacyConvergedEpicCompatibility(t *testing.T) {
 		t.Fatal("hard-example epic rendered Working")
 	}
 	if got != SemanticState(4) {
-		t.Fatalf("got %v, want Operator Review", got)
+		t.Fatalf("got %v, want Operator Attention", got)
 	}
 }
 
@@ -46,7 +46,7 @@ func TestStateOrderAndLabel(t *testing.T) {
 		{StateWorking, "Working"},
 		{StateWaitingBlocked, "Waiting/Blocked"},
 		{StateDeferred, "Deferred"},
-		{SemanticState(4), "Operator Review"},
+		{SemanticState(4), "Operator Attention"},
 		{StateDone, "Done"},
 	}
 
@@ -69,12 +69,23 @@ func TestStateOrderAndLabel(t *testing.T) {
 		t.Errorf("Label(99) = %q, want empty", got)
 	}
 }
+func TestSemanticStateLabelOperatorAttention(t *testing.T) {
+	if got, want := StateOperatorReview.Label(), "Operator Attention"; got != want {
+		t.Fatalf("StateOperatorReview.Label() = %q, want %q", got, want)
+	}
+	retired := "Operator" + " Review"
+	for _, s := range StateOrder() {
+		if s.Label() == retired {
+			t.Fatalf("state %d still uses the retired display name", int(s))
+		}
+	}
+}
 
 func TestDeriveStateOperatorReviewIsStored(t *testing.T) {
 	issue := &Issue{ID: "review", Status: Status("review"), IssueType: TypeTask}
 	state, ok := DeriveState(issue, map[string]*Issue{issue.ID: issue}, DefaultBlockingTypes)
 	if !ok || state != SemanticState(4) {
-		t.Fatalf("DeriveState(review) = (%v, %v), want (Operator Review, true)", state, ok)
+		t.Fatalf("DeriveState(review) = (%v, %v), want (Operator Attention, true)", state, ok)
 	}
 }
 

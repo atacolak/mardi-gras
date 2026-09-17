@@ -57,9 +57,9 @@ Scoping narrows rather than resets, so it composes with everything else: a fuzzy
 
 Because the scope is the last pass, you can scope to an epic that an earlier pass already removed: `E` on a child while `--exclude-type epic` is hiding the epic, or under a focus mode that never picked the epic, or with a filter query that matches the child but not the epic's own title. The scope root is then not in the loaded set, so there is no subtree left to show and the parade renders empty with the header's counts at zero. That is the honest answer rather than a bug — and rather than silently widening back to the whole board — so the footer keeps a `⚜ SCOPE <epic-id>` chip lit for as long as the scope is active, including when it has no rows to show. The footer is not always the bottom bar, though: a filter query, a bulk-selection prompt, or an open input bar takes that row instead, and the chip is not on screen while one of them is up. In the filter case the `N/M match` count on the filter bar is the cue. Whenever the chip is visible, the empty parade plus the chip is the operator's cue to press `esc`.
 
-### Operator Review
+### Operator Attention
 
-Operator Review is an explicit stored Beads state. The lead transition is `br update <epic> --status review`; `review` is absent from Ready. Closing children does not automatically enter review.
+Operator Attention is an explicit stored Beads state. The lead transition is `br update <epic> --status review`; `review` is absent from Ready. Closing children does not automatically enter review.
 
 ## Quick Actions
 

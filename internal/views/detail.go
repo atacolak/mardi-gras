@@ -237,7 +237,7 @@ func (d *Detail) renderContent() string {
 	lines = append(lines, "")
 
 	// Status row. The state is derived once, from the same graph the parade
-	// buckets by, so a settled in_progress epic reads "Operator Review" rather
+	// buckets by, so a settled in_progress epic reads "Operator Attention" rather
 	// than the raw-status collapse. An issue whose state cannot be derived
 	// renders its raw status alone — never a state label it has not earned.
 	if state, ok := data.DeriveState(issue, d.IssueMap, bt); ok {

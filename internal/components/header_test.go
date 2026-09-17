@@ -25,7 +25,7 @@ func TestHeaderCountsSixSemanticStates(t *testing.T) {
 
 	// Six counts in StateOrder. A four-count header cannot satisfy this, and
 	// can no longer be written: the field is keyed by semantic state.
-	if !strings.Contains(out, "12○ 3● 3⊘ 0⏸ 0◐ 3✓") {
+	if !strings.Contains(out, "12● 3◐ 3⊘ 0⏸ 0○ 3✓") {
 		t.Fatalf("header should show six ordered counts, got:\n%s", out)
 	}
 }

@@ -6,14 +6,14 @@ Every Beads issue appears in a tree-first work cockpit with one of six glyphs:
 
 | Glyph | State | What It Means |
 | ----- | ----- | ------------- |
-| ○ | **Ready** | Open, unblocked, and not deferred |
-| ● | **Working** | In progress, with live work under it |
+| ● | **Ready** | Open, unblocked, and not deferred |
+| ◐ | **Working** | In progress, with live work under it |
 | ⊘ | **Waiting/Blocked** | Waiting on something that is not done yet |
 | ⏸ | **Deferred** | Parked until its defer date passes |
-| ◐ | **Operator Review** | Work is finished; operator acceptance is pending |
+| ○ | **Operator Attention** | Work is finished; operator acceptance is pending |
 | ✓ | **Done** | Closed and nested under its parent |
 
-Ready, Working, Operator Review, and Done stay together under their parent. Waiting/Blocked and Deferred are attention sections shown when needed. Children nest beneath their parents, and `>` collapses or expands the selected branch.
+Ready, Working, Operator Attention, and Done stay together under their parent. Waiting/Blocked and Deferred are attention sections shown when needed. Children nest beneath their parents, and `>` collapses or expands the selected branch.
 
 Waiting/Blocked issues show a "next blocker" hint so you can see at a glance what's holding things up. Issues with dead agent sessions show a ☠ zombie indicator. Issues on dead rigs show a 💀 orphan indicator. The detail panel breaks dependencies into four categories: waiting on (active blockers), missing (dangling references), resolved (closed blockers), and related (non-blocking dependency types).
 

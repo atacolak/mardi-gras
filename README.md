@@ -27,13 +27,13 @@ Every issue is on the route somewhere:
 ●  Working            in progress, with live work under it
 ⊘  Waiting/Blocked    waiting on something that isn't done yet
 ⏸  Deferred           parked until its defer date passes
-◐  Operator Review    work is finished; operator acceptance is pending
+◐  Operator Attention work is finished; operator acceptance is pending
 ✓  Done               closed, nested under its parent
 ```
 
-The tree is honest. Work is priority-sorted in one tree: Ready, Working, Operator Review, and Done stay together under their parent, while Waiting/Blocked and Deferred appear as attention sections when needed. A Waiting/Blocked row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
+The tree is honest. Work is priority-sorted in one tree: Ready, Working, Operator Attention, and Done stay together under their parent, while Waiting/Blocked and Deferred appear as attention sections when needed. A Waiting/Blocked row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
 
-Operator Review is an explicit stored Beads state. The lead moves an epic into it with `br update <epic> --status review`; `review` is absent from Ready. Closing children does not automatically enter review.
+Operator Attention is an explicit stored Beads state. The lead moves an epic into it with `br update <epic> --status review`; `review` is absent from Ready. Closing children does not automatically enter review.
 
 Blocked is computed from dependency edges, not from a status field somebody forgot to update. `blocks` and `conditional-blocks` count by default; widen that with `--block-types` if your project uses others.
 

@@ -104,11 +104,11 @@ const (
 	// Semantic execution states (see ExecSymbol). Deliberately distinct from
 	// the Gas Town agent-state symbols above: an issue's derived execution
 	// state is not an agent's state.
-	SymExecReady          = "○"
-	SymExecWorking        = "●"
+	SymExecReady          = "●"
+	SymExecWorking        = "◐"
 	SymExecWaiting        = "⊘"
 	SymExecDeferred       = "⏸"
-	SymExecOperatorReview = "◐"
+	SymExecOperatorReview = "○" // display name: Operator Attention
 	SymExecDone           = "✓"
 )
 

@@ -21,11 +21,11 @@ var execStates = []struct {
 	glyph   string
 	palette func() color.Color
 }{
-	{"ready", 0, "○", func() color.Color { return BrightGold }},
-	{"working", 1, "●", func() color.Color { return BrightGreen }},
+	{"ready", 0, "●", func() color.Color { return BrightGold }},
+	{"working", 1, "◐", func() color.Color { return BrightGreen }},
 	{"waiting/blocked", 2, "⊘", func() color.Color { return StatusStalled }},
 	{"deferred", 3, "⏸", func() color.Color { return Dim }},
-	{"operator review", 4, "◐", func() color.Color { return Orange }},
+	{"operator attention", 4, "○", func() color.Color { return Orange }},
 	{"done", 5, "✓", func() color.Color { return Muted }},
 }
 

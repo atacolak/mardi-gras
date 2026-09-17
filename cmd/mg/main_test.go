@@ -476,7 +476,7 @@ func TestStatusCommandWaitDelayBoundsThePipe(t *testing.T) {
 }
 
 // TestStatusModeOperatorReviewStoredState is the built-binary acceptance test
-// for an explicitly stored review gate: the epic must count as Operator Review,
+// for an explicitly stored review gate: the epic must count as Operator Attention,
 // never Working. It runs the real binary over a real fixture, so loading,
 // hierarchy, derivation, grouping, and tmux rendering are all covered.
 //
@@ -496,7 +496,7 @@ func TestStatusModeOperatorReviewStoredState(t *testing.T) {
 	}
 
 	plain := tmuxMarkup.ReplaceAllString(string(out), "")
-	if want := "2○ 0● 1⊘ 1⏸ 1◐ 1✓"; !strings.Contains(plain, want) {
+	if want := "2● 0◐ 1⊘ 1⏸ 1○ 1✓"; !strings.Contains(plain, want) {
 		t.Errorf("status line does not carry the ordered counts %q: %q", want, plain)
 	}
 	if strings.Contains(plain, "1●") {

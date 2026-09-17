@@ -30,7 +30,7 @@ func (s SemanticState) Label() string {
 	case StateDeferred:
 		return "Deferred"
 	case StateOperatorReview:
-		return "Operator Review"
+		return "Operator Attention"
 	case StateDone:
 		return "Done"
 	}
