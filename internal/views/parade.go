@@ -65,8 +65,33 @@ func (item ParadeItem) isSelectable() bool {
 	return !item.IsHeader && !item.IsFooter
 }
 
+// SortMode selects sibling ordering inside every sibling group, roots included.
+// Recency is not a mode: the Brief forbids newest-first as a default and this
+// wave adds no third mode.
+type SortMode int
+
+const (
+	SortAttention SortMode = iota // default
+	SortPriority
+)
+
+func (m SortMode) Label() string {
+	if m == SortPriority {
+		return "priority"
+	}
+	return "attention"
+}
+
+func (m SortMode) Next() SortMode {
+	if m == SortAttention {
+		return SortPriority
+	}
+	return SortAttention
+}
+
 // Parade is the priority-sorted work tree view.
 type Parade struct {
+	SortMode        SortMode
 	Items           []ParadeItem
 	Cursor          int
 	Width           int
@@ -215,12 +240,8 @@ func (p *Parade) appendClosedSection(epics []data.Issue) {
 	if len(epics) == 0 {
 		return
 	}
-	sort.Slice(epics, func(i, j int) bool {
-		if epics[i].Priority != epics[j].Priority {
-			return epics[i].Priority < epics[j].Priority
-		}
-		return epics[i].ID < epics[j].ID
-	})
+	less := p.lessFor()
+	sort.Slice(epics, func(i, j int) bool { return less(&epics[i], &epics[j]) })
 	sec := closedSection(len(epics))
 	p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
 	for _, epic := range epics {
@@ -250,7 +271,35 @@ func (p *Parade) isCollapsed(issueID string) bool {
 	return isClosedEpic(p.issueMap[issueID])
 }
 
-func orderForest(issues []data.Issue) (ordered []*data.Issue, depth map[string]int, hasChildren map[string]bool) {
+func (p *Parade) stateOf(iss *data.Issue) data.SemanticState {
+	state, _ := data.DeriveState(iss, p.issueMap, p.blockingTypes)
+	return state
+}
+
+// lessFor is the comparator for the active mode: attention rank then priority
+// then ID, or priority then ID.
+func (p *Parade) lessFor() func(a, b *data.Issue) bool {
+	if p.SortMode == SortPriority {
+		return func(a, b *data.Issue) bool {
+			if a.Priority != b.Priority {
+				return a.Priority < b.Priority
+			}
+			return a.ID < b.ID
+		}
+	}
+	return func(a, b *data.Issue) bool {
+		ra, rb := data.AttentionRank(p.stateOf(a)), data.AttentionRank(p.stateOf(b))
+		if ra != rb {
+			return ra < rb
+		}
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+		return a.ID < b.ID
+	}
+}
+
+func orderForest(issues []data.Issue, less func(a, b *data.Issue) bool) (ordered []*data.Issue, depth map[string]int, hasChildren map[string]bool) {
 	depth = make(map[string]int, len(issues))
 	hasChildren = make(map[string]bool, len(issues))
 	byID := make(map[string]*data.Issue, len(issues))
@@ -266,12 +315,6 @@ func orderForest(issues []data.Issue) (ordered []*data.Issue, depth map[string]i
 		if _, exists := byID[parentID]; exists {
 			children[parentID] = append(children[parentID], issue)
 		}
-	}
-	less := func(a, b *data.Issue) bool {
-		if a.Priority != b.Priority {
-			return a.Priority < b.Priority
-		}
-		return a.ID < b.ID
 	}
 	for parentID := range children {
 		sort.Slice(children[parentID], func(i, j int) bool { return less(children[parentID][i], children[parentID][j]) })
@@ -323,7 +366,7 @@ func (p *Parade) appendForest(issues []data.Issue) {
 }
 
 func (p *Parade) appendForestRows(issues []data.Issue, sec *paradeSection, fallback data.SemanticState) {
-	ordered, depths, children := orderForest(issues)
+	ordered, depths, children := orderForest(issues, p.lessFor())
 	for _, issue := range ordered {
 		if p.hasCollapsedAncestor(issue.ID) {
 			continue

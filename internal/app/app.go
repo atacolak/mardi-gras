@@ -243,6 +243,9 @@ type Model struct {
 	// Layout preset (cycle with command palette)
 	layoutPreset LayoutPreset
 
+	// paradeSortMode survives rebuildParade; the fresh Parade copies it.
+	paradeSortMode views.SortMode
+
 	// paradeWidthOverride is the operator's dragged divider column, session-only
 	// (0 = use the computed default). No config file: this wave persists nothing
 	// to disk, exactly like collapse state.
@@ -2313,6 +2316,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.toast = toast
 		return m, cmd
 
+
+	case "S":
+		m.paradeSortMode = m.paradeSortMode.Next()
+		m.parade.SortMode = m.paradeSortMode
+		m.rebuildParade()
+		toast, cmd := components.ShowToast("Sort: "+m.paradeSortMode.Label(), components.ToastInfo, toastDuration)
+		m.toast = toast
+		return m, cmd
 	case "ctrl+g":
 		if !m.orchestratorAvailable() {
 			return m, nil
@@ -3032,6 +3043,7 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "New issue", Desc: "Create a new beads issue", Key: "N", Action: components.ActionNewIssue},
 		{Name: "Add note", Desc: "Add a note to the selected issue", Key: "", Action: components.ActionAddNote},
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
+		{Name: "Cycle sort: attention / priority", Desc: "Sibling sort inside every branch", Key: "S", Action: components.ActionCycleSort},
 		{Name: "Filter", Desc: "Fuzzy filter the parade list", Key: "/", Action: components.ActionFilter},
 		{Name: "Help", Desc: "Show keybinding help", Key: "?", Action: components.ActionHelp},
 		{Name: "Quit", Desc: "Exit Mardi Gras", Key: "q", Action: components.ActionQuit},
@@ -3121,6 +3133,13 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 			label = "Focus mode OFF"
 		}
 		toast, cmd := components.ShowToast(label, components.ToastInfo, toastDuration)
+		m.toast = toast
+		return m, cmd
+	case components.ActionCycleSort:
+		m.paradeSortMode = m.paradeSortMode.Next()
+		m.parade.SortMode = m.paradeSortMode
+		m.rebuildParade()
+		toast, cmd := components.ShowToast("Sort: "+m.paradeSortMode.Label(), components.ToastInfo, toastDuration)
 		m.toast = toast
 		return m, cmd
 	case components.ActionToggleNode:
@@ -3683,6 +3702,7 @@ func (m *Model) rebuildParade() {
 	m.parade = views.NewParadeWithData(filteredIssues, groups, unmapped, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
 	m.parade.MatchHighlights = highlights
 	m.parade.Collapsed = oldCollapsed
+	m.parade.SortMode = m.paradeSortMode
 	m.parade.RebuildItems()
 	found := m.restoreParadeSelection(oldSelectedID)
 	if !found && oldSelectedID != "" {

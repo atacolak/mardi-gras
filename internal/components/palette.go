@@ -46,6 +46,7 @@ const (
 	ActionPruneClosed
 	ActionClaimNextReady
 	ActionCodexResume
+	ActionCycleSort
 )
 
 // PaletteCommand is a single entry in the command palette.

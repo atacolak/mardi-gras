@@ -553,7 +553,7 @@ func TestParadeTree(t *testing.T) {
 		{ID: "later", Status: data.StatusDeferred, Priority: 1},
 	}
 	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
-	want := []string{"blocked", "epic", "epic.2", "epic.2.1", "epic.1", "epic.3", "later"}
+	want := []string{"epic", "epic.1", "epic.2", "epic.2.1", "epic.3", "blocked", "later"}
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("issue order = %v, want %v", got, want)
 	}
@@ -583,7 +583,7 @@ func TestParadeCollapse(t *testing.T) {
 	}
 
 	toggler.ToggleNode("epic.2")
-	if got, want := paradeIssueIDs(p), []string{"attention", "epic", "epic.2", "epic.1"}; !reflect.DeepEqual(got, want) {
+	if got, want := paradeIssueIDs(p), []string{"epic", "epic.1", "epic.2", "attention"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("after child collapse = %v, want %v", got, want)
 	}
 	for i, item := range p.Items {
@@ -594,7 +594,7 @@ func TestParadeCollapse(t *testing.T) {
 		}
 	}
 	toggler.ToggleNode("epic")
-	if got, want := paradeIssueIDs(p), []string{"attention", "epic"}; !reflect.DeepEqual(got, want) {
+	if got, want := paradeIssueIDs(p), []string{"epic", "attention"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("after ancestor collapse = %v, want %v", got, want)
 	}
 	if p.SelectedIssue == nil || p.SelectedIssue.ID != "epic" {
@@ -686,11 +686,12 @@ func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
 	if !ok {
 		t.Fatal("Parade must expose IssueAtViewportRow")
 	}
-	// After t6 there is no Deferred header. Both rows are forest issues;
-	// orderForest (priority then ID) puts later before ready. ScrollOffset=1
-	// makes viewport row 0 the second forest issue (ready).
-	if got := atRow.IssueAtViewportRow(0); got == nil || got.ID != "ready" {
-		t.Fatalf("scrolled viewport row 0 = %v, want ready", got)
+	// After t6 there is no Deferred header. Both rows are forest issues.
+	// Attention rank puts ready (rank 3) before later (rank 4). ScrollOffset=1
+	// makes viewport row 0 the second forest issue (later), proving the
+	// resolver honors the offset rather than always returning the first row.
+	if got := atRow.IssueAtViewportRow(0); got == nil || got.ID != "later" {
+		t.Fatalf("scrolled viewport row 0 = %v, want later", got)
 	}
 	if got := atRow.IssueAtViewportRow(1); got != nil {
 		t.Fatalf("viewport row 1 past the forest = %v, want nil", got)
@@ -747,5 +748,56 @@ func TestParadeRowHasNoNextBlockerHint(t *testing.T) {
 	out := ansi.Strip(p.View())
 	if strings.Contains(out, "next") || strings.Contains(out, "Ghost blocker…") {
 		t.Fatalf("parade row still carries the next-blocker hint:\n%s", out)
+	}
+}
+
+func paradeSortFixture() []data.Issue {
+	return []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic.attn", Title: "Attention", Status: data.StatusReview, Priority: 0,
+			Dependencies: paradeParentEdge("epic.attn", "epic")},
+		{ID: "epic.blocked", Title: "Blocked", Status: data.StatusBlocked, Priority: 0,
+			Dependencies: paradeParentEdge("epic.blocked", "epic")},
+		{ID: "epic.defer", Title: "Deferred", Status: data.StatusDeferred, Priority: 0,
+			Dependencies: paradeParentEdge("epic.defer", "epic")},
+		{ID: "epic.done", Title: "Done", Status: data.StatusClosed, Priority: 0,
+			Dependencies: paradeParentEdge("epic.done", "epic")},
+		{ID: "epic.ready", Title: "Ready", Status: data.StatusOpen, Priority: 0,
+			Dependencies: paradeParentEdge("epic.ready", "epic")},
+		{ID: "epic.work", Title: "Working", Status: data.StatusInProgress, Priority: 0,
+			Dependencies: paradeParentEdge("epic.work", "epic")},
+	}
+}
+
+func TestParadeSortModes(t *testing.T) {
+	p := NewParade(paradeSortFixture(), 100, 30, data.DefaultBlockingTypes)
+	if p.SortMode != SortAttention {
+		t.Fatalf("default sort mode = %v, want SortAttention", p.SortMode)
+	}
+	want := []string{"epic", "epic.attn", "epic.blocked", "epic.work", "epic.ready", "epic.defer", "epic.done"}
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
+		t.Fatalf("attention order = %v, want %v", got, want)
+	}
+
+	p.SortMode = SortPriority
+	p.RebuildItems()
+	want = []string{"epic", "epic.attn", "epic.blocked", "epic.defer", "epic.done", "epic.ready", "epic.work"}
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
+		t.Fatalf("priority order = %v, want %v (equal P falls back to ID)", got, want)
+	}
+}
+
+func TestParadeSortNeverConsultsRecency(t *testing.T) {
+	stale := data.Issue{ID: "b-stale", Title: "Stale", Status: data.StatusOpen, Priority: 2,
+		CreatedAt: time.Now().Add(-90 * 24 * time.Hour), UpdatedAt: time.Now().Add(-90 * 24 * time.Hour)}
+	fresh := data.Issue{ID: "a-fresh", Title: "Fresh", Status: data.StatusOpen, Priority: 2,
+		CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	for _, mode := range []SortMode{SortAttention, SortPriority} {
+		p := NewParade([]data.Issue{stale, fresh}, 100, 20, data.DefaultBlockingTypes)
+		p.SortMode = mode
+		p.RebuildItems()
+		if got, want := paradeIssueIDs(p), []string{"a-fresh", "b-stale"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s order = %v, want %v (ID tiebreak, never recency)", mode.Label(), got, want)
+		}
 	}
 }

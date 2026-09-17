@@ -50,6 +50,28 @@ func StateOrder() []SemanticState {
 	}
 }
 
+// AttentionRank is the sibling-sort order for the parade's default mode:
+// Operator Attention, Waiting/Blocked, Working, Ready, Deferred, Done. It is
+// deliberately not StateOrder() — that stays the header/tally render order, and
+// the two must not be collapsed into one list.
+func AttentionRank(s SemanticState) int {
+	switch s {
+	case StateOperatorReview:
+		return 0
+	case StateWaitingBlocked:
+		return 1
+	case StateWorking:
+		return 2
+	case StateReady:
+		return 3
+	case StateDeferred:
+		return 4
+	case StateDone:
+		return 5
+	}
+	return 6
+}
+
 // mappedStatus reports whether this wave is authorised to decide a semantic
 // state for a raw status. Recognizing a status is not the same as deciding its
 // state: draft, tombstone, pinned, and any custom status are recognized as

@@ -465,3 +465,15 @@ func TestGroupBySemanticStatePreinitializesAllKeys(t *testing.T) {
 		t.Errorf("unmapped = %v, want [b]", issueIDs(unmapped))
 	}
 }
+
+func TestAttentionRank(t *testing.T) {
+	want := []SemanticState{
+		StateOperatorReview, StateWaitingBlocked, StateWorking,
+		StateReady, StateDeferred, StateDone,
+	}
+	for i, state := range want {
+		if got := AttentionRank(state); got != i {
+			t.Errorf("AttentionRank(%s) = %d, want %d", state.Label(), got, i)
+		}
+	}
+}

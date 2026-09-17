@@ -10,6 +10,7 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/components"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
+	"github.com/matt-wright86/mardi-gras/internal/views"
 )
 
 // ---------------------------------------------------------------------------
@@ -1285,5 +1286,39 @@ func TestDividerPressDoesNotChangeParadeSelection(t *testing.T) {
 	m = model.(Model)
 	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != selected {
 		t.Fatalf("divider press changed selection to %v, want %s", m.parade.SelectedIssue, selected)
+	}
+}
+
+func TestSortKeyCyclesParadeSortMode(t *testing.T) {
+	m := setupMouseModel(t)
+	if m.parade.SortMode != views.SortAttention {
+		t.Fatalf("startup sort mode = %v, want SortAttention", m.parade.SortMode)
+	}
+
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
+	m = model.(Model)
+	if m.parade.SortMode != views.SortPriority {
+		t.Fatalf("after S sort mode = %v, want SortPriority", m.parade.SortMode)
+	}
+
+	m.rebuildParade()
+	if m.parade.SortMode != views.SortPriority {
+		t.Fatal("sort mode must survive a parade rebuild")
+	}
+
+	model, _ = m.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
+	m = model.(Model)
+	if m.parade.SortMode != views.SortAttention {
+		t.Fatalf("second S sort mode = %v, want SortAttention", m.parade.SortMode)
+	}
+
+	var found bool
+	for _, cmd := range m.buildPaletteCommands() {
+		if cmd.Action == components.ActionCycleSort {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("command palette must offer the sort toggle")
 	}
 }
