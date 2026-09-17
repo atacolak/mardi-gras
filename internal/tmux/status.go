@@ -15,17 +15,17 @@ import (
 func execColour(state data.SemanticState) string {
 	switch state {
 	case data.StateReady:
-		return "colour220" // BrightGold
+		return "colour180" // SwatchGold #E5B567
 	case data.StateWorking:
-		return "colour42" // BrightGreen
+		return "colour107" // SwatchGreen #7FB069
 	case data.StateWaitingBlocked:
-		return "colour196" // Red
+		return "colour168" // SwatchRose #E06C75
 	case data.StateDeferred:
-		return "colour240" // Dim
+		return "colour139" // SwatchLavender #A78BBA
 	case data.StateOperatorReview:
-		return "colour208" // Orange
+		return "colour73" // SwatchCyan #56B6C2
 	case data.StateDone:
-		return "colour244" // Muted
+		return "colour67" // SwatchSteel #6F8FAF
 	}
 	return "colour244"
 }

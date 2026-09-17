@@ -42,7 +42,7 @@ func TestStatusLineFormat(t *testing.T) {
 	if n := strings.Count(got, "#[fg="); n != len(data.StateOrder())+1 {
 		t.Errorf("expected %d fg segments, got %d: %s", len(data.StateOrder())+1, n, got)
 	}
-	for i, colour := range []string{"colour220", "colour42", "colour196", "colour240", "colour208", "colour244"} {
+	for i, colour := range []string{"colour180", "colour107", "colour168", "colour139", "colour73", "colour67"} {
 		if !strings.Contains(got, colour) {
 			t.Errorf("missing color %s for %s: %s", colour, data.StateOrder()[i].Label(), got)
 		}

@@ -35,13 +35,16 @@ func (h Header) View() string {
 	for _, state := range data.StateOrder() {
 		count := len(h.Groups[state])
 		total += count
-		fmt.Fprintf(&countsB, " %d%s", count, ui.ExecSymbol(int(state)))
+		countsB.WriteString(" ")
+		countsB.WriteString(lipgloss.NewStyle().
+			Foreground(ui.ExecColor(int(state))).
+			Render(fmt.Sprintf("%d%s", count, ui.ExecSymbol(int(state)))))
 	}
 
 	titleStr := fmt.Sprintf("%s MARDI GRAS %s", ui.FleurDeLis, ui.FleurDeLis)
 	title := ui.HeaderStyle.Render(ui.ApplyMardiGrasGradient(titleStr))
 
-	counts := ui.HeaderCounts.Render(countsB.String())
+	counts := countsB.String()
 
 	agentInfo := ""
 	if h.AgentCount > 0 {

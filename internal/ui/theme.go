@@ -122,6 +122,16 @@ var (
 	StatePropelled  color.Color // Dark turquoise — ACP propulsion, output suppressed
 	StatePatrolling color.Color // Sky blue — witness/deacon scanning rounds
 
+	// Ata's labeled dogfood swatch palette (operator work cockpit dogfood
+	// brief). Every swatch below is bound to exactly one execution state in
+	// applyDerived: the Brief requires all six to be used and none left over.
+	SwatchRose     color.Color
+	SwatchGold     color.Color
+	SwatchCyan     color.Color
+	SwatchGreen    color.Color
+	SwatchLavender color.Color
+	SwatchSteel    color.Color
+
 	// Semantic execution state colors (see ExecColor). Derived in
 	// applyDerived from primitives both palettes already define.
 	ExecReady          color.Color
@@ -169,16 +179,16 @@ func applyDerived() {
 	StateIdle = Silver
 	StateBackoff = StatusStalled
 	StateGate = BrightGold
-
-	// Semantic execution states: live work is green, operator-gated is
-	// orange, ready is gold, deferred is dim, blocked is the stalled red,
-	// settled work is muted.
-	ExecReady = BrightGold
-	ExecWorking = BrightGreen
-	ExecWaiting = StatusStalled
-	ExecDeferred = Dim
-	ExecOperatorReview = Orange
-	ExecDone = Muted
+	// Semantic execution states: Ata's six labeled swatches, one per state.
+	// StatusStalled, Dim, Orange and Muted keep their own values and their
+	// other consumers — blocked is the rose swatch now, not "the existing
+	// stalled red", and done is steel rather than muted.
+	ExecReady = SwatchGold
+	ExecWorking = SwatchGreen
+	ExecWaiting = SwatchRose
+	ExecDeferred = SwatchLavender
+	ExecOperatorReview = SwatchCyan
+	ExecDone = SwatchSteel
 }
 
 func applyDarkPalette() {
@@ -226,6 +236,12 @@ func applyDarkPalette() {
 
 	HelpBg = lipgloss.Color("#121521")
 	HelpSubtitleFg = lipgloss.Color("#A9AFBF")
+	SwatchRose = lipgloss.Color("#E06C75")
+	SwatchGold = lipgloss.Color("#E5B567")
+	SwatchCyan = lipgloss.Color("#56B6C2")
+	SwatchGreen = lipgloss.Color("#7FB069")
+	SwatchLavender = lipgloss.Color("#A78BBA")
+	SwatchSteel = lipgloss.Color("#6F8FAF")
 	HelpDescFg = lipgloss.Color("#D6D8DF")
 	HelpHintFg = lipgloss.Color("#8E94A6")
 	ToastAccentFg = Darkest
@@ -276,6 +292,12 @@ func applyLightPalette() {
 	StatePatrolling = lipgloss.Color("#2874A6")
 
 	HelpBg = lipgloss.Color("#F3EEF7")
+	SwatchRose = lipgloss.Color("#8C3A44")
+	SwatchGold = lipgloss.Color("#8C6A1A")
+	SwatchCyan = lipgloss.Color("#2E6E73")
+	SwatchGreen = lipgloss.Color("#3F6B32")
+	SwatchLavender = lipgloss.Color("#6B4C82")
+	SwatchSteel = lipgloss.Color("#3E5C7E")
 	HelpSubtitleFg = lipgloss.Color("#5D6470")
 	HelpDescFg = lipgloss.Color("#2F3339")
 	HelpHintFg = lipgloss.Color("#6E7480")

@@ -1,13 +1,16 @@
 package components
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
+	"github.com/matt-wright86/mardi-gras/internal/ui"
 )
 
 func TestHeaderCountsSixSemanticStates(t *testing.T) {
@@ -27,6 +30,28 @@ func TestHeaderCountsSixSemanticStates(t *testing.T) {
 	// can no longer be written: the field is keyed by semantic state.
 	if !strings.Contains(out, "12● 3◐ 3⊘ 0⏸ 0○ 3✓") {
 		t.Fatalf("header should show six ordered counts, got:\n%s", out)
+	}
+}
+
+// TestHeaderCountsUseExecColors pins ask 10's "header tally uses the same Exec*
+// colors": each count is rendered in its own state color, not one flat ink.
+func TestHeaderCountsUseExecColors(t *testing.T) {
+	groups := map[data.SemanticState][]data.Issue{
+		data.StateReady:          {{ID: "r1"}},
+		data.StateWorking:        {{ID: "w1"}},
+		data.StateWaitingBlocked: {{ID: "b1"}},
+		data.StateDeferred:       {{ID: "d1"}},
+		data.StateOperatorReview: {{ID: "a1"}},
+		data.StateDone:           {{ID: "z1"}},
+	}
+	out := Header{Width: 200, Groups: groups}.View()
+	for _, state := range data.StateOrder() {
+		want := lipgloss.NewStyle().
+			Foreground(ui.ExecColor(int(state))).
+			Render(fmt.Sprintf("1%s", ui.ExecSymbol(int(state))))
+		if !strings.Contains(out, want) {
+			t.Errorf("header tally missing %s count in its Exec color", state.Label())
+		}
 	}
 }
 

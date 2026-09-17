@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -21,12 +22,12 @@ var execStates = []struct {
 	glyph   string
 	palette func() color.Color
 }{
-	{"ready", 0, "●", func() color.Color { return BrightGold }},
-	{"working", 1, "◐", func() color.Color { return BrightGreen }},
-	{"waiting/blocked", 2, "⊘", func() color.Color { return StatusStalled }},
-	{"deferred", 3, "⏸", func() color.Color { return Dim }},
-	{"operator attention", 4, "○", func() color.Color { return Orange }},
-	{"done", 5, "✓", func() color.Color { return Muted }},
+	{"ready", 0, "●", func() color.Color { return SwatchGold }},
+	{"working", 1, "◐", func() color.Color { return SwatchGreen }},
+	{"waiting/blocked", 2, "⊘", func() color.Color { return SwatchRose }},
+	{"deferred", 3, "⏸", func() color.Color { return SwatchLavender }},
+	{"operator attention", 4, "○", func() color.Color { return SwatchCyan }},
+	{"done", 5, "✓", func() color.Color { return SwatchSteel }},
 }
 
 // TestExecVocabulary checks the six-state vocabulary under both palettes:
@@ -115,6 +116,77 @@ func TestExecVocabularyOutOfRange(t *testing.T) {
 		}
 		if !ExecSectionStyle(state).GetBold() {
 			t.Errorf("ExecSectionStyle(%d) is not bold", state)
+		}
+	}
+}
+
+// TestSwatchPaletteHexes pins Ata's labeled six-swatch palette. The dark values
+// are the Brief's, as printed on the screenshot; the light values must differ
+// (see TestExecIndicatorRebakesOnThemeSwitch) and are the darker same-hue
+// variants the spec chose.
+func TestSwatchPaletteHexes(t *testing.T) {
+	t.Cleanup(func() { SetTheme(ThemeDark) })
+	cases := []struct {
+		name        string
+		get         func() color.Color
+		dark, light string
+	}{
+		{"rose", func() color.Color { return SwatchRose }, "#E06C75", "#8C3A44"},
+		{"gold", func() color.Color { return SwatchGold }, "#E5B567", "#8C6A1A"},
+		{"cyan", func() color.Color { return SwatchCyan }, "#56B6C2", "#2E6E73"},
+		{"green", func() color.Color { return SwatchGreen }, "#7FB069", "#3F6B32"},
+		{"lavender", func() color.Color { return SwatchLavender }, "#A78BBA", "#6B4C82"},
+		{"steel", func() color.Color { return SwatchSteel }, "#6F8FAF", "#3E5C7E"},
+	}
+	for _, tc := range cases {
+		SetTheme(ThemeDark)
+		if got := tc.get(); got != lipgloss.Color(tc.dark) {
+			t.Errorf("dark %s = %v, want %s", tc.name, got, tc.dark)
+		}
+		SetTheme(ThemeLight)
+		if got := tc.get(); got != lipgloss.Color(tc.light) {
+			t.Errorf("light %s = %v, want %s", tc.name, got, tc.light)
+		}
+	}
+}
+
+// TestExecColorsUseEverySwatch is ask 10's "use EVERY swatch, do not leftover a
+// color": each of the six states must be painted with a swatch, no two states
+// may share one, and no swatch may go unused.
+func TestExecColorsUseEverySwatch(t *testing.T) {
+	t.Cleanup(func() { SetTheme(ThemeDark) })
+	SetTheme(ThemeDark)
+
+	swatches := map[string]color.Color{
+		"rose":     SwatchRose,
+		"gold":     SwatchGold,
+		"cyan":     SwatchCyan,
+		"green":    SwatchGreen,
+		"lavender": SwatchLavender,
+		"steel":    SwatchSteel,
+	}
+	used := make(map[string]int, len(swatches))
+	for state := 0; state < 6; state++ {
+		got := ExecColor(state)
+		matched := ""
+		for name, swatch := range swatches {
+			if got == swatch {
+				matched = name
+			}
+		}
+		if matched == "" {
+			t.Errorf("ExecColor(%d) = %v, which is not one of Ata's six swatches", state, got)
+			continue
+		}
+		used[matched]++
+	}
+	for name := range swatches {
+		switch used[name] {
+		case 1:
+		case 0:
+			t.Errorf("swatch %s is bound to no state; the Brief forbids a leftover color", name)
+		default:
+			t.Errorf("swatch %s is bound to %d states; each swatch owns exactly one", name, used[name])
 		}
 	}
 }
