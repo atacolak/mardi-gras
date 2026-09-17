@@ -605,7 +605,7 @@ func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
 	}
 }
 
-func TestParadeDisclosureMarker(t *testing.T) {
+func TestParadeRowHasNoDisclosureGlyph(t *testing.T) {
 	parent := data.Issue{ID: "parent", Title: "Parent", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic}
 	child := data.Issue{
 		ID: "parent.1", Title: "Child", Status: data.StatusOpen, Priority: 1,
@@ -614,34 +614,21 @@ func TestParadeDisclosureMarker(t *testing.T) {
 	leaf := data.Issue{ID: "leaf", Title: "Leaf", Status: data.StatusOpen, Priority: 2}
 	p := NewParade([]data.Issue{parent, child, leaf}, 100, 20, data.DefaultBlockingTypes)
 
-	var parentItem, leafItem ParadeItem
-	for _, item := range p.Items {
-		if item.Issue == nil {
-			continue
+	expanded := ansi.Strip(p.View())
+	for _, glyph := range []string{"▼", "▶"} {
+		if strings.Contains(expanded, glyph) {
+			t.Fatalf("expanded parade row contains disclosure glyph %q:\n%s", glyph, expanded)
 		}
-		switch item.Issue.ID {
-		case "parent":
-			parentItem = item
-		case "leaf":
-			leafItem = item
-		}
-	}
-	if got := ansi.Strip(p.renderIssue(parentItem, false, 0)); !strings.Contains(got, ui.Expanded) {
-		t.Fatalf("expanded parent row = %q, want %q", got, ui.Expanded)
-	}
-	if got := ansi.Strip(p.renderIssue(leafItem, false, 0)); strings.Contains(got, ui.Expanded) || strings.Contains(got, ui.Collapsed) {
-		t.Fatalf("leaf row = %q, should not contain disclosure marker", got)
 	}
 
 	p.ToggleNode("parent")
-	for _, item := range p.Items {
-		if item.Issue != nil && item.Issue.ID == "parent" {
-			if got := ansi.Strip(p.renderIssue(item, false, 0)); !strings.Contains(got, ui.Collapsed) {
-				t.Fatalf("collapsed parent row = %q, want %q", got, ui.Collapsed)
-			}
+	collapsed := ansi.Strip(p.View())
+	for _, glyph := range []string{"▼", "▶"} {
+		if strings.Contains(collapsed, glyph) {
+			t.Fatalf("collapsed parade row contains disclosure glyph %q:\n%s", glyph, collapsed)
 		}
-		if item.Issue != nil && item.Issue.ID == "parent.1" {
-			t.Fatal("collapsed child should not remain visible")
-		}
+	}
+	if strings.Contains(collapsed, "Child") {
+		t.Fatalf("collapsed parent should still hide its child:\n%s", collapsed)
 	}
 }

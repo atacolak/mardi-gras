@@ -670,14 +670,6 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	depth := item.Depth
 	indent := strings.Repeat("  ", depth)
 	indentWidth := depth * 2
-	marker := " "
-	if item.HasChildren {
-		marker = ui.Expanded
-		if p.Collapsed[issue.ID] {
-			marker = ui.Collapsed
-		}
-	}
-	markerWidth := lipgloss.Width(marker)
 	// Due date badge. Under width pressure the badge compresses ("▲151d")
 	// so it never crowds out the title (audit #2).
 	dueBadge := ""
@@ -735,7 +727,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	// hint: the issue's own title is the primary scent, the hint is context
 	// (audit #2). The hint degrades to id-only before character truncation.
 	titleFloor := min(lipgloss.Width(issue.Title), max(innerWidth/3, 12))
-	maxHint := innerWidth - 16 - titleFloor - agentWidth - indentWidth - markerWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
+	maxHint := innerWidth - 16 - titleFloor - agentWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
 	if maxHint < 0 {
 		maxHint = 0
 	}
@@ -758,7 +750,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	}
 	hintLen := lipgloss.Width(hint)
 
-	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - markerWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
+	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
@@ -780,9 +772,8 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	}
 	renderedID := item.RenderedID
 
-	line := fmt.Sprintf("%s%s%s %s%s%s%s%s%s %s %s",
+	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s %s",
 		indent,
-		marker,
 		symStr,
 		selectPrefix,
 		changePrefix,

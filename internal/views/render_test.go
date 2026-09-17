@@ -482,12 +482,12 @@ func TestRenderIssueHierarchicalIndent(t *testing.T) {
 			// Parent should not have extra indent (no leading spaces before sym)
 		case "mg-007.1":
 			// Depth 1 → 2 spaces of indent
-			if !strings.Contains(out, strings.Repeat(" ", 4)+ui.Expanded+ui.SymExecReady) {
+			if !strings.Contains(out, strings.Repeat(" ", 4)+ui.SymExecReady) {
 				t.Errorf("child issue should be indented, got: %s", out)
 			}
 		case "mg-007.1.1":
 			// Depth 2 → 4 spaces of indent
-			if !strings.Contains(out, strings.Repeat(" ", 7)+ui.SymExecReady) {
+			if !strings.Contains(out, strings.Repeat(" ", 6)+ui.SymExecReady) {
 				t.Errorf("grandchild issue should be double-indented, got: %s", out)
 			}
 		}

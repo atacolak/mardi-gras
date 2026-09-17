@@ -20,9 +20,7 @@ const (
 	BeadDash    = "─"
 
 	// Navigation
-	Cursor    = ">"
-	Expanded  = "▼"
-	Collapsed = "▶"
+	Cursor = ">"
 
 	// Dependencies
 	DepArrow       = "→"
