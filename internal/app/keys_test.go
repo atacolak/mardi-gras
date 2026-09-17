@@ -681,3 +681,162 @@ func TestKeyASingleAndMultiAgreeWithoutRuntime(t *testing.T) {
 			singleCmd == nil, multiCmd == nil)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 30. E scopes the parade to the selected issue's epic subtree
+// ---------------------------------------------------------------------------
+
+// setupEpicScopeModel builds the three-issue graph the epic-scope tests need: an
+// epic, one child carrying a parent-child edge to it, and an unrelated root. The
+// cursor starts on the child, so E has an epic ancestor reachable through the
+// edge — not through the dotted ID.
+func setupEpicScopeModel(t *testing.T) Model {
+	t.Helper()
+	epic := testIssue("epic", data.StatusInProgress)
+	epic.IssueType = data.TypeEpic
+	child := testIssue("epic.1", data.StatusOpen)
+	child.Dependencies = []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}
+	unrelated := testIssue("unrelated", data.StatusOpen)
+
+	m := New([]data.Issue{epic, child, unrelated}, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	m.driver = gastown.NewGTDriver()
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	got := model.(Model)
+
+	for i, item := range got.parade.Items {
+		if item.Issue != nil && item.Issue.ID == "epic.1" {
+			got.parade.Cursor = i
+			got.parade.SelectedIssue = item.Issue
+		}
+	}
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "epic.1" {
+		t.Fatalf("setup: expected cursor on epic.1, got %+v", got.parade.SelectedIssue)
+	}
+	return got
+}
+
+// visibleParadeIDs returns the IDs of the issue rows currently rendered.
+func visibleParadeIDs(m Model) map[string]bool {
+	ids := make(map[string]bool)
+	for _, item := range m.parade.Items {
+		if item.Issue != nil {
+			ids[item.Issue.ID] = true
+		}
+	}
+	return ids
+}
+
+func TestKeyEScopesToEpicSubtree(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+
+	if got.scopeRootID != "epic" {
+		t.Fatalf("expected scopeRootID %q after E, got %q", "epic", got.scopeRootID)
+	}
+	visible := visibleParadeIDs(got)
+	if !visible["epic"] {
+		t.Error("expected the epic itself to stay visible under its own scope")
+	}
+	if !visible["epic.1"] {
+		t.Error("expected the epic's child to stay visible under its own scope")
+	}
+	if visible["unrelated"] {
+		t.Error("expected the unrelated issue to be scoped out")
+	}
+}
+
+func TestKeyEscClearsEpicScope(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if visibleParadeIDs(got)["unrelated"] {
+		t.Fatal("precondition: unrelated issue should be scoped out after E")
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	got = model.(Model)
+
+	if got.scopeRootID != "" {
+		t.Fatalf("expected scopeRootID cleared after esc, got %q", got.scopeRootID)
+	}
+	if !visibleParadeIDs(got)["unrelated"] {
+		t.Error("expected the unrelated issue restored after esc")
+	}
+}
+
+func TestKeyEScopeRequiresEpicAncestor(t *testing.T) {
+	got := setupModel(t) // plain tasks: no epic anywhere in the graph
+	before := visibleParadeIDs(got)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+
+	if got.scopeRootID != "" {
+		t.Fatalf("expected no scope for an issue with no epic ancestor, got %q", got.scopeRootID)
+	}
+	after := visibleParadeIDs(got)
+	if len(after) != len(before) {
+		t.Fatalf("expected the visible set unchanged, before=%v after=%v", before, after)
+	}
+	for id := range before {
+		if !after[id] {
+			t.Fatalf("expected issue %s to stay visible, got %v", id, after)
+		}
+	}
+}
+
+// TestKeyEscClearsScopeBeforeFocusMode pins the esc ordering: leaving a scope is
+// one press and must not also drop focus mode. A second esc then handles focus.
+func TestKeyEscClearsScopeBeforeFocusMode(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	got = model.(Model)
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.scopeRootID != "epic" || !got.focusMode {
+		t.Fatalf("precondition: expected scope %q and focusMode true, got %q/%v",
+			"epic", got.scopeRootID, got.focusMode)
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	got = model.(Model)
+
+	if got.scopeRootID != "" {
+		t.Errorf("expected esc to clear the scope, got %q", got.scopeRootID)
+	}
+	if !got.focusMode {
+		t.Error("expected focus mode to survive the press that exits a scope")
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	got = model.(Model)
+	if got.focusMode {
+		t.Error("expected a second esc to clear focus mode")
+	}
+}
+
+// TestKeyEScopeStaleRootEmptiesParade pins the load-bearing nil from
+// data.ScopeToSubtree: when the scoped epic leaves the loaded set, the scope
+// root is unknown and the parade must go EMPTY rather than silently widen back
+// to every issue.
+func TestKeyEScopeStaleRootEmptiesParade(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.scopeRootID != "epic" {
+		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
+	}
+
+	model, _ = got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
+	got = model.(Model)
+
+	if n := got.parade.VisibleIssues(); n != 0 {
+		t.Fatalf("expected an empty parade for a stale scope root, got %d visible issue(s)", n)
+	}
+}

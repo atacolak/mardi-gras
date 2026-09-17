@@ -107,6 +107,11 @@ type Model struct {
 	// Focus mode
 	focusMode bool
 
+	// Epic subtree scope: when set, the parade shows only this epic and its
+	// parent-child descendants. Empty means unscoped. A root that is no longer
+	// in the loaded set empties the parade rather than widening it.
+	scopeRootID string
+
 	// Issue creation form
 	creating   bool
 	createForm components.CreateForm
@@ -2132,6 +2137,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
+		// Scope exits first: esc out of a scope is one press, and it must not
+		// also drop focus mode or the detail pane as a side effect. The
+		// unscoped esc behaviour still follows below on the next press.
+		if m.scopeRootID != "" {
+			m.scopeRootID = ""
+			m.rebuildParade()
+			return m, nil
+		}
 		if m.focusMode {
 			m.focusMode = false
 			m.rebuildParade()
@@ -2419,6 +2432,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.editing = true
 		m.editForm = components.NewEditForm(m.width, m.height, issue)
 		return m, m.editForm.Init()
+
+	case "E": // Scope the parade to the selected issue's epic subtree
+		issue := m.parade.SelectedIssue
+		if issue == nil {
+			return m, nil
+		}
+		epic := data.EpicAncestor(issue, data.BuildIssueMap(m.issues))
+		if epic == nil {
+			// No epic anywhere above this issue: a scope here would either
+			// hide nothing useful or invent ancestry. Stay put, silently.
+			return m, nil
+		}
+		m.scopeRootID = epic.ID
+		m.rebuildParade()
+		return m, nil
 
 	case "r": // Reply (codex transcript) OR Comment (remark) on parade
 		// When the codex transcript overlay is visible, r opens the reply
@@ -3469,11 +3497,14 @@ func (m *Model) rebuildParade() {
 	if m.focusMode {
 		filteredIssues = data.FocusFilter(filteredIssues, m.blockingTypes)
 	}
+	if m.scopeRootID != "" {
+		filteredIssues = data.ScopeToSubtree(filteredIssues, m.scopeRootID)
+	}
 	groups := m.groups
 	unmapped := m.unmapped
 	detailIssueMap := data.BuildIssueMap(m.issues)
 	paradeIssueMap := detailIssueMap
-	if m.filterInput.Value() != "" || m.focusMode || len(m.excludeTypes) > 0 || len(m.excludeLabels) > 0 {
+	if m.filterInput.Value() != "" || m.focusMode || m.scopeRootID != "" || len(m.excludeTypes) > 0 || len(m.excludeLabels) > 0 {
 		groups, unmapped = data.GroupBySemanticState(filteredIssues, m.blockingTypes)
 		paradeIssueMap = data.BuildIssueMap(filteredIssues)
 	}
