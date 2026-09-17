@@ -580,7 +580,7 @@ git commit -m "feat: preserve per-branch collapse across cockpit rebuilds"
 
 **Verification (anti-gameable):** rendered content for each existing dependency row class resolves by viewport row to the exact loaded issue; scrolling changes the viewport row but not the target. Missing and unloaded cross-rig refs return nil. Status is exactly `<glyph> Operator Review`, with no raw parenthetical.
 
-- [ ] **Step 1: Write failing status and reference tests**
+- [x] **Step 1: Write failing status and reference tests**
 
 Keep the primary status assertion strict:
 
@@ -603,7 +603,7 @@ Create a detail fixture whose selected issue has:
 
 After `SetIssue`, locate each plain rendered line by its unique ID and assert `ReferenceAt(line-d.Viewport.YOffset())` returns the matching loaded issue, while missing/cross-rig absent targets return nil. Set `Viewport.SetYOffset(...)` and repeat for a visible reference.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -613,7 +613,7 @@ go test ./internal/views -run 'Test(SemanticStatusHardExample|DetailReferenceAt|
 
 Expected: raw parenthetical remains and `ReferenceAt` is undefined.
 
-- [ ] **Step 3: Implement render-time metadata**
+- [x] **Step 3: Implement render-time metadata**
 
 Add:
 
@@ -632,7 +632,7 @@ func (d *Detail) ReferenceAt(viewportRow int) *data.Issue {
 
 Reset `referenceLines` at the start of every `renderContent`. Record the current `len(lines)` immediately before appending each existing DEPENDENCIES or CROSS-RIG reference row whose ID is known. Do not record the current issue's own ID, Progress, molecule titles, markdown text, section headings, or blank lines. Remove `("+raw+")` from the status row.
 
-- [ ] **Step 4: Run targeted tests**
+- [x] **Step 4: Run targeted tests**
 
 Run:
 
@@ -642,7 +642,7 @@ go test ./internal/views -run 'Test(SemanticStatus|DetailReferenceAt|SetIssuePre
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/views/detail.go internal/views/detail_test.go
