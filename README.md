@@ -23,11 +23,11 @@ One static binary. No daemon, no config file. Run `mg` in a Beads project and yo
 Every issue is on the route somewhere:
 
 ```
-○  Ready              open, nothing in its way, not deferred
-●  Working            in progress, with live work under it
+●  Ready              open, nothing in its way, not deferred
+◐  Working            in progress, with live work under it
 ⊘  Waiting/Blocked    waiting on something that isn't done yet
 ⏸  Deferred           parked until its defer date passes
-◐  Operator Attention work is finished; operator acceptance is pending
+○  Operator Attention work is finished; operator acceptance is pending
 ✓  Done               closed, nested under its parent
 ```
 
