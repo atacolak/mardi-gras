@@ -846,3 +846,26 @@ func TestParadeHasNoPositionalFade(t *testing.T) {
 		t.Fatal("parade still renders faint rows; the ±6 positional fade must be gone")
 	}
 }
+
+func TestParadeRowRightAlignsPriorityBadge(t *testing.T) {
+	iss := data.Issue{
+		ID: "align-1", Title: strings.Repeat("long title ", 12), Status: data.StatusOpen,
+		Priority: 2, IssueType: data.TypeTask, CommentCount: 3, Pinned: true,
+	}
+	for _, width := range []int{60, 80, 100, 140} {
+		p := NewParade([]data.Issue{iss}, width, 10, data.DefaultBlockingTypes)
+		var item ParadeItem
+		for _, it := range p.Items {
+			if it.Issue != nil {
+				item = it
+			}
+		}
+		row := ansi.Strip(p.renderIssue(item, false, false))
+		if !strings.HasSuffix(row, "P2") {
+			t.Fatalf("width %d row = %q, want it to end with the P badge", width, row)
+		}
+		if got := lipgloss.Width(row); got != width {
+			t.Fatalf("width %d row width = %d, want %d so the badge sits in the last cell", width, got, width)
+		}
+	}
+}

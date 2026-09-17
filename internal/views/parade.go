@@ -737,10 +737,8 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 		prioStr = lipgloss.NewStyle().Foreground(ui.Muted).Render(fmt.Sprintf("P%d", issue.Priority))
 	}
 	pinBadge := ""
-	pinWidth := 0
 	if issue.Pinned {
 		pinBadge = " " + ui.BadgePriority.Render("PIN")
-		pinWidth = lipgloss.Width(pinBadge)
 	}
 
 	innerWidth := p.Width
@@ -821,14 +819,12 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 	// Due date badge. Under width pressure the badge compresses ("▲151d")
 	// so it never crowds out the title (audit #2).
 	dueBadge := ""
-	dueWidth := 0
 	if issue.IsOverdue() {
 		label := fmt.Sprintf("%s %s", ui.SymOverdue, issue.DueLabel())
 		if compactBadges {
 			label = ui.SymOverdue + strings.Fields(issue.DueLabel())[0]
 		}
 		dueBadge = " " + ui.OverdueBadge.Render(label)
-		dueWidth = lipgloss.Width(dueBadge)
 	} else if issue.DueAt != nil && issue.Status != data.StatusClosed {
 		days := int(time.Until(*issue.DueAt).Hours() / 24)
 		if days <= 3 {
@@ -837,30 +833,33 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 				label = ui.SymDueDate + strings.Fields(issue.DueLabel())[0]
 			}
 			dueBadge = " " + ui.DueSoonBadge.Render(label)
-			dueWidth = lipgloss.Width(dueBadge)
 		}
 	}
 
 	// Deferred badge
 	deferBadge := ""
-	deferWidth := 0
 	if issue.IsDeferred() {
 		deferBadge = " " + ui.DeferredStyle.Render(ui.SymDeferred)
-		deferWidth = 2
 	}
 
 	// Comment badge — shows that an issue carries discussion without opening
 	// it. Free from `bd list --json`, so it costs no extra CLI call. Width is
 	// measured rather than assumed, since the glyph is wide.
 	commentBadge := ""
-	commentWidth := 0
 	if issue.CommentCount > 0 {
 		label := ui.SymComment + strconv.Itoa(issue.CommentCount)
 		commentBadge = " " + ui.CommentBadge.Render(label)
-		commentWidth = lipgloss.Width(commentBadge)
 	}
 
-	maxTitle := innerWidth - 16 - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
+	// Ask 13: the trailing badge cluster is right-aligned, P badge last, so the
+	// P badge's final cell is the row's final cell — flush against the detail
+	// pane's purple border. The title owns the space between the id and it.
+	trailing := pinBadge + dueBadge + deferBadge + commentBadge + " " + prioStr
+	trailingWidth := lipgloss.Width(trailing)
+
+	idWidth := lipgloss.Width(item.RenderedID)
+	maxTitle := innerWidth - 4 - indentWidth - 1 - selectWidth - changeWidth -
+		orphanWidth - zombieWidth - agentWidth - idWidth - trailingWidth
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
@@ -882,7 +881,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 	}
 	renderedID := item.RenderedID
 
-	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s %s",
+	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s",
 		indent,
 		symStr,
 		selectPrefix,
@@ -892,26 +891,28 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 		agentPrefix,
 		renderedID,
 		renderedTitle,
-		prioStr,
 	)
-	line += pinBadge + dueBadge + deferBadge + commentBadge
+
+	prefix := "  "
+	if selected {
+		prefix = ui.ItemCursor.Render(ui.Cursor + " ")
+	}
+	body := prefix + line
+	pad := innerWidth - lipgloss.Width(body) - trailingWidth
+	if pad < 0 {
+		pad = 0
+	}
+	row := body + strings.Repeat(" ", pad) + trailing
 
 	if selected {
-		cursor := ui.ItemCursor.Render(ui.Cursor + " ")
-		content := ui.SelectedRow(cursor+line, innerWidth)
+		content := ui.SelectedRow(row, innerWidth)
 		if item.Section == nil {
 			return content
 		}
 		return leftBorder + " " + content + " " + rightBorder
 	}
 
-	// Non-selected: pad with leading space for alignment (matching cursor indent)
-	row := "  " + line
-	if padLen := innerWidth - lipgloss.Width(row); padLen > 0 {
-		row += strings.Repeat(" ", padLen)
-	}
 	content := ansi.Truncate(row, innerWidth, "")
-
 	if item.Section == nil {
 		return content
 	}
