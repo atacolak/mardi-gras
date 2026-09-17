@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1083,5 +1085,143 @@ func TestKeyEscWithCommittedFilterClearsScopeFirst(t *testing.T) {
 	}
 	if visible["epic"] || visible["epic.1"] {
 		t.Errorf("expected the scope's subtree to stay filtered out, got %v", visible)
+	}
+}
+
+func setupMouseModel(t *testing.T) Model {
+	t.Helper()
+	issues := make([]data.Issue, 14)
+	for i := range issues {
+		issues[i] = testIssue(fmt.Sprintf("mouse-%02d", i+1), data.StatusOpen)
+		issues[i].Description = strings.Repeat("detail line\n", 30)
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	return model.(Model)
+}
+
+func TestMouseClickParadeSelectsScrolledRowAndFocusesParade(t *testing.T) {
+	m := setupMouseModel(t)
+	m.parade.ScrollOffset = 3
+	target := m.parade.IssueAtViewportRow(1)
+	if target == nil {
+		t.Fatal("precondition: expected a selectable scrolled parade row")
+	}
+	m.activPane = PaneDetail
+	m.detail.Focused = true
+
+	model, _ := m.Update(tea.MouseClickMsg{X: 1, Y: headerHeight + 1, Button: tea.MouseLeft})
+	got := model.(Model)
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != target.ID {
+		t.Fatalf("selected issue = %v, want %s", got.parade.SelectedIssue, target.ID)
+	}
+	if got.activPane != PaneParade || got.detail.Focused {
+		t.Fatalf("mouse parade click focus = pane %d/detail %v, want parade/false", got.activPane, got.detail.Focused)
+	}
+}
+
+func TestMouseClickDetailReferenceNavigatesAndFocusesDetail(t *testing.T) {
+	source := testIssue("mouse-source", data.StatusOpen)
+	source.Dependencies = []data.Dependency{{IssueID: source.ID, DependsOnID: "mouse-dep", Type: "blocks"}}
+	dep := testIssue("mouse-dep", data.StatusOpen)
+	m := New([]data.Issue{source, dep}, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = model.(Model)
+	if !m.restoreParadeSelection(source.ID) {
+		t.Fatal("precondition: source issue was not found in parade")
+	}
+	m.syncSelection()
+	dependencyRow := -1
+	for row := 0; row < m.detail.Viewport.Height(); row++ {
+		if got := m.detail.ReferenceAt(row); got != nil && got.ID == dep.ID {
+			dependencyRow = row
+			break
+		}
+	}
+	if dependencyRow < 0 {
+		t.Fatalf("precondition: dependency row for %s was not visible", dep.ID)
+	}
+
+	model, _ = m.Update(tea.MouseClickMsg{X: m.parade.Width + 1, Y: headerHeight + dependencyRow, Button: tea.MouseRight})
+	got := model.(Model)
+	if got.detail.Issue == nil || got.detail.Issue.ID != dep.ID {
+		t.Fatalf("detail issue = %v, want %s", got.detail.Issue, dep.ID)
+	}
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != dep.ID {
+		t.Fatalf("parade selection = %v, want %s", got.parade.SelectedIssue, dep.ID)
+	}
+	if got.activPane != PaneDetail || !got.detail.Focused {
+		t.Fatalf("mouse detail click focus = pane %d/detail %v, want detail/true", got.activPane, got.detail.Focused)
+	}
+}
+
+func TestMouseWheelScrollsPaneUnderPointerWithoutStealingFocus(t *testing.T) {
+	m := setupMouseModel(t)
+	m.activPane = PaneDetail
+	m.detail.Focused = true
+	for i := min(m.parade.Height-1, len(m.parade.Items)-1); i >= 0; i-- {
+		if m.parade.Items[i].Issue != nil {
+			m.parade.Cursor = i
+			m.parade.SelectedIssue = m.parade.Items[i].Issue
+			break
+		}
+	}
+	m.syncSelection()
+	paradeOffset := m.parade.ScrollOffset
+	model, _ := m.Update(tea.MouseWheelMsg{X: 1, Y: headerHeight + 1, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.parade.ScrollOffset <= paradeOffset {
+		t.Fatalf("parade offset = %d, want > %d", m.parade.ScrollOffset, paradeOffset)
+	}
+	if m.activPane != PaneDetail || !m.detail.Focused {
+		t.Fatalf("left wheel stole focus: pane %d/detail %v", m.activPane, m.detail.Focused)
+	}
+
+	detailOffset := m.detail.Viewport.YOffset()
+	model, _ = m.Update(tea.MouseWheelMsg{X: m.parade.Width + 1, Y: headerHeight + 1, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.detail.Viewport.YOffset() <= detailOffset {
+		t.Fatalf("detail offset = %d, want > %d", m.detail.Viewport.YOffset(), detailOffset)
+	}
+	if m.activPane != PaneDetail || !m.detail.Focused {
+		t.Fatalf("right wheel changed focus: pane %d/detail %v", m.activPane, m.detail.Focused)
+	}
+}
+
+func TestMouseIgnoresHeaderFooterPaddingAndScrollCue(t *testing.T) {
+	m := setupMouseModel(t)
+	selected := m.parade.SelectedIssue.ID
+	offset := m.parade.ScrollOffset
+	clicks := []tea.MouseClickMsg{
+		{X: 1, Y: 0, Button: tea.MouseLeft},
+		{X: 1, Y: m.height - 1, Button: tea.MouseLeft},
+		{X: m.width - 1, Y: headerHeight + m.detail.Viewport.Height(), Button: tea.MouseRight},
+	}
+	for _, click := range clicks {
+		model, _ := m.Update(click)
+		m = model.(Model)
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != selected || m.parade.ScrollOffset != offset {
+		t.Fatalf("ignored-area click changed parade selection/offset: %v/%d", m.parade.SelectedIssue, m.parade.ScrollOffset)
+	}
+}
+
+func TestMouseDoesNotLeakThroughHelpOrForms(t *testing.T) {
+	m := setupMouseModel(t)
+	selected := m.parade.SelectedIssue.ID
+	m.showHelp = true
+	model, _ := m.Update(tea.MouseClickMsg{X: 1, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != selected {
+		t.Fatalf("help click leaked to parade: %v", m.parade.SelectedIssue)
+	}
+	m.showHelp = false
+	m.creating = true
+	model, _ = m.Update(tea.MouseClickMsg{X: 1, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != selected {
+		t.Fatalf("form click leaked to parade: %v", m.parade.SelectedIssue)
 	}
 }

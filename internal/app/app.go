@@ -52,6 +52,11 @@ const (
 	changeIndicatorDuration = 30 * time.Second
 )
 
+const (
+	headerHeight = 2
+	footerHeight = 2
+)
+
 // Model is the root BubbleTea model.
 type Model struct {
 	issues        []data.Issue
@@ -1189,6 +1194,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if _, ok := msg.(tea.MouseClickMsg); ok {
+		if m.showHelp || m.filtering {
+			return m, nil
+		}
+		return m.handleMouse(msg)
+	}
+	if _, ok := msg.(tea.MouseWheelMsg); ok {
+		if m.showHelp || m.filtering {
+			return m, nil
+		}
+		return m.handleMouse(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg, !skipDeferredKeyBuffer)
@@ -2001,6 +2019,88 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	return m, nil
+}
+
+func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
+	top, bodyHeight, paradeWidth := m.bodyBounds()
+	var x, y int
+	switch mouse := msg.(type) {
+	case tea.MouseClickMsg:
+		x, y = mouse.X, mouse.Y
+	case tea.MouseWheelMsg:
+		x, y = mouse.X, mouse.Y
+	default:
+		return m, nil
+	}
+	if x < 0 || x >= m.width || y < top || y >= top+bodyHeight {
+		return m, nil
+	}
+
+	right := x >= paradeWidth
+	if right && m.layoutPreset == LayoutWide {
+		return m, nil
+	}
+	if right && (m.showGasTown || m.showActors || m.showProblems || m.showDoctor || m.showCodex) {
+		return m, nil
+	}
+	bodyRow := y - top
+	if right && bodyRow >= m.detail.Viewport.Height() {
+		return m, nil
+	}
+
+	switch mouse := msg.(type) {
+	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft && !right {
+			issue := m.parade.IssueAtViewportRow(bodyRow)
+			if issue == nil {
+				return m, nil
+			}
+			if m.parade.Collapsed[issue.ID] {
+				m.parade.ToggleNode(issue.ID)
+				issue = m.parade.IssueAtViewportRow(bodyRow)
+				if issue == nil {
+					return m, nil
+				}
+			}
+			m.activPane = PaneParade
+			m.detail.Focused = false
+			m.restoreParadeSelection(issue.ID)
+			m.syncSelection()
+			return m, nil
+		}
+		if mouse.Button == tea.MouseRight && right {
+			m.activPane = PaneDetail
+			m.detail.Focused = true
+			if issue := m.detail.ReferenceAt(bodyRow); issue != nil {
+				m.detail.SetIssue(issue)
+				if m.restoreParadeSelection(issue.ID) {
+					m.syncSelection()
+				}
+			}
+		}
+	case tea.MouseWheelMsg:
+		if !right {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.parade.MoveUp()
+			case tea.MouseWheelDown:
+				m.parade.MoveDown()
+			default:
+				return m, nil
+			}
+			m.syncSelection()
+			return m, nil
+		}
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			m.detail.Viewport.ScrollUp(1)
+		case tea.MouseWheelDown:
+			m.detail.Viewport.ScrollDown(1)
+		default:
+			return m, nil
+		}
+	}
 	return m, nil
 }
 
@@ -3425,27 +3525,27 @@ func (m *Model) refreshHeader(groups map[data.SemanticState][]data.Issue) {
 	}
 }
 
+// bodyBounds is the shared terminal geometry used by layout and mouse routing.
+func (m Model) bodyBounds() (top, height, paradeWidth int) {
+	top = headerHeight
+	height = m.height - headerHeight - footerHeight
+	if height < 1 {
+		height = 1
+	}
+	if m.layoutPreset == LayoutWide {
+		return top, height, m.width
+	}
+	paradeWidth = m.width * 2 / 5
+	if paradeWidth < 30 {
+		paradeWidth = 30
+	}
+	return top, height, paradeWidth
+}
+
 // layout recalculates dimensions for all sub-components.
 func (m *Model) layout() {
-	headerH := 2
-	footerH := 2
-	bodyH := m.height - headerH - footerH
-	if bodyH < 1 {
-		bodyH = 1
-	}
-
-	var paradeW, detailW int
-	switch m.layoutPreset {
-	case LayoutWide:
-		paradeW = m.width
-		detailW = 0
-	default:
-		paradeW = m.width * 2 / 5
-		if paradeW < 30 {
-			paradeW = 30
-		}
-		detailW = m.width - paradeW
-	}
+	_, bodyH, paradeW := m.bodyBounds()
+	detailW := m.width - paradeW
 
 	// Geometry and the non-count header fields are layout()'s business; the
 	// per-state tallies are NOT. They come from rebuildParade's single
@@ -3939,6 +4039,7 @@ func (m Model) fetchMoleculeDAG(issueID string) tea.Cmd {
 func altView(s string) tea.View {
 	v := tea.NewView(s)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 

@@ -24,3 +24,12 @@ func TestScreenHeightMatchesTerminal(t *testing.T) {
 		t.Fatalf("screen = %d lines, want 40", got)
 	}
 }
+
+func TestViewEnablesMouseCellMotion(t *testing.T) {
+	m := New([]data.Issue{testIssue("mouse-view", data.StatusOpen)}, data.Source{}, data.DefaultBlockingTypes)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	view := model.(Model).View()
+	if view.MouseMode != tea.MouseModeCellMotion {
+		t.Fatalf("mouse mode = %v, want %v", view.MouseMode, tea.MouseModeCellMotion)
+	}
+}
