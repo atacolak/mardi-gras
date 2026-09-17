@@ -457,6 +457,36 @@ func paradeIssueIDs(p Parade) []string {
 	}
 	return ids
 }
+func TestParadeBlockedChildRendersUnderParent(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "mard-mdr", Title: "Epic", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "mard-mdr.3", Title: "Blocked child", Status: data.StatusBlocked, Priority: 0,
+			Dependencies: paradeParentEdge("mard-mdr.3", "mard-mdr")},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+
+	if got, want := paradeIssueIDs(p), []string{"mard-mdr", "mard-mdr.3"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("row order = %v, want %v", got, want)
+	}
+	var child ParadeItem
+	for _, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "mard-mdr.3" {
+			child = item
+		}
+	}
+	if child.Depth != 1 {
+		t.Errorf("blocked child depth = %d, want 1", child.Depth)
+	}
+	if child.State != data.StateWaitingBlocked {
+		t.Errorf("blocked child state = %v, want StateWaitingBlocked (red paint)", child.State)
+	}
+	if child.Section != nil {
+		t.Errorf("blocked child still belongs to section %q, want the open forest", child.Section.Title)
+	}
+	if out := ansi.Strip(p.View()); strings.Contains(out, "Waiting/Blocked") {
+		t.Fatalf("Waiting/Blocked section header still rendered:\n%s", out)
+	}
+}
 
 func TestParadeTree(t *testing.T) {
 	issues := []data.Issue{
@@ -487,9 +517,6 @@ func TestParadeAttentionSections(t *testing.T) {
 		if strings.Contains(out, header) {
 			t.Errorf("main-tree header %q should be omitted:\n%s", header, out)
 		}
-	}
-	if got := strings.Count(out, "⊘ Waiting/Blocked"); got != 1 {
-		t.Errorf("Waiting/Blocked header count = %d, want 1:\n%s", got, out)
 	}
 	if got := strings.Count(out, "⏸ Deferred"); got != 1 {
 		t.Errorf("Deferred header count = %d, want 1:\n%s", got, out)

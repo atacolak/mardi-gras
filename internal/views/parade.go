@@ -143,7 +143,7 @@ func (p *Parade) rebuildItems() {
 		}
 	}
 	p.appendForest(main)
-	for _, state := range []data.SemanticState{data.StateWaitingBlocked, data.StateDeferred} {
+	for _, state := range []data.SemanticState{data.StateDeferred} {
 		issues := p.Groups[state]
 		if len(issues) == 0 {
 			continue
@@ -161,7 +161,9 @@ func (p *Parade) RebuildItems() {
 }
 
 func isMainTreeState(state data.SemanticState) bool {
-	return state == data.StateReady || state == data.StateWorking || state == data.StateOperatorReview || state == data.StateDone
+	return state == data.StateReady || state == data.StateWorking ||
+		state == data.StateWaitingBlocked || state == data.StateOperatorReview ||
+		state == data.StateDone
 }
 
 func sectionForState(state data.SemanticState) *paradeSection {
