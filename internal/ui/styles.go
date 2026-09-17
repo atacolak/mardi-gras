@@ -560,9 +560,9 @@ func ExecIndicator(state int) string {
 	}
 }
 
-// ExecIndicatorHighlight is ExecIndicator for a row in the cursor's sibling
-// group: the same state color, bold. Ask 11 highlights the status character
-// only — never the id, title or row.
+// ExecIndicatorHighlight is ExecIndicator for a row in the selected family:
+// the same state color, bold. Highlights the status character only — never
+// the id, title or row.
 func ExecIndicatorHighlight(state int) string {
 	switch state {
 	case 0:

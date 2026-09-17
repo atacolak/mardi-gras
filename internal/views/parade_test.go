@@ -803,7 +803,7 @@ func TestParadeSortNeverConsultsRecency(t *testing.T) {
 	}
 }
 
-func TestParadeSiblingGlyphHighlight(t *testing.T) {
+func TestParadeFamilyGlyphHighlight(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "a", Title: "Epic A", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
 		{ID: "a.1", Title: "A one", Status: data.StatusOpen, Priority: 0,
@@ -823,14 +823,25 @@ func TestParadeSiblingGlyphHighlight(t *testing.T) {
 		}
 	}
 
-	want := map[string]bool{"a.1": true, "a.2": true}
-	if got := p.siblingGlyphIDs(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("sibling glyph set = %v, want %v (same parent and same depth only)", got, want)
+	// Cursor on a child still lights the selected epic and every bead under it,
+	// not the old same-depth sibling window and not the neighboring epic.
+	want := map[string]bool{"a": true, "a.1": true, "a.2": true, "a.1.1": true}
+	if got := p.familyGlyphIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("family glyph set = %v, want %v (selected tree, not same-depth siblings)", got, want)
 	}
 
 	out := p.View()
-	if got := strings.Count(out, ui.ExecIndicatorHighlight(int(data.StateWorking))); got != 1 {
-		t.Errorf("highlighted Working glyphs = %d, want 1 (sibling a.2 only; a.1.1 and b.1 are Working too)", got)
+	if got := strings.Count(out, ui.ExecIndicatorHighlight(int(data.StateWorking))); got != 2 {
+		t.Errorf("highlighted Working glyphs = %d, want 2 (a.2 and a.1.1; b.1 is the other family)", got)
+	}
+
+	for i, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "a" {
+			p.Cursor, p.SelectedIssue = i, item.Issue
+		}
+	}
+	if got := p.familyGlyphIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("family glyph set with cursor on epic = %v, want %v", got, want)
 	}
 }
 
@@ -866,6 +877,42 @@ func TestParadeRowRightAlignsPriorityBadge(t *testing.T) {
 		}
 		if got := lipgloss.Width(row); got != width {
 			t.Fatalf("width %d row width = %d, want %d so the badge sits in the last cell", width, got, width)
+		}
+	}
+}
+
+func TestParadeNestedPriorityBadgeInsets(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "epic.1", Title: "Child", Status: data.StatusOpen, Priority: 2,
+			Dependencies: paradeParentEdge("epic.1", "epic")},
+		{ID: "epic.1.1", Title: "Grand", Status: data.StatusOpen, Priority: 3,
+			Dependencies: paradeParentEdge("epic.1.1", "epic.1")},
+	}
+	for _, width := range []int{60, 80, 100, 140} {
+		p := NewParade(issues, width, 10, data.DefaultBlockingTypes)
+		byID := map[string]ParadeItem{}
+		for _, it := range p.Items {
+			if it.Issue != nil {
+				byID[it.Issue.ID] = it
+			}
+		}
+		epic := ansi.Strip(p.renderIssue(byID["epic"], false, false))
+		child := ansi.Strip(p.renderIssue(byID["epic.1"], false, false))
+		grand := ansi.Strip(p.renderIssue(byID["epic.1.1"], false, false))
+		if !strings.HasSuffix(epic, "P1") {
+			t.Fatalf("width %d epic = %q, want flush P1", width, epic)
+		}
+		if !strings.HasSuffix(child, "P2  ") {
+			t.Fatalf("width %d child = %q, want P2 inset by two spaces", width, child)
+		}
+		if !strings.HasSuffix(grand, "P3    ") {
+			t.Fatalf("width %d grand = %q, want P3 inset by four spaces", width, grand)
+		}
+		for _, row := range []string{epic, child, grand} {
+			if got := lipgloss.Width(row); got != width {
+				t.Fatalf("width %d row width = %d, want %d: %q", width, got, width, row)
+			}
 		}
 	}
 }

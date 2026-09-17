@@ -662,7 +662,7 @@ func (p *Parade) View() string {
 	if end > len(p.Items) {
 		end = len(p.Items)
 	}
-	siblings := p.siblingGlyphIDs()
+	family := p.familyGlyphIDs()
 	for idx, item := range p.Items[p.ScrollOffset:end] {
 		globalIdx := p.ScrollOffset + idx
 		switch {
@@ -671,7 +671,7 @@ func (p *Parade) View() string {
 		case item.IsFooter:
 			lines = append(lines, p.renderBorderBottom(item.Section))
 		default:
-			highlight := item.Issue != nil && siblings[item.Issue.ID]
+			highlight := item.Issue != nil && family[item.Issue.ID]
 			lines = append(lines, p.renderIssue(item, globalIdx == p.Cursor, highlight))
 		}
 	}
@@ -722,12 +722,11 @@ func (p *Parade) renderBorderBottom(sec *paradeSection) string {
 	return cornerL + fill + cornerR
 }
 
-
-// siblingGlyphIDs returns the rows whose status glyph is highlighted for the
-// current cursor: every visible row sharing the cursor row's loaded parent and
-// depth, the cursor row included. Roots share the empty parent key. There is no
-// positional window — proximity on screen means nothing here.
-func (p *Parade) siblingGlyphIDs() map[string]bool {
+// familyGlyphIDs returns the rows whose status glyph is highlighted for the
+// current cursor: the selected tree's root (walk up loaded parents) plus every
+// visible descendant. That is the selected epic and its beads, not the old
+// same-depth sibling window and not a positional ±6 fade.
+func (p *Parade) familyGlyphIDs() map[string]bool {
 	if p.Cursor < 0 || p.Cursor >= len(p.Items) {
 		return nil
 	}
@@ -735,17 +734,41 @@ func (p *Parade) siblingGlyphIDs() map[string]bool {
 	if cursor.Issue == nil {
 		return nil
 	}
-	parentID := p.loadedParentID(cursor.Issue)
+	rootID := p.familyRootID(cursor.Issue)
+	wanted := map[string]bool{rootID: true}
+	for _, desc := range data.Descendants(rootID, p.issueMap) {
+		wanted[desc.ID] = true
+	}
 	ids := make(map[string]bool)
 	for _, item := range p.Items {
-		if item.Issue == nil || item.Depth != cursor.Depth {
-			continue
-		}
-		if p.loadedParentID(item.Issue) == parentID {
+		if item.Issue != nil && wanted[item.Issue.ID] {
 			ids[item.Issue.ID] = true
 		}
 	}
 	return ids
+}
+
+// familyRootID walks loaded parent-child edges to the top of the cursor's
+// visible tree so a child selection still lights the epic and its other beads.
+func (p *Parade) familyRootID(iss *data.Issue) string {
+	current := iss
+	seen := map[string]bool{}
+	for current != nil {
+		if seen[current.ID] {
+			return current.ID
+		}
+		seen[current.ID] = true
+		parentID := p.loadedParentID(current)
+		if parentID == "" {
+			return current.ID
+		}
+		next, ok := p.issueMap[parentID]
+		if !ok {
+			return current.ID
+		}
+		current = next
+	}
+	return iss.ID
 }
 
 // loadedParentID is the parent edge the tree actually rendered: an unloaded
@@ -762,8 +785,8 @@ func (p *Parade) loadedParentID(iss *data.Issue) string {
 }
 
 // renderIssue renders one issue row. siblingGlyph highlights the status glyph
-// because the row is in the cursor's sibling group (ask 11) — nothing else on
-// the row changes, and no row is ever faded by distance.
+// because the row is in the selected epic's family — nothing else on the row
+// changes, and no row is ever faded by distance.
 func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) string {
 	issue := item.Issue
 
@@ -906,15 +929,17 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 		commentBadge = " " + ui.CommentBadge.Render(label)
 	}
 
-	// Ask 13: the trailing badge cluster is right-aligned, P badge last, so the
-	// P badge's final cell is the row's final cell — flush against the detail
-	// pane's purple border. The title owns the space between the id and it.
+	// Ask 13: the trailing badge cluster is right-aligned, P badge last.
+	// Nested rows keep a matching gap on the right of the P badge — the same
+	// number of cells as the left indent — so child priorities sit inboard of
+	// the epic's flush badge.
 	trailing := pinBadge + dueBadge + deferBadge + commentBadge + " " + prioStr
 	trailingWidth := lipgloss.Width(trailing)
+	rightInset := indentWidth
 
 	idWidth := lipgloss.Width(item.RenderedID)
 	maxTitle := innerWidth - 4 - indentWidth - 1 - selectWidth - changeWidth -
-		orphanWidth - zombieWidth - agentWidth - idWidth - trailingWidth
+		orphanWidth - zombieWidth - agentWidth - idWidth - trailingWidth - rightInset
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
@@ -953,11 +978,11 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 		prefix = ui.ItemCursor.Render(ui.Cursor + " ")
 	}
 	body := prefix + line
-	pad := innerWidth - lipgloss.Width(body) - trailingWidth
+	pad := innerWidth - lipgloss.Width(body) - trailingWidth - rightInset
 	if pad < 0 {
 		pad = 0
 	}
-	row := body + strings.Repeat(" ", pad) + trailing
+	row := body + strings.Repeat(" ", pad) + trailing + strings.Repeat(" ", rightInset)
 
 	if selected {
 		content := ui.SelectedRow(row, innerWidth)
