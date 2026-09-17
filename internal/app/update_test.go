@@ -397,15 +397,6 @@ func TestExecutePaletteActions(t *testing.T) {
 				}
 			},
 		},
-		{
-			name:   "ActionToggleClosed flips ShowClosed",
-			action: components.ActionToggleClosed,
-			check: func(t *testing.T, m Model, cmd tea.Cmd) {
-				if !m.parade.ShowClosed {
-					t.Fatal("expected parade.ShowClosed to be true after ActionToggleClosed (was false)")
-				}
-			},
-		},
 	}
 
 	for _, tt := range tests {

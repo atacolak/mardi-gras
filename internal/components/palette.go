@@ -27,7 +27,7 @@ const (
 	ActionNewIssue
 	ActionAddNote
 	ActionToggleFocus
-	ActionToggleClosed
+	ActionToggleNode
 	ActionFilter
 	ActionLaunchAgent
 	ActionKillAgent

@@ -31,7 +31,15 @@ func setupModel(t *testing.T) Model {
 	// driver makes orchestrator keys live even with gtEnv.Available false.
 	m.driver = gastown.NewGTDriver()
 	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	return model.(Model)
+	got := model.(Model)
+	for i, item := range got.parade.Items {
+		if item.Issue != nil && item.Issue.ID == "open-1" {
+			got.parade.Cursor = i
+			got.parade.SelectedIssue = item.Issue
+			break
+		}
+	}
+	return got
 }
 
 // ---------------------------------------------------------------------------
@@ -172,28 +180,6 @@ func TestKeyFTogglesFocus(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. c toggles closed section
-// ---------------------------------------------------------------------------
-
-func TestKeyCTogglesClosed(t *testing.T) {
-	got := setupModel(t)
-
-	if got.parade.ShowClosed {
-		t.Fatal("expected ShowClosed to be false initially")
-	}
-
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	got = model.(Model)
-	if !got.parade.ShowClosed {
-		t.Fatal("expected ShowClosed to be true after pressing c")
-	}
-
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	got = model.(Model)
-	if got.parade.ShowClosed {
-		t.Fatal("expected ShowClosed to be false after pressing c again")
-	}
-}
 
 // ---------------------------------------------------------------------------
 // 9. N opens create form
@@ -696,9 +682,11 @@ func setupEpicScopeModel(t *testing.T) Model {
 	epic.IssueType = data.TypeEpic
 	child := testIssue("epic.1", data.StatusOpen)
 	child.Dependencies = []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}
+	grandchild := testIssue("epic.1.1", data.StatusOpen)
+	grandchild.Dependencies = []data.Dependency{{IssueID: "epic.1.1", DependsOnID: "epic.1", Type: "parent-child"}}
 	unrelated := testIssue("unrelated", data.StatusOpen)
 
-	m := New([]data.Issue{epic, child, unrelated}, data.Source{}, data.DefaultBlockingTypes)
+	m := New([]data.Issue{epic, child, grandchild, unrelated}, data.Source{}, data.DefaultBlockingTypes)
 	m.startedAt = time.Now().Add(-time.Second)
 	m.driver = gastown.NewGTDriver()
 	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
@@ -725,6 +713,32 @@ func visibleParadeIDs(m Model) map[string]bool {
 		}
 	}
 	return ids
+}
+func TestKeyGreaterTogglesSelectedTreeNode(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
+	got = model.(Model)
+
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatalf("expected selected child epic.1 to be collapsed, got %v", got.parade.Collapsed)
+	}
+	visible := visibleParadeIDs(got)
+	if visible["epic.1.1"] {
+		t.Fatalf("expected collapsed grandchild to be hidden, got visible IDs %v", visible)
+	}
+	if !visible["epic"] || !visible["epic.1"] || !visible["unrelated"] {
+		t.Fatalf("expected epic, child, and unrelated root to remain visible, got %v", visible)
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
+	got = model.(Model)
+	if got.parade.Collapsed["epic.1"] {
+		t.Fatalf("expected second > to expand epic.1, got %v", got.parade.Collapsed)
+	}
+	if !visibleParadeIDs(got)["epic.1.1"] {
+		t.Fatalf("expected grandchild to return after expansion, got %v", visibleParadeIDs(got))
+	}
 }
 
 func TestKeyEScopesToEpicSubtree(t *testing.T) {
@@ -789,12 +803,18 @@ func TestKeyEScopeRequiresEpicAncestor(t *testing.T) {
 	}
 }
 
-// TestKeyEscClearsScopeBeforeFocusMode pins the esc ordering: leaving a scope is
-// one press and must not also drop focus mode. A second esc then handles focus.
-func TestKeyEscClearsScopeBeforeFocusMode(t *testing.T) {
+// TestKeyEscStillClearsScopeBeforeTreeFocus pins the esc ordering: leaving a
+// scope is one press and must not also drop focus mode or tree state.
+func TestKeyEscStillClearsScopeBeforeTreeFocus(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	model, _ := got.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
+	got = model.(Model)
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatal("precondition: expected epic.1 to be collapsed")
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
 	got = model.(Model)
 	model, _ = got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
 	got = model.(Model)
@@ -890,8 +910,8 @@ func TestScopeSurvivesResize(t *testing.T) {
 	if len(tallied) != len(visible) {
 		t.Errorf("header and parade disagree after resize: header tallies %v, parade shows %v", tallied, visible)
 	}
-	if n := len(got.header.Groups[data.StateReady]); n != 1 {
-		t.Errorf("expected the header to count 1 Ready issue under the scope (epic.1), got %d", n)
+	if n := len(got.header.Groups[data.StateReady]); n != 2 {
+		t.Errorf("expected the header to count 2 Ready issues under the scope (epic.1 and epic.1.1), got %d", n)
 	}
 }
 
@@ -990,51 +1010,25 @@ func TestKeyEScopeReloadsWhenRootReturns(t *testing.T) {
 	assertScoped("reload after the root returned")
 }
 
-// TestKeyCUnderScopeFoldsOnlyScopedDoneRows pins `c` as a lifecycle key, not a
-// one-shot render flag: under a scope it folds and unfolds the scoped Done rows
-// and still cannot reveal a closed issue the scope excludes. The closed child is
-// the operator's own evidence that the scoped work is finished.
-func TestKeyCUnderScopeFoldsOnlyScopedDoneRows(t *testing.T) {
-	epic := testIssue("epic", data.StatusInProgress)
-	epic.IssueType = data.TypeEpic
-	child := testIssue("epic.1", data.StatusClosed)
-	child.Dependencies = []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}
-	unrelatedClosed := testIssue("unrelated", data.StatusClosed)
+func TestCollapseSurvivesEpicScopeRebuild(t *testing.T) {
+	got := setupEpicScopeModel(t)
 
-	m := New([]data.Issue{epic, child, unrelatedClosed}, data.Source{}, data.DefaultBlockingTypes)
-	m.startedAt = time.Now().Add(-time.Second)
-	m.driver = gastown.NewGTDriver()
-	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	got := model.(Model)
+	model, _ := got.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
+	got = model.(Model)
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatal("precondition: expected epic.1 to be collapsed")
+	}
 
 	model, _ = got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
 	got = model.(Model)
 	if got.scopeRootID != "epic" {
-		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
+		t.Fatalf("expected epic scope, got %q", got.scopeRootID)
 	}
-	if visibleParadeIDs(got)["epic.1"] {
-		t.Fatal("precondition: the scoped closed child should start folded")
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatalf("expected collapse to survive epic scope rebuild, got %v", got.parade.Collapsed)
 	}
-
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	got = model.(Model)
-
-	visible := visibleParadeIDs(got)
-	if !visible["epic.1"] {
-		t.Errorf("expected c to unfold the scoped Done row, got %v", visible)
-	}
-	if visible["unrelated"] {
-		t.Errorf("expected c to stay inside the scope, got %v", visible)
-	}
-	if n := len(got.parade.Groups[data.StateDone]); n != 1 {
-		t.Fatalf("expected exactly the scoped Done row in the Done group, got %d", n)
-	}
-
-	// And it folds again — the key is a toggle, not a permanent reveal.
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	got = model.(Model)
-	if visibleParadeIDs(got)["epic.1"] {
-		t.Errorf("expected a second c to fold the scoped Done row again, got %v", visibleParadeIDs(got))
+	if visibleParadeIDs(got)["epic.1.1"] {
+		t.Fatalf("expected collapsed grandchild to stay hidden after scope rebuild, got %v", visibleParadeIDs(got))
 	}
 }
 

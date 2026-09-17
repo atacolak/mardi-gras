@@ -155,6 +155,11 @@ func (p *Parade) rebuildItems() {
 	}
 }
 
+// RebuildItems refreshes the flattened rows after restoring parade state.
+func (p *Parade) RebuildItems() {
+	p.rebuildItems()
+}
+
 func isMainTreeState(state data.SemanticState) bool {
 	return state == data.StateReady || state == data.StateWorking || state == data.StateOperatorReview || state == data.StateDone
 }

@@ -18,6 +18,19 @@ func TestHelpViewRendersContent(t *testing.T) {
 	if !strings.Contains(view, "close") {
 		t.Fatal("should show close hint")
 	}
+	if !strings.Contains(view, "Collapse / expand selected branch") {
+		t.Fatal("should show the > collapse binding")
+	}
+	if strings.Contains(view, "Toggle "+"closed issues") {
+		t.Fatal("should not show the removed closed-issues toggle")
+	}
+	for _, section := range h.sections() {
+		for _, binding := range section.bindings {
+			if binding.key == "c" {
+				t.Fatal("should not show the removed c binding")
+			}
+		}
+	}
 }
 
 func TestHelpPagination(t *testing.T) {

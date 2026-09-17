@@ -4,18 +4,12 @@
 package app
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"time"
-
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"context"
+	"fmt"
 	"github.com/atotto/clipboard"
 	"github.com/matt-wright86/mardi-gras/internal/actors"
 	"github.com/matt-wright86/mardi-gras/internal/agent"
@@ -24,6 +18,12 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 	"github.com/matt-wright86/mardi-gras/internal/views"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 // Pane tracks which panel is focused.
@@ -2230,11 +2230,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "M":
 		return m.toggleCodexTranscript()
 
-	case "c":
-		m.parade.ToggleClosed()
-		m.syncSelection()
-		return m, nil
-
 	// Quick actions: status changes (6.1)
 	case "1":
 		return m.quickAction(data.StatusInProgress, "in_progress")
@@ -2550,6 +2545,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.parade.ToggleSelect()
 			m.parade.MoveUp()
 			m.syncSelection()
+		case ">":
+			if m.parade.SelectedIssue != nil {
+				m.parade.ToggleNode(m.parade.SelectedIssue.ID)
+				m.syncSelection()
+			}
 		case "space", "x": // Toggle multi-select
 			m.parade.ToggleSelect()
 		case "X": // Clear all selections
@@ -2887,7 +2887,6 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "New issue", Desc: "Create a new beads issue", Key: "N", Action: components.ActionNewIssue},
 		{Name: "Add note", Desc: "Add a note to the selected issue", Key: "", Action: components.ActionAddNote},
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
-		{Name: "Toggle closed issues", Desc: "Show/hide past the stand", Key: "c", Action: components.ActionToggleClosed},
 		{Name: "Filter", Desc: "Fuzzy filter the parade list", Key: "/", Action: components.ActionFilter},
 		{Name: "Help", Desc: "Show keybinding help", Key: "?", Action: components.ActionHelp},
 		{Name: "Quit", Desc: "Exit Mardi Gras", Key: "q", Action: components.ActionQuit},
@@ -2897,6 +2896,11 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "Claim next ready", Desc: "Atomically claim the top-priority ready bead (bd ready --claim)", Key: "", Action: components.ActionClaimNextReady},
 	}
 
+	if m.activPane == PaneParade {
+		cmds = append(cmds, components.PaletteCommand{
+			Name: "Collapse / expand selected branch", Desc: "Collapse / expand selected branch", Key: ">", Action: components.ActionToggleNode,
+		})
+	}
 	if m.agentAvail {
 		cmds = append(cmds,
 			components.PaletteCommand{Name: "Launch agent", Desc: fmt.Sprintf("Start %s agent on issue", m.agentRuntime.RuntimeLabel()), Key: "a", Action: components.ActionLaunchAgent},
@@ -2974,9 +2978,11 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		toast, cmd := components.ShowToast(label, components.ToastInfo, toastDuration)
 		m.toast = toast
 		return m, cmd
-	case components.ActionToggleClosed:
-		m.parade.ToggleClosed()
-		m.syncSelection()
+	case components.ActionToggleNode:
+		if m.activPane == PaneParade && m.parade.SelectedIssue != nil {
+			m.parade.ToggleNode(m.parade.SelectedIssue.ID)
+			m.syncSelection()
+		}
 		return m, nil
 	case components.ActionFilter:
 		m.filtering = true
@@ -3497,7 +3503,7 @@ func (m *Model) rebuildParade() {
 	if m.parade.SelectedIssue != nil {
 		oldSelectedID = m.parade.SelectedIssue.ID
 	}
-	oldShowClosed := m.parade.ShowClosed
+	oldCollapsed := maps.Clone(m.parade.Collapsed)
 
 	paradeW := m.parade.Width
 	bodyH := m.parade.Height
@@ -3526,12 +3532,10 @@ func (m *Model) rebuildParade() {
 	}
 
 	m.refreshHeader(groups)
-
 	m.parade = views.NewParadeWithData(filteredIssues, groups, unmapped, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
 	m.parade.MatchHighlights = highlights
-	if oldShowClosed {
-		m.parade.ToggleClosed()
-	}
+	m.parade.Collapsed = oldCollapsed
+	m.parade.RebuildItems()
 	found := m.restoreParadeSelection(oldSelectedID)
 	if !found && oldSelectedID != "" {
 		// The previously-selected issue is gone. Fall back to the nearest

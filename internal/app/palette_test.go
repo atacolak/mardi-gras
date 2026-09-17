@@ -89,25 +89,6 @@ func TestPaletteResultCancelledClosesPalette(t *testing.T) {
 	}
 }
 
-func TestPaletteResultExecutesAction(t *testing.T) {
-	got := initModel(t)
-
-	// Open palette
-	model, _ := got.Update(tea.KeyPressMsg{Code: ':', Text: ":"})
-	got = model.(Model)
-
-	// Send toggle closed action
-	model, _ = got.Update(components.PaletteResult{Action: components.ActionToggleClosed})
-	got = model.(Model)
-
-	if got.showPalette {
-		t.Fatal("expected palette to close after executing action")
-	}
-	if !got.parade.ShowClosed {
-		t.Fatal("expected ShowClosed to be true after ActionToggleClosed")
-	}
-}
-
 func TestPaletteCtrlCQuits(t *testing.T) {
 	got := initModel(t)
 
@@ -143,13 +124,23 @@ func TestBuildPaletteCommandsBase(t *testing.T) {
 		components.ActionHelp:            false,
 		components.ActionQuit:            false,
 	}
+	foundCollapse := false
 
 	for _, cmd := range cmds {
 		if _, want := required[cmd.Action]; want {
 			required[cmd.Action] = true
 		}
+		if cmd.Key == ">" && cmd.Desc == "Collapse / expand selected branch" {
+			foundCollapse = true
+		}
+		if cmd.Key == "c" || cmd.Desc == "Toggle "+"closed issues" {
+			t.Fatalf("found removed closed-issues palette command: %+v", cmd)
+		}
 	}
 
+	if !foundCollapse {
+		t.Fatal("expected > collapse command in palette")
+	}
 	for action, found := range required {
 		if !found {
 			t.Errorf("expected action %d to be present in base commands", action)

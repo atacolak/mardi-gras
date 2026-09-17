@@ -22,41 +22,40 @@ func testIssue(id string, status data.Status) data.Issue {
 	}
 }
 
-func TestFileChangedMsgPreservesSelectionAndClosedState(t *testing.T) {
-	issues := []data.Issue{
-		testIssue("open-1", data.StatusOpen),
-		testIssue("open-2", data.StatusOpen),
-		testIssue("closed-1", data.StatusClosed),
-	}
+func TestCollapseSurvivesFileReloadAndResize(t *testing.T) {
+	got := setupEpicScopeModel(t)
+	issues := got.issues
 
-	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
-	m.startedAt = time.Now().Add(-time.Second) // bypass startup guard
-	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	got := model.(Model)
-
-	// Move selection to second open issue.
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model, _ := got.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
 	got = model.(Model)
-	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "open-2" {
-		t.Fatalf("expected selected issue open-2 before refresh, got %+v", got.parade.SelectedIssue)
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatal("precondition: expected epic.1 to be collapsed")
+	}
+	if visibleParadeIDs(got)["epic.1.1"] {
+		t.Fatal("precondition: expected grandchild hidden after collapse")
 	}
 
-	// Expand closed section.
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	got = model.(Model)
-	if !got.parade.ShowClosed {
-		t.Fatal("expected closed section expanded before refresh")
-	}
-
-	// Simulate file refresh with same issues.
 	model, _ = got.Update(data.FileChangedMsg{Issues: issues})
 	got = model.(Model)
-
-	if !got.parade.ShowClosed {
-		t.Fatal("expected closed section to remain expanded after refresh")
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatalf("expected collapse to survive file reload, got %v", got.parade.Collapsed)
 	}
-	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "open-2" {
-		t.Fatalf("expected selected issue open-2 after refresh, got %+v", got.parade.SelectedIssue)
+	if visibleParadeIDs(got)["epic.1.1"] {
+		t.Fatalf("expected grandchild hidden after file reload, got %v", visibleParadeIDs(got))
+	}
+
+	model, _ = got.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	got = model.(Model)
+	if !got.parade.Collapsed["epic.1"] {
+		t.Fatalf("expected collapse to survive resize, got %v", got.parade.Collapsed)
+	}
+	if visibleParadeIDs(got)["epic.1.1"] {
+		t.Fatalf("expected grandchild hidden after resize, got %v", visibleParadeIDs(got))
+	}
+	for _, id := range []string{"epic", "epic.1", "unrelated"} {
+		if !visibleParadeIDs(got)[id] {
+			t.Fatalf("expected %s visible after reload and resize, got %v", id, visibleParadeIDs(got))
+		}
 	}
 }
 
