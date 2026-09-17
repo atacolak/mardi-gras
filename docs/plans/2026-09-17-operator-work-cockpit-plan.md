@@ -101,7 +101,7 @@ No task may add a seventh state, a second classifier, dotted-ID ancestry, a defa
 
 **Verification (anti-gameable):** in an isolated temporary copy of the board, `br update <probe> --status review` succeeds under the new policy; `br list --json --limit 0 --all` returns that probe with `status:"review"`; Go tests prove only that exact status derives Operator Review, while an arbitrary custom status remains hidden. The live board is not mutated by this proof.
 
-- [ ] **Step 1: Write failing classifier and vocabulary tests**
+- [x] **Step 1: Write failing classifier and vocabulary tests**
 
 Update `TestStateOrderAndLabel` to require exact integer order and labels:
 
@@ -161,7 +161,7 @@ var execStates = []struct {
 
 Update header/tmux/render fixtures to expect exact ordered pairs, e.g. sample counts `12○ 3● 3⊘ 0⏸ 0◐ 3✓` under the recommended order. Leave process-level `cmd/mg` acceptance and fixture changes to Task 7. Update detail expectation to `◐ Operator Review` with no raw parenthetical.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -171,7 +171,7 @@ go test ./internal/data ./internal/ui ./internal/components ./internal/tmux ./in
 
 Expected: compile failures for `StateOperatorReview` / `StatusReview`, old order/glyph expectations, and old `Awaiting Review (in_progress)` detail copy.
 
-- [ ] **Step 3: Add the policy and implement the classifier cutover**
+- [x] **Step 3: Add the policy and implement the classifier cutover**
 
 Write the exact operator-approved policy. Under the recommended decision it must declare every status the board is allowed to use and keep `review` out of ready:
 
@@ -200,7 +200,7 @@ func legacyConvergedEpicOperatorReview(i *Issue, issueMap map[string]*Issue) (bo
 
 Call it only for non-review legacy rows after direct review and blocked classification. Preserve hidden draft/tombstone/raw-pinned/arbitrary custom behavior. Update comments to give the approved deletion condition.
 
-- [ ] **Step 4: Rename/reorder the complete UI vocabulary atomically**
+- [x] **Step 4: Rename/reorder the complete UI vocabulary atomically**
 
 Rename `AwaitingReview` identifiers to `OperatorReview` throughout `internal/ui`, bind the confirmed glyphs, and reorder every switch to the new integer contract. Update tmux colors in the same semantic order:
 
@@ -215,7 +215,7 @@ case data.StateDone:           return "colour244"
 
 Do not change palette primitives. Preserve the theme-rebake proof in `TestExecIndicatorRebakesOnThemeSwitch`.
 
-- [ ] **Step 5: Prove the Beads representation without mutating this board**
+- [x] **Step 5: Prove the Beads representation without mutating this board**
 
 Create a temporary directory outside the repo, copy `.beads` and the new policy into it without hard-linking, then run the approved commands there:
 
@@ -226,7 +226,7 @@ br --db /tmp/mg-review-proof/.beads/beads.db list --json --limit 0 --all
 
 Expected: update succeeds and list output contains the same ID with `"status":"review"`. Confirm the real repo's `br show <copied-probe-id>` is unchanged. If `br --db` does not make policy discovery use the temp directory, run from `/tmp/mg-review-proof` with its copied `.beads`; never point a mutation at the real board.
 
-- [ ] **Step 6: Run targeted tests and stale-vocabulary search**
+- [x] **Step 6: Run targeted tests and stale-vocabulary search**
 
 Run:
 
@@ -237,7 +237,7 @@ rg -n 'StateAwaitingReview|ExecAwaitingReview|SymExecAwaitingReview|Awaiting Rev
 
 Expected: tests PASS. Search may still find only docs/fixtures explicitly scheduled for Task 7; no production Go identifier or execution glyph remains stale.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add .beads/policy.yaml internal/data/issue.go internal/data/semantic.go internal/data/semantic_test.go internal/data/contract_test.go internal/ui internal/components/header_test.go internal/tmux internal/views/render_test.go internal/views/detail_test.go
