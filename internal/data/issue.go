@@ -94,6 +94,7 @@ type Issue struct {
 	Title              string                 `json:"title"`
 	Description        string                 `json:"description,omitempty"`
 	Status             Status                 `json:"status"`
+	Pinned             bool                   `json:"pinned,omitempty"`
 	Priority           Priority               `json:"priority"`
 	IssueType          IssueType              `json:"issue_type"`
 	Owner              string                 `json:"owner,omitempty"`

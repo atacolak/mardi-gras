@@ -43,18 +43,13 @@ func LoadIssues(path string) ([]Issue, int, error) {
 	return issues, skipped, nil
 }
 
-// SortIssues sorts by: active first, then priority (ascending), then recency.
+// SortIssues sorts by priority (ascending), then ID (ascending).
 func SortIssues(issues []Issue) {
-	sort.Slice(issues, func(i, j int) bool {
+	sort.SliceStable(issues, func(i, j int) bool {
 		a, b := issues[i], issues[j]
-		aActive := a.Status != StatusClosed
-		bActive := b.Status != StatusClosed
-		if aActive != bActive {
-			return aActive
-		}
 		if a.Priority != b.Priority {
 			return a.Priority < b.Priority
 		}
-		return a.UpdatedAt.After(b.UpdatedAt)
+		return a.ID < b.ID
 	})
 }

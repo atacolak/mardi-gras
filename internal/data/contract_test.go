@@ -2,6 +2,7 @@ package data
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -628,31 +629,30 @@ func TestContractAllPriorityValues(t *testing.T) {
 	}
 }
 
-func TestContractSortAfterParse(t *testing.T) {
-	// Verify SortIssues (called by FetchIssuesCLI) produces expected ordering:
-	// active first, then by priority, then by recency.
-	jsonStr := `[
-		{"id":"c-1","title":"Closed","status":"closed","priority":0,"issue_type":"task",
-		 "created_at":"2026-03-01T00:00:00Z","created_by":"x","updated_at":"2026-03-05T00:00:00Z",
-		 "closed_at":"2026-03-05T00:00:00Z"},
-		{"id":"a-2","title":"Low pri","status":"open","priority":3,"issue_type":"task",
-		 "created_at":"2026-03-01T00:00:00Z","created_by":"x","updated_at":"2026-03-04T00:00:00Z"},
-		{"id":"a-1","title":"High pri","status":"in_progress","priority":0,"issue_type":"bug",
-		 "created_at":"2026-03-01T00:00:00Z","created_by":"x","updated_at":"2026-03-03T00:00:00Z"}
-	]`
-
-	var issues []Issue
-	if err := json.Unmarshal([]byte(jsonStr), &issues); err != nil {
-		t.Fatalf("failed to parse: %v", err)
+func TestSortIssuesUsesPriorityThenIDNeverRecency(t *testing.T) {
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	fresh := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	issues := []Issue{
+		{ID: "z", Priority: PriorityHigh, Status: StatusClosed, UpdatedAt: fresh},
+		{ID: "b", Priority: PriorityHigh, Status: StatusOpen, UpdatedAt: fresh},
+		{ID: "a", Priority: PriorityHigh, Status: StatusInProgress, UpdatedAt: old},
+		{ID: "p0", Priority: PriorityCritical, Status: StatusClosed, UpdatedAt: old},
 	}
 	SortIssues(issues)
-
-	// Active issues first, then by priority ascending
-	assertEqual(t, "sorted[0]", issues[0].ID, "a-1") // P0, active
-	assertEqual(t, "sorted[1]", issues[1].ID, "a-2") // P3, active
-	assertEqual(t, "sorted[2]", issues[2].ID, "c-1") // closed
+	if got := issueIDs(issues); !reflect.DeepEqual(got, []string{"p0", "a", "b", "z"}) {
+		t.Fatalf("order = %v", got)
+	}
 }
 
+func TestContractPinnedIsOrthogonal(t *testing.T) {
+	var issue Issue
+	if err := json.Unmarshal([]byte(`{"id":"x","status":"open","pinned":true}`), &issue); err != nil {
+		t.Fatal(err)
+	}
+	if !issue.Pinned || issue.Status != StatusOpen {
+		t.Fatalf("%+v", issue)
+	}
+}
 func TestContractBdShowCurrentJSON(t *testing.T) {
 	// bd show --current --json returns {"id": "..."}.
 	showCurrentJSON := `{"id": "proj-042"}`

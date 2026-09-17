@@ -263,6 +263,43 @@ func TestParseBrListOutput(t *testing.T) {
 		t.Errorf("first issue = %q, want mard-nob (active sorts first)", issues[0].ID)
 	}
 }
+func TestParseBrListOutputSortUsesPriorityThenIDNeverRecency(t *testing.T) {
+	out := []byte(`{"issues":[
+		{"id":"mard-z","status":"closed","priority":1,"updated_at":"2030-01-01T00:00:00Z"},
+		{"id":"mard-b","status":"open","priority":1,"updated_at":"2030-01-01T00:00:00Z"},
+		{"id":"mard-a","status":"in_progress","priority":1,"updated_at":"2020-01-01T00:00:00Z"},
+		{"id":"mard-p0","status":"closed","priority":0,"updated_at":"2020-01-01T00:00:00Z"}
+	]}`)
+	issues, err := parseBrListOutput(out, "mard")
+	if err != nil {
+		t.Fatalf("parseBrListOutput: %v", err)
+	}
+	if got := issueIDs(issues); !reflect.DeepEqual(got, []string{"mard-p0", "mard-a", "mard-b", "mard-z"}) {
+		t.Fatalf("order = %v", got)
+	}
+}
+
+func TestLoadIssuesSortUsesPriorityThenIDNeverRecency(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "issues.jsonl")
+	data := []byte("{" +
+		`"id":"z","status":"closed","priority":1,"updated_at":"2030-01-01T00:00:00Z"}` + "\n" +
+		`{"id":"b","status":"open","priority":1,"updated_at":"2030-01-01T00:00:00Z"}` + "\n" +
+		`{"id":"a","status":"in_progress","priority":1,"updated_at":"2020-01-01T00:00:00Z"}` + "\n" +
+		`{"id":"p0","status":"closed","priority":0,"updated_at":"2020-01-01T00:00:00Z"}` + "\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, skipped, err := LoadIssues(path)
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+	if skipped != 0 {
+		t.Fatalf("skipped = %d, want 0", skipped)
+	}
+	if got := issueIDs(issues); !reflect.DeepEqual(got, []string{"p0", "a", "b", "z"}) {
+		t.Fatalf("order = %v", got)
+	}
+}
 
 func TestParseBrListOutputMalformed(t *testing.T) {
 	if _, err := parseBrListOutput([]byte(`not json`), ""); err == nil {
