@@ -37,6 +37,15 @@ var (
 	ExecOperatorReviewStr string
 	ExecDoneStr           string
 
+	// Pre-rendered highlighted indicators (see ExecIndicatorHighlight): same
+	// color, bold, for the cursor's sibling group.
+	ExecReadyHiStr          string
+	ExecWorkingHiStr        string
+	ExecWaitingHiStr        string
+	ExecDeferredHiStr       string
+	ExecOperatorReviewHiStr string
+	ExecDoneHiStr           string
+
 	// Issue items in the list
 	ItemNormal   lipgloss.Style
 	ItemSelected lipgloss.Style
@@ -209,6 +218,13 @@ func rebuildStyles() {
 	ExecDeferredStr = lipgloss.NewStyle().Foreground(ExecDeferred).Render(SymExecDeferred)
 	ExecOperatorReviewStr = lipgloss.NewStyle().Foreground(ExecOperatorReview).Render(SymExecOperatorReview)
 	ExecDoneStr = lipgloss.NewStyle().Foreground(ExecDone).Render(SymExecDone)
+
+	ExecReadyHiStr = lipgloss.NewStyle().Foreground(ExecReady).Bold(true).Render(SymExecReady)
+	ExecWorkingHiStr = lipgloss.NewStyle().Foreground(ExecWorking).Bold(true).Render(SymExecWorking)
+	ExecWaitingHiStr = lipgloss.NewStyle().Foreground(ExecWaiting).Bold(true).Render(SymExecWaiting)
+	ExecDeferredHiStr = lipgloss.NewStyle().Foreground(ExecDeferred).Bold(true).Render(SymExecDeferred)
+	ExecOperatorReviewHiStr = lipgloss.NewStyle().Foreground(ExecOperatorReview).Bold(true).Render(SymExecOperatorReview)
+	ExecDoneHiStr = lipgloss.NewStyle().Foreground(ExecDone).Bold(true).Render(SymExecDone)
 
 	// Contract-violation fallback
 	execSectionFallback = lipgloss.NewStyle().Bold(true).Foreground(Muted)
@@ -539,6 +555,28 @@ func ExecIndicator(state int) string {
 		return ExecOperatorReviewStr
 	case 5:
 		return ExecDoneStr
+	default:
+		return execIndicatorFallback
+	}
+}
+
+// ExecIndicatorHighlight is ExecIndicator for a row in the cursor's sibling
+// group: the same state color, bold. Ask 11 highlights the status character
+// only — never the id, title or row.
+func ExecIndicatorHighlight(state int) string {
+	switch state {
+	case 0:
+		return ExecReadyHiStr
+	case 1:
+		return ExecWorkingHiStr
+	case 2:
+		return ExecWaitingHiStr
+	case 3:
+		return ExecDeferredHiStr
+	case 4:
+		return ExecOperatorReviewHiStr
+	case 5:
+		return ExecDoneHiStr
 	default:
 		return execIndicatorFallback
 	}

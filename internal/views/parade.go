@@ -607,6 +607,7 @@ func (p *Parade) View() string {
 	if end > len(p.Items) {
 		end = len(p.Items)
 	}
+	siblings := p.siblingGlyphIDs()
 	for idx, item := range p.Items[p.ScrollOffset:end] {
 		globalIdx := p.ScrollOffset + idx
 		switch {
@@ -615,11 +616,8 @@ func (p *Parade) View() string {
 		case item.IsFooter:
 			lines = append(lines, p.renderBorderBottom(item.Section))
 		default:
-			dist := globalIdx - p.Cursor
-			if dist < 0 {
-				dist = -dist
-			}
-			lines = append(lines, p.renderIssue(item, globalIdx == p.Cursor, dist))
+			highlight := item.Issue != nil && siblings[item.Issue.ID]
+			lines = append(lines, p.renderIssue(item, globalIdx == p.Cursor, highlight))
 		}
 	}
 	free := p.Height - len(lines)
@@ -669,13 +667,56 @@ func (p *Parade) renderBorderBottom(sec *paradeSection) string {
 	return cornerL + fill + cornerR
 }
 
-// renderIssue renders an issue row wrapped in │ section borders.
-// distFromCursor controls positional fading (btop-style depth effect).
-func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int) string {
+
+// siblingGlyphIDs returns the rows whose status glyph is highlighted for the
+// current cursor: every visible row sharing the cursor row's loaded parent and
+// depth, the cursor row included. Roots share the empty parent key. There is no
+// positional window — proximity on screen means nothing here.
+func (p *Parade) siblingGlyphIDs() map[string]bool {
+	if p.Cursor < 0 || p.Cursor >= len(p.Items) {
+		return nil
+	}
+	cursor := p.Items[p.Cursor]
+	if cursor.Issue == nil {
+		return nil
+	}
+	parentID := p.loadedParentID(cursor.Issue)
+	ids := make(map[string]bool)
+	for _, item := range p.Items {
+		if item.Issue == nil || item.Depth != cursor.Depth {
+			continue
+		}
+		if p.loadedParentID(item.Issue) == parentID {
+			ids[item.Issue.ID] = true
+		}
+	}
+	return ids
+}
+
+// loadedParentID is the parent edge the tree actually rendered: an unloaded
+// parent makes the row a root, exactly as orderForest treats it.
+func (p *Parade) loadedParentID(iss *data.Issue) string {
+	parentID := iss.ParentRelationshipID()
+	if parentID == "" || parentID == iss.ID {
+		return ""
+	}
+	if _, ok := p.issueMap[parentID]; !ok {
+		return ""
+	}
+	return parentID
+}
+
+// renderIssue renders one issue row. siblingGlyph highlights the status glyph
+// because the row is in the cursor's sibling group (ask 11) — nothing else on
+// the row changes, and no row is ever faded by distance.
+func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) string {
 	issue := item.Issue
 
 	// The row's glyph and ID color come from the derived semantic state.
 	symStr := ui.ExecIndicator(int(item.State))
+	if siblingGlyph {
+		symStr = ui.ExecIndicatorHighlight(int(item.State))
+	}
 	var prioStr string
 	switch issue.Priority {
 	case 0:
@@ -870,11 +911,6 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		row += strings.Repeat(" ", padLen)
 	}
 	content := ansi.Truncate(row, innerWidth, "")
-
-	// Positional fade: items far from cursor get dimmed (btop-style depth)
-	if distFromCursor > 6 {
-		content = lipgloss.NewStyle().Faint(true).Render(content)
-	}
 
 	if item.Section == nil {
 		return content

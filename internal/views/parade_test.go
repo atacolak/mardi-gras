@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -210,7 +211,7 @@ func TestParadeIndentUsesParentRelationships(t *testing.T) {
 		if item.Issue == nil {
 			continue
 		}
-		row := ansi.Strip(p.renderIssue(item, false, 0))
+		row := ansi.Strip(p.renderIssue(item, false, false))
 		byteIndex := strings.Index(row, item.Issue.ID)
 		positions[item.Issue.ID] = ansi.StringWidth(row[:byteIndex])
 	}
@@ -254,7 +255,7 @@ func TestParadeRelativeDisplayID(t *testing.T) {
 		}
 		got[item.Issue.ID] = ansi.Strip(item.RenderedID)
 		if item.Issue.ID == "mard-nob.7" {
-			t.Logf("nested row: %s", ansi.Strip(p.renderIssue(item, false, 0)))
+			t.Logf("nested row: %s", ansi.Strip(p.renderIssue(item, false, false)))
 		}
 	}
 
@@ -799,5 +800,49 @@ func TestParadeSortNeverConsultsRecency(t *testing.T) {
 		if got, want := paradeIssueIDs(p), []string{"a-fresh", "b-stale"}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s order = %v, want %v (ID tiebreak, never recency)", mode.Label(), got, want)
 		}
+	}
+}
+
+func TestParadeSiblingGlyphHighlight(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "a", Title: "Epic A", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "a.1", Title: "A one", Status: data.StatusOpen, Priority: 0,
+			Dependencies: paradeParentEdge("a.1", "a")},
+		{ID: "a.2", Title: "A two", Status: data.StatusInProgress, Priority: 1,
+			Dependencies: paradeParentEdge("a.2", "a")},
+		{ID: "a.1.1", Title: "A one one", Status: data.StatusInProgress, Priority: 0,
+			Dependencies: paradeParentEdge("a.1.1", "a.1")},
+		{ID: "b", Title: "Epic B", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "b.1", Title: "B one", Status: data.StatusInProgress, Priority: 0,
+			Dependencies: paradeParentEdge("b.1", "b")},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+	for i, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "a.1" {
+			p.Cursor, p.SelectedIssue = i, item.Issue
+		}
+	}
+
+	want := map[string]bool{"a.1": true, "a.2": true}
+	if got := p.siblingGlyphIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("sibling glyph set = %v, want %v (same parent and same depth only)", got, want)
+	}
+
+	out := p.View()
+	if got := strings.Count(out, ui.ExecIndicatorHighlight(int(data.StateWorking))); got != 1 {
+		t.Errorf("highlighted Working glyphs = %d, want 1 (sibling a.2 only; a.1.1 and b.1 are Working too)", got)
+	}
+}
+
+func TestParadeHasNoPositionalFade(t *testing.T) {
+	issues := make([]data.Issue, 20)
+	for i := range issues {
+		issues[i] = data.Issue{
+			ID: fmt.Sprintf("fade-%02d", i), Title: "Row", Status: data.StatusOpen, Priority: 2,
+		}
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	if out := p.View(); strings.Contains(out, "\x1b[2m") {
+		t.Fatal("parade still renders faint rows; the ±6 positional fade must be gone")
 	}
 }

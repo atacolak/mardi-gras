@@ -190,3 +190,24 @@ func TestExecColorsUseEverySwatch(t *testing.T) {
 		}
 	}
 }
+
+// TestExecIndicatorHighlight pins ask 11's "glyph only" highlight: same color,
+// same one-cell width, visibly different bytes, and rebaked on theme switch.
+func TestExecIndicatorHighlight(t *testing.T) {
+	t.Cleanup(func() { SetTheme(ThemeDark) })
+	for _, tc := range execStates {
+		plain, hi := ExecIndicator(tc.state), ExecIndicatorHighlight(tc.state)
+		if plain == hi {
+			t.Errorf("ExecIndicatorHighlight(%d) == ExecIndicator(%d); the highlight is invisible", tc.state, tc.state)
+		}
+		if ansi.StringWidth(hi) != 1 {
+			t.Errorf("ExecIndicatorHighlight(%d) width = %d, want 1", tc.state, ansi.StringWidth(hi))
+		}
+	}
+	SetTheme(ThemeDark)
+	dark := ExecIndicatorHighlight(0)
+	SetTheme(ThemeLight)
+	if ExecIndicatorHighlight(0) == dark {
+		t.Error("ExecIndicatorHighlight was not rebaked by SetTheme")
+	}
+}

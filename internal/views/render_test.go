@@ -158,7 +158,7 @@ func TestRenderIssueCursor(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, true, 0)
+	out := p.renderIssue(item, true, false)
 	if !strings.Contains(out, ui.Cursor) {
 		t.Fatalf("renderIssue with selected=true should contain cursor %q, got: %s", ui.Cursor, out)
 	}
@@ -181,7 +181,7 @@ func TestRenderIssueNoCursor(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if strings.Contains(out, ui.Cursor) {
 		t.Fatalf("renderIssue with selected=false should not contain cursor %q, got: %s", ui.Cursor, out)
 	}
@@ -205,7 +205,7 @@ func TestRenderIssueMultiSelect(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymSelected) {
 		t.Fatalf("renderIssue with multi-select should contain %q, got: %s", ui.SymSelected, out)
 	}
@@ -229,7 +229,7 @@ func TestRenderIssueChangedDot(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymChanged) {
 		t.Fatalf("renderIssue with ChangedIDs should contain %q, got: %s", ui.SymChanged, out)
 	}
@@ -253,7 +253,7 @@ func TestRenderIssueOrphanBadge(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymDeadRig) {
 		t.Fatalf("renderIssue with OrphanedIDs should contain %q, got: %s", ui.SymDeadRig, out)
 	}
@@ -276,7 +276,7 @@ func TestRenderIssueNoOrphanBadge(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if strings.Contains(out, ui.SymDeadRig) {
 		t.Fatalf("renderIssue without OrphanedIDs should not contain %q", ui.SymDeadRig)
 	}
@@ -300,7 +300,7 @@ func TestRenderIssueZombieBadge(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymZombie) {
 		t.Fatalf("renderIssue with ZombieIDs should contain zombie symbol, got: %s", out)
 	}
@@ -323,7 +323,7 @@ func TestRenderIssueNoZombieBadge(t *testing.T) {
 		t.Fatal("no selectable item found")
 	}
 
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if strings.Contains(out, ui.SymZombie) {
 		t.Fatalf("renderIssue without ZombieIDs should not contain zombie symbol")
 	}
@@ -405,7 +405,7 @@ func TestRenderIssueDueBadge(t *testing.T) {
 	if item.Issue == nil {
 		t.Fatal("no selectable item found")
 	}
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymDueDate) {
 		t.Fatalf("renderIssue with upcoming due should contain %q, got: %s", ui.SymDueDate, out)
 	}
@@ -429,7 +429,7 @@ func TestRenderIssueOverdueBadge(t *testing.T) {
 	if item.Issue == nil {
 		t.Fatal("no selectable item found")
 	}
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymOverdue) {
 		t.Fatalf("renderIssue with overdue should contain %q, got: %s", ui.SymOverdue, out)
 	}
@@ -453,7 +453,7 @@ func TestRenderIssueDeferredDim(t *testing.T) {
 	if item.Issue == nil {
 		t.Fatal("no selectable item found")
 	}
-	out := p.renderIssue(item, false, 0)
+	out := p.renderIssue(item, false, false)
 	if !strings.Contains(out, ui.SymDeferred) {
 		t.Fatalf("renderIssue with deferred should contain %q, got: %s", ui.SymDeferred, out)
 	}
@@ -476,7 +476,7 @@ func TestRenderIssueHierarchicalIndent(t *testing.T) {
 		if it.Issue == nil {
 			continue
 		}
-		out := ansi.Strip(p.renderIssue(it, false, 0))
+		out := ansi.Strip(p.renderIssue(it, false, false))
 		switch it.Issue.ID {
 		case "mg-007":
 			// Parent should not have extra indent (no leading spaces before sym)

@@ -20,7 +20,7 @@ func BenchmarkParadeRenderIssue(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p.renderIssue(item, false, 0)
+		p.renderIssue(item, false, false)
 	}
 }
 
@@ -39,6 +39,6 @@ func BenchmarkParadeRenderIssueSelected(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p.renderIssue(item, true, 0)
+		p.renderIssue(item, true, false)
 	}
 }
