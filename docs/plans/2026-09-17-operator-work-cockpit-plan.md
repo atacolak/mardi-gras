@@ -494,7 +494,7 @@ git commit -m "feat: render work as a collapsible semantic tree"
 
 **Verification (anti-gameable):** Bubble Tea key messages collapse a nested branch, then exercise `FileChangedMsg`, `WindowSizeMsg`, and `E` scope; the same branch remains collapsed, unrelated rows stay visible, and `esc` still clears epic scope before anything else. No global Done toggle remains in keys or palette.
 
-- [ ] **Step 1: Write failing key and rebuild tests**
+- [x] **Step 1: Write failing key and rebuild tests**
 
 Add:
 
@@ -516,7 +516,7 @@ For the reload case send the existing `data.FileChangedMsg` shape with the same 
 
 Update help/palette tests to require `>` "Collapse / expand selected branch" and absence of `c` / "Toggle closed issues".
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -526,7 +526,7 @@ go test ./internal/app ./internal/components -run 'Test(KeyGreater|CollapseSurvi
 
 Expected: `>` unbound, collapse map lost when `NewParadeWithData` replaces the parade, old `c` action remains.
 
-- [ ] **Step 3: Implement app preservation and keyboard route**
+- [x] **Step 3: Implement app preservation and keyboard route**
 
 In `rebuildParade`, capture and restore the collapse set just as selection and dimensions are preserved:
 
@@ -539,7 +539,7 @@ m.parade.RebuildItems()
 
 Use the actual exported helper name Task 3 lands. Bind `>` only while `PaneParade` is active, toggle the selected full ID, then call `syncSelection`. Remove global `case "c"`, `ActionToggleClosed`, palette command, `oldShowClosed`, and their tests. Do not change `E`, scope-first `esc`, filter, focus, or layout-preset behavior.
 
-- [ ] **Step 4: Update help only**
+- [x] **Step 4: Update help only**
 
 Replace the parade binding with:
 
@@ -549,7 +549,7 @@ Replace the parade binding with:
 
 Do not document mouse until Task 7, when it is executable.
 
-- [ ] **Step 5: Run targeted tests and stale-toggle search**
+- [x] **Step 5: Run targeted tests and stale-toggle search**
 
 Run:
 
@@ -560,7 +560,7 @@ rg -n 'ToggleClosed|ShowClosed|ActionToggleClosed|Toggle closed issues|case "c"'
 
 Expected: tests PASS; search empty.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/app/app.go internal/app/keys_test.go internal/app/app_test.go internal/app/palette_test.go internal/app/update_test.go internal/components/help.go internal/components/help_test.go internal/components/palette.go
