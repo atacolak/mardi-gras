@@ -330,13 +330,12 @@ func TestParadeRelativeDisplayIDClosed(t *testing.T) {
 	}
 }
 
-// A matching-prefix child whose parent is not in its own section renders at
-// depth 0, where the full ID is the only resolvable label: nothing above it
-// repeats the prefix, so ".7" would be a row the operator cannot look up. Real
-// boards reach this shape — a closed child lands in Done while its open epic is
-// still in Ready, and a blocked child lands in Waiting/Blocked while its epic
-// is Ready — which is why relativeDisplayID takes depth at all instead of
-// always deferring to data.RelativeDisplayID.
+// After t4 the blocked child's parent is in the same forest, so compacting to
+// ".7" is correct. Full ID at depth 0 was the deleted Waiting/Blocked ghetto.
+// Deferred is still an attention section (t6 later), so a deferred child of the
+// same loaded epic remains a depth-0 root and must keep its full ID — nothing
+// in that section repeats the prefix. relativeDisplayID still takes depth
+// because that out-of-section shape is real until deferred joins the forest.
 func TestParadeRelativeDisplayIDKeepsFullIDForOutOfSectionParent(t *testing.T) {
 	epic := data.Issue{ID: "mard-nob", Title: "Epic", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeEpic}
 	blocked := data.Issue{
@@ -346,31 +345,51 @@ func TestParadeRelativeDisplayIDKeepsFullIDForOutOfSectionParent(t *testing.T) {
 			{IssueID: "mard-nob.7", DependsOnID: "mard-boss", Type: "blocks"},
 		},
 	}
+	deferred := data.Issue{
+		ID: "mard-nob.8", Title: "Deferred child", Status: data.StatusDeferred, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{
+			{IssueID: "mard-nob.8", DependsOnID: "mard-nob", Type: "parent-child"},
+		},
+	}
 	boss := data.Issue{ID: "mard-boss", Title: "Boss", Status: data.StatusInProgress, Priority: data.PriorityMedium, IssueType: data.TypeTask}
 
-	p := NewParade([]data.Issue{epic, blocked, boss}, 100, 30, data.DefaultBlockingTypes)
+	p := NewParade([]data.Issue{epic, blocked, deferred, boss}, 100, 30, data.DefaultBlockingTypes)
 
-	var seen bool
+	var seenBlocked, seenDeferred bool
 	for _, item := range p.Items {
-		if item.Issue == nil || item.Issue.ID != "mard-nob.7" {
+		if item.Issue == nil {
 			continue
 		}
-		seen = true
-		if item.Depth != 0 {
-			t.Fatalf("blocked child depth = %d, want 0 — its epic is in another section", item.Depth)
-		}
-		if got := ansi.Strip(item.RenderedID); got != "mard-nob.7" {
-			t.Errorf("rendered ID = %q, want the full %q at depth 0", got, "mard-nob.7")
-		}
-	}
-	if !seen {
-		var ids []string
-		for _, item := range p.Items {
-			if item.Issue != nil {
-				ids = append(ids, item.Issue.ID)
+		switch item.Issue.ID {
+		case "mard-nob.7":
+			seenBlocked = true
+			if item.Depth != 1 {
+				t.Errorf("blocked child depth = %d, want 1 — its epic is in the same forest", item.Depth)
+			}
+			if item.Section != nil {
+				t.Errorf("blocked child still belongs to section %q, want the open forest", item.Section.Title)
+			}
+			if got := ansi.Strip(item.RenderedID); got != ".7" {
+				t.Errorf("blocked rendered ID = %q, want %q", got, ".7")
+			}
+			if item.State != data.StateWaitingBlocked {
+				t.Errorf("blocked child state = %v, want StateWaitingBlocked", item.State)
+			}
+		case "mard-nob.8":
+			seenDeferred = true
+			if item.Depth != 0 {
+				t.Errorf("deferred child depth = %d, want 0 — Deferred is still an attention section", item.Depth)
+			}
+			if got := ansi.Strip(item.RenderedID); got != "mard-nob.8" {
+				t.Errorf("deferred rendered ID = %q, want the full %q at depth 0", got, "mard-nob.8")
 			}
 		}
-		t.Fatalf("blocked child missing from the parade: %v", ids)
+	}
+	if !seenBlocked {
+		t.Fatalf("blocked child missing from the parade: %v", paradeIssueIDs(p))
+	}
+	if !seenDeferred {
+		t.Fatalf("deferred child missing from the parade: %v", paradeIssueIDs(p))
 	}
 }
 
