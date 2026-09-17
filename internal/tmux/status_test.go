@@ -57,6 +57,35 @@ func TestStatusLineFormat(t *testing.T) {
 	}
 }
 
+// TestStatusLineMardNobAwaitingReview pins the frozen hard-example fixture to
+// the tmux surface without spawning a process. The counts come from loading the
+// fixture and deriving states, so an expectation edit cannot satisfy it: this
+// fails on the same derivation or render regression the built-binary test
+// catches, even when that test is skipped.
+//
+// The fixture's whole point is the ordered pair 0●/1◐ with 7✓: settled epic
+// awaiting acceptance, no live work.
+func TestStatusLineMardNobAwaitingReview(t *testing.T) {
+	issues, _, err := data.LoadIssues("../../testdata/mard-nob-awaiting-review.jsonl")
+	if err != nil {
+		t.Fatalf("LoadIssues: %v", err)
+	}
+
+	groups, unmapped := data.GroupBySemanticState(issues, data.DefaultBlockingTypes)
+	if len(unmapped) != 0 {
+		t.Fatalf("hard-example fixture has unmapped issues: %v", unmapped)
+	}
+	if work := groups[data.StateWorking]; len(work) != 0 {
+		t.Fatalf("hard-example epic rendered Working: %+v", work)
+	}
+
+	// Six ordered pairs, nothing else on the line.
+	want := ui.FleurDeLis + " " + strings.Join([]string{"0●", "1◐", "0♪", "0⏸", "0⊘", "7✓"}, " ")
+	if plain := stripMarkup(StatusLine(groups)); plain != want {
+		t.Errorf("status line = %q, want %q", plain, want)
+	}
+}
+
 func TestStatusLineEmptyGroups(t *testing.T) {
 	groups := map[data.SemanticState][]data.Issue{}
 	for _, state := range data.StateOrder() {

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/matt-wright86/mardi-gras/internal/data"
 )
@@ -407,5 +409,39 @@ func TestLoadFailureHintDoltOnlyForBd(t *testing.T) {
 	br := loadFailureHint(data.Source{Mode: data.SourceCLI, CLIBinary: data.CLIBr})
 	if strings.Contains(br, "Dolt") || strings.Contains(br, "dolt") {
 		t.Errorf("br source must not get the Dolt/bd hint, got %q", br)
+	}
+}
+
+// mardNobStatusTimeout bounds the `go run` compile-and-run step. A cold build
+// cache has to link the whole BubbleTea tree before the status line prints, so
+// the budget is generous; without it a wedged build hangs the test forever.
+const mardNobStatusTimeout = 120 * time.Second
+
+// TestStatusModeMardNobAwaitingReview is the built-binary acceptance test for
+// the defect the Brief names: an epic whose every executable descendant is
+// closed, with operator acceptance still pending, is Awaiting Review — never
+// Working. It runs the real binary over a real fixture, so the loader,
+// hierarchy, derivation, grouping, and tmux render must all be correct at once.
+// A stubbed unit expectation cannot satisfy it.
+func TestStatusModeMardNobAwaitingReview(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), mardNobStatusTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "go", "run", "./cmd/mg", "--status", "--path", "testdata/mard-nob-awaiting-review.jsonl")
+	cmd.Dir = filepath.Join("..", "..")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			t.Fatalf("go run exceeded %s: %s", mardNobStatusTimeout, out)
+		}
+		t.Fatalf("%v: %s", err, out)
+	}
+	for _, want := range []string{"0●", "1◐", "0♪", "0⏸", "0⊘", "7✓"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("missing %q: %s", want, out)
+		}
+	}
+	if strings.Contains(string(out), "1●") {
+		t.Fatalf("hard-example epic rendered Working: %s", out)
 	}
 }
