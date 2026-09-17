@@ -5,6 +5,7 @@ package views
 import (
 	"fmt"
 	"image/color"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,11 +31,11 @@ type paradeSection struct {
 // is reflected in the captured styles and pre-rendered borders. It iterates
 // data.StateOrder() so the parade, the header, and the tmux widget can never
 // disagree about which states exist or in what order.
-func sections() []paradeSection {
-	var out []paradeSection
+func sections() []*paradeSection {
+	var out []*paradeSection
 	for _, state := range data.StateOrder() {
 		c := ui.ExecColor(int(state))
-		out = append(out, paradeSection{
+		out = append(out, &paradeSection{
 			Title:          state.Label(),
 			Symbol:         ui.ExecSymbol(int(state)),
 			Style:          ui.ExecSectionStyle(int(state)),
@@ -48,25 +49,25 @@ func sections() []paradeSection {
 
 // ParadeItem is a renderable entry — a section header, footer, or issue.
 type ParadeItem struct {
-	IsHeader   bool
-	IsFooter   bool
-	Section    paradeSection
-	Issue      *data.Issue
-	Eval       *data.DepEval
-	RenderedID string // cached styled ID (heat color)
-	Depth      int    // indent level within this section (see data.OrderHierarchically)
+	IsHeader    bool
+	IsFooter    bool
+	Section     *paradeSection
+	Issue       *data.Issue
+	Eval        *data.DepEval
+	State       data.SemanticState
+	RenderedID  string
+	Depth       int
+	HasChildren bool
 }
 
-// isSelectable returns true if this item can receive the cursor.
 func (item ParadeItem) isSelectable() bool {
 	return !item.IsHeader && !item.IsFooter
 }
 
-// Parade is the grouped issue list view.
+// Parade is the priority-sorted work tree view.
 type Parade struct {
 	Items           []ParadeItem
 	Cursor          int
-	ShowClosed      bool
 	Width           int
 	Height          int
 	ScrollOffset    int
@@ -83,9 +84,9 @@ type Parade struct {
 	ZombieIDs       map[string]bool  // issues with dead agent sessions (zombie polecats)
 	Selected        map[string]bool  // multi-selected issue IDs
 	MatchHighlights map[string][]int // issueID -> matched char indices in title (fuzzy search)
+	Collapsed       map[string]bool
 }
 
-// NewParade creates a parade view from a set of issues.
 func NewParade(issues []data.Issue, width, height int, blockingTypes map[string]bool) Parade {
 	groups, unmapped := data.GroupBySemanticState(issues, blockingTypes)
 	issueMap := data.BuildIssueMap(issues)
@@ -107,9 +108,7 @@ func NewParadeWithData(
 	if issueMap == nil {
 		issueMap = data.BuildIssueMap(issues)
 	}
-
 	p := Parade{
-		ShowClosed:    false,
 		Width:         width,
 		Height:        height,
 		AllIssues:     issues,
@@ -117,6 +116,7 @@ func NewParadeWithData(
 		Unmapped:      unmapped,
 		issueMap:      issueMap,
 		blockingTypes: blockingTypes,
+		Collapsed:     make(map[string]bool),
 	}
 	p.rebuildItems()
 	if len(p.Items) > 0 {
@@ -135,67 +135,160 @@ func NewParadeWithData(
 // rebuildItems flattens groups into the renderable item list.
 func (p *Parade) rebuildItems() {
 	p.Items = nil
-	for _, sec := range sections() {
-		issues := p.Groups[sec.State]
+	var main []data.Issue
+	for _, issue := range p.AllIssues {
+		state, ok := data.DeriveState(&issue, p.issueMap, p.blockingTypes)
+		if ok && isMainTreeState(state) {
+			main = append(main, issue)
+		}
+	}
+	p.appendForest(main)
+	for _, state := range []data.SemanticState{data.StateWaitingBlocked, data.StateDeferred} {
+		issues := p.Groups[state]
 		if len(issues) == 0 {
 			continue
 		}
-
-		// Header (top border)
+		sec := sectionForState(state)
 		p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
-
-		// Closed section: show collapsed count or expanded list
-		if sec.State == data.StateDone {
-			if p.ShowClosed {
-				ordered, depth := data.OrderHierarchically(issues)
-				for _, iss := range ordered {
-					p.appendIssueRow(iss, sec, depth[iss.ID])
-				}
-			}
-		} else {
-			ordered, depth := data.OrderHierarchically(issues)
-			for _, iss := range ordered {
-				p.appendIssueRow(iss, sec, depth[iss.ID])
-			}
-		}
-
-		// Footer (bottom border)
+		p.appendForestWithSection(issues, sec, state)
 		p.Items = append(p.Items, ParadeItem{IsFooter: true, Section: sec})
 	}
 }
 
-// appendIssueRow appends one issue row. Both the open and the Done sections
-// build their rows here so the two paths can never disagree about a row's
-// label or indent.
-//
-// The label comes from relativeDisplayID: under its parent the dotted prefix
-// is redundant, and data.RelativeDisplayID is the single definition of
-// "redundant" — it verifies the parent-child EDGE before compacting, so a
-// reparented issue keeps its stale dotted ID in full and an edge-only child
-// keeps its undotted one. Depth is passed through untouched; indent behaviour
-// belongs to data.OrderHierarchically.
-func (p *Parade) appendIssueRow(iss *data.Issue, sec paradeSection, depth int) {
-	eval := iss.EvaluateDependencies(p.issueMap, p.blockingTypes)
-	p.Items = append(p.Items, ParadeItem{
-		Issue:      iss,
-		Section:    sec,
-		Eval:       &eval,
-		RenderedID: idStyleForAge(iss).Render(relativeDisplayID(iss, depth)),
-		Depth:      depth,
-	})
+func isMainTreeState(state data.SemanticState) bool {
+	return state == data.StateReady || state == data.StateWorking || state == data.StateOperatorReview || state == data.StateDone
 }
 
-// idStyleForAge returns the ID's heat colour: fresh green through stale red
-// over 30 days.
-func idStyleForAge(iss *data.Issue) lipgloss.Style {
-	ageDays := int(iss.Age().Hours() / 24)
-	agePct := min(ageDays*100/30, 100) // 30 days = fully stale
-	return ui.GradientHeat.At(agePct)
+func sectionForState(state data.SemanticState) *paradeSection {
+	for _, sec := range sections() {
+		if sec.State == state {
+			return sec
+		}
+	}
+	return &paradeSection{State: state, Title: state.Label(), Symbol: ui.ExecSymbol(int(state)), Style: ui.ExecSectionStyle(int(state)), Color: ui.ExecColor(int(state)), BorderVertical: lipgloss.NewStyle().Foreground(ui.ExecColor(int(state))).Render(ui.BoxVertical)}
+}
+func orderForest(issues []data.Issue) (ordered []*data.Issue, depth map[string]int, hasChildren map[string]bool) {
+	depth = make(map[string]int, len(issues))
+	hasChildren = make(map[string]bool, len(issues))
+	byID := make(map[string]*data.Issue, len(issues))
+	for i := range issues {
+		byID[issues[i].ID] = &issues[i]
+	}
+	children := make(map[string][]*data.Issue)
+	for _, issue := range byID {
+		parentID := issue.ParentRelationshipID()
+		if parentID == "" || parentID == issue.ID {
+			continue
+		}
+		if _, exists := byID[parentID]; exists {
+			children[parentID] = append(children[parentID], issue)
+		}
+	}
+	less := func(a, b *data.Issue) bool {
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+		return a.ID < b.ID
+	}
+	for parentID := range children {
+		sort.Slice(children[parentID], func(i, j int) bool { return less(children[parentID][i], children[parentID][j]) })
+		hasChildren[parentID] = true
+	}
+	var roots []*data.Issue
+	for _, issue := range byID {
+		parentID := issue.ParentRelationshipID()
+		if parentID == "" || parentID == issue.ID {
+			roots = append(roots, issue)
+			continue
+		}
+		if _, exists := byID[parentID]; !exists {
+			roots = append(roots, issue)
+		}
+	}
+	sort.Slice(roots, func(i, j int) bool { return less(roots[i], roots[j]) })
+	visited := make(map[string]bool, len(issues))
+	var walk func(*data.Issue, int)
+	walk = func(issue *data.Issue, d int) {
+		if issue == nil || visited[issue.ID] {
+			return
+		}
+		visited[issue.ID] = true
+		ordered = append(ordered, issue)
+		depth[issue.ID] = d
+		for _, child := range children[issue.ID] {
+			walk(child, d+1)
+		}
+	}
+	for _, root := range roots {
+		walk(root, 0)
+	}
+	var remaining []*data.Issue
+	for _, issue := range byID {
+		if !visited[issue.ID] {
+			remaining = append(remaining, issue)
+		}
+	}
+	sort.Slice(remaining, func(i, j int) bool { return less(remaining[i], remaining[j]) })
+	for _, issue := range remaining {
+		walk(issue, 0)
+	}
+	return ordered, depth, hasChildren
 }
 
-// relativeDisplayID is the one place a row's label is chosen: a root row (depth
-// 0 in its section) always shows its full ID, and a nested row defers to
-// data.RelativeDisplayID's edge-checked judgment.
+func (p *Parade) appendForest(issues []data.Issue) {
+	p.appendForestRows(issues, nil, data.StateReady)
+}
+
+func (p *Parade) appendForestWithSection(issues []data.Issue, sec *paradeSection, state data.SemanticState) {
+	p.appendForestRows(issues, sec, state)
+}
+
+func (p *Parade) appendForestRows(issues []data.Issue, sec *paradeSection, fallback data.SemanticState) {
+	ordered, depths, children := orderForest(issues)
+	for _, issue := range ordered {
+		if p.hasCollapsedAncestor(issue.ID) {
+			continue
+		}
+		actual := p.issueMap[issue.ID]
+		if actual == nil {
+			actual = issue
+		}
+		state, ok := data.DeriveState(actual, p.issueMap, p.blockingTypes)
+		if !ok {
+			state = fallback
+		}
+		eval := actual.EvaluateDependencies(p.issueMap, p.blockingTypes)
+		p.Items = append(p.Items, ParadeItem{
+			Section:     sec,
+			Issue:       actual,
+			Eval:        &eval,
+			State:       state,
+			RenderedID:  lipgloss.NewStyle().Foreground(statusColor(state)).Render(relativeDisplayID(actual, depths[issue.ID])),
+			Depth:       depths[issue.ID],
+			HasChildren: children[issue.ID],
+		})
+	}
+}
+
+func (p *Parade) hasCollapsedAncestor(issueID string) bool {
+	seen := map[string]bool{issueID: true}
+	for current := p.issueMap[issueID]; current != nil; {
+		parentID := current.ParentRelationshipID()
+		if parentID == "" || seen[parentID] {
+			return false
+		}
+		if p.Collapsed[parentID] {
+			return true
+		}
+		seen[parentID] = true
+		current = p.issueMap[parentID]
+	}
+	return false
+}
+
+// relativeDisplayID is the one place a row's label is chosen: a root row
+// always shows its full ID, and a nested row defers to data.RelativeDisplayID's
+// edge-checked judgment.
 func relativeDisplayID(iss *data.Issue, depth int) string {
 	if depth <= 0 {
 		return iss.ID
@@ -227,25 +320,46 @@ func (p *Parade) MoveDown() {
 	}
 }
 
-// ToggleClosed shows or hides closed issues.
-func (p *Parade) ToggleClosed() {
-	p.ShowClosed = !p.ShowClosed
+// ToggleNode toggles a non-leaf issue and preserves selection by full ID.
+func (p *Parade) ToggleNode(issueID string) {
+	hasChildren := false
+	for _, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == issueID {
+			hasChildren = item.HasChildren
+			break
+		}
+	}
+	if !hasChildren {
+		return
+	}
 	selectedID := ""
 	if p.SelectedIssue != nil {
 		selectedID = p.SelectedIssue.ID
 	}
-	p.rebuildItems()
-	p.clampScroll()
-	// Restore cursor to the same issue if possible
-	for i, item := range p.Items {
-		if item.isSelectable() && item.Issue.ID == selectedID {
-			p.Cursor = i
-			p.SelectedIssue = item.Issue
-			p.ensureVisible()
-			return
-		}
+	if p.Collapsed == nil {
+		p.Collapsed = make(map[string]bool)
 	}
-	// Fallback to first selectable item
+	p.Collapsed[issueID] = !p.Collapsed[issueID]
+	p.rebuildItems()
+	p.restoreSelection(selectedID)
+}
+
+func (p *Parade) restoreSelection(selectedID string) {
+	for selectedID != "" {
+		for i, item := range p.Items {
+			if item.isSelectable() && item.Issue.ID == selectedID {
+				p.Cursor = i
+				p.SelectedIssue = item.Issue
+				p.ensureVisible()
+				return
+			}
+		}
+		selected := p.issueMap[selectedID]
+		if selected == nil {
+			break
+		}
+		selectedID = selected.ParentRelationshipID()
+	}
 	for i, item := range p.Items {
 		if item.isSelectable() {
 			p.Cursor = i
@@ -254,10 +368,21 @@ func (p *Parade) ToggleClosed() {
 			return
 		}
 	}
-	// No selectable items at all
 	p.Cursor = 0
 	p.ScrollOffset = 0
 	p.SelectedIssue = nil
+}
+
+// IssueAtViewportRow resolves a visible issue row using the current scroll offset.
+func (p *Parade) IssueAtViewportRow(row int) *data.Issue {
+	if row < 0 || row >= p.Height {
+		return nil
+	}
+	index := p.ScrollOffset + row
+	if index < 0 || index >= len(p.Items) || !p.Items[index].isSelectable() {
+		return nil
+	}
+	return p.Items[index].Issue
 }
 
 // clampScroll ensures ScrollOffset is within valid bounds for the current Items slice.
@@ -355,17 +480,12 @@ func (p *Parade) View() string {
 	}
 
 	p.clampScroll()
-
 	var lines []string
-
 	end := p.ScrollOffset + p.Height
 	if end > len(p.Items) {
 		end = len(p.Items)
 	}
-
-	visible := p.Items[p.ScrollOffset:end]
-
-	for idx, item := range visible {
+	for idx, item := range p.Items[p.ScrollOffset:end] {
 		globalIdx := p.ScrollOffset + idx
 		switch {
 		case item.IsHeader:
@@ -380,99 +500,50 @@ func (p *Parade) View() string {
 			lines = append(lines, p.renderIssue(item, globalIdx == p.Cursor, dist))
 		}
 	}
-
-	// Pad to fill height. With room to spare, the bottom row carries the
-	// status-symbol legend instead of dead space (audit #19).
 	free := p.Height - len(lines)
 	padLine := strings.Repeat(" ", p.Width)
 	for i := 0; i < free; i++ {
 		lines = append(lines, padLine)
 	}
-	if free >= 2 {
-		lines[len(lines)-1] = p.renderLegend()
-	}
-
 	return strings.Join(lines, "\n")
 }
 
-// renderLegend renders the parade status-symbol legend shown in spare space
-// at the bottom of the pane.
-func (p *Parade) renderLegend() string {
-	dim := lipgloss.NewStyle().Foreground(ui.Dim)
-	var legend strings.Builder
-	legend.WriteString("  ")
-	for i, state := range data.StateOrder() {
-		if i > 0 {
-			legend.WriteString("   ")
-		}
-		legend.WriteString(ui.ExecIndicator(int(state)))
-		legend.WriteString(dim.Render(" " + strings.ToLower(state.Label())))
-	}
-	return ansi.Truncate(legend.String(), p.Width, "")
-}
-
-// renderBorderTop builds a top border line: ╭─ ● Working (2) ────────╮
-func (p *Parade) renderBorderTop(sec paradeSection) string {
+// renderBorderTop builds a top border line for an attention section.
+func (p *Parade) renderBorderTop(sec *paradeSection) string {
 	count := len(p.Groups[sec.State])
 	borderStyle := lipgloss.NewStyle().Foreground(sec.Color)
-
-	// Build the title content
-	var titleText string
-	if sec.State == data.StateDone {
-		toggle := ui.Collapsed
-		if p.ShowClosed {
-			toggle = ui.Expanded
-		}
-		titleText = fmt.Sprintf("%s %s %s%s", toggle, sec.Symbol, sec.Title, ui.Superscript(count))
-		if !p.ShowClosed {
-			titleText += " press c"
-		}
-	} else {
-		titleText = fmt.Sprintf("%s %s%s", sec.Symbol, sec.Title, ui.Superscript(count))
-	}
-
+	titleText := fmt.Sprintf("%s %s%s", sec.Symbol, sec.Title, ui.Superscript(count))
 	coloredTitle := sec.Style.Render(titleText)
 	titleWidth := lipgloss.Width(coloredTitle)
-
-	// ╭─ <title> ─────────────╮
 	prefix := borderStyle.Render(ui.BoxTopLeft + ui.BoxHorizontal + " ")
 	suffix := borderStyle.Render(" " + ui.BoxTopRight)
-
 	prefixW := lipgloss.Width(prefix)
 	suffixW := lipgloss.Width(suffix)
-
-	// Truncate title text if it exceeds available space
-	availableForTitle := p.Width - prefixW - suffixW - 1 // -1 for space after title
+	availableForTitle := p.Width - prefixW - suffixW - 1
 	if titleWidth > availableForTitle && availableForTitle > 0 {
 		titleText = truncate(titleText, availableForTitle)
 		coloredTitle = sec.Style.Render(titleText)
 		titleWidth = lipgloss.Width(coloredTitle)
 	}
-
 	fillLen := p.Width - prefixW - titleWidth - 1 - suffixW
 	if fillLen < 1 {
 		fillLen = 1
 	}
 	fill := borderStyle.Render(" " + strings.Repeat(ui.BoxHorizontal, fillLen))
-
 	return prefix + coloredTitle + fill + suffix
 }
 
-// renderBorderBottom builds a bottom border line: ╰────────────────────╯
-func (p *Parade) renderBorderBottom(sec paradeSection) string {
+// renderBorderBottom builds a bottom border line for an attention section.
+func (p *Parade) renderBorderBottom(sec *paradeSection) string {
 	borderStyle := lipgloss.NewStyle().Foreground(sec.Color)
-
-	// ╰─...─╯
 	cornerL := borderStyle.Render(ui.BoxBottomLeft)
 	cornerR := borderStyle.Render(ui.BoxBottomRight)
 	cornersW := lipgloss.Width(cornerL) + lipgloss.Width(cornerR)
-
 	fillLen := p.Width - cornersW
 	if fillLen < 1 {
 		fillLen = 1
 	}
 	fill := borderStyle.Render(strings.Repeat(ui.BoxHorizontal, fillLen))
-
 	return cornerL + fill + cornerR
 }
 
@@ -480,7 +551,6 @@ func (p *Parade) renderBorderBottom(sec paradeSection) string {
 // distFromCursor controls positional fading (btop-style depth effect).
 func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int) string {
 	issue := item.Issue
-	sec := item.Section
 
 	var isBlocked bool
 	var eval data.DepEval
@@ -492,10 +562,8 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		isBlocked = eval.IsBlocked
 	}
 
-	// The row's glyph is its own derived state's — never re-derived from raw
-	// status, which is what made a settled epic read as active work.
-	symStr := ui.ExecIndicator(int(sec.State))
-
+	// The row's glyph and ID color come from the derived semantic state.
+	symStr := ui.ExecIndicator(int(item.State))
 	var prioStr string
 	switch issue.Priority {
 	case 0:
@@ -515,6 +583,21 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	if isClosed {
 		prioStr = lipgloss.NewStyle().Foreground(ui.Muted).Render(fmt.Sprintf("P%d", issue.Priority))
 	}
+	pinBadge := ""
+	pinWidth := 0
+	if issue.Pinned {
+		pinBadge = " " + ui.BadgePriority.Render("PIN")
+		pinWidth = lipgloss.Width(pinBadge)
+	}
+
+	innerWidth := p.Width
+	leftBorder, rightBorder := "", ""
+	if item.Section != nil {
+		innerWidth = p.Width - 4
+		leftBorder = item.Section.BorderVertical
+		rightBorder = item.Section.BorderVertical
+	}
+	compactBadges := innerWidth < 70
 
 	// Multi-select checkbox
 	selectPrefix := ""
@@ -585,8 +668,6 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 
 	// Due date badge. Under width pressure the badge compresses ("▲151d")
 	// so it never crowds out the title (audit #2).
-	innerWidth := p.Width - 4 // │ + space + content + space + │
-	compactBadges := innerWidth < 70
 	dueBadge := ""
 	dueWidth := 0
 	if issue.IsOverdue() {
@@ -642,7 +723,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	// hint: the issue's own title is the primary scent, the hint is context
 	// (audit #2). The hint degrades to id-only before character truncation.
 	titleFloor := min(lipgloss.Width(issue.Title), max(innerWidth/3, 12))
-	maxHint := innerWidth - 16 - titleFloor - agentWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth
+	maxHint := innerWidth - 16 - titleFloor - agentWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
 	if maxHint < 0 {
 		maxHint = 0
 	}
@@ -666,13 +747,13 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	}
 
 	hintLen := lipgloss.Width(hint)
-	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth
+	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
 	title := truncate(issue.Title, maxTitle)
 
-	// Apply dim styling to deferred issue titles, or highlight fuzzy matches
+	// Apply dim styling to deferred issue titles, or highlight fuzzy matches.
 	var renderedTitle string
 	if indices, ok := p.MatchHighlights[issue.ID]; ok && len(indices) > 0 {
 		renderedTitle = ui.HighlightMatches(title, indices, maxTitle)
@@ -686,18 +767,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		}
 		renderedTitle = titleStyle.Render(title)
 	}
-
-	// Age-based color for issue ID (fresh=green, aging=gold, stale=red);
-	// closed issues skip the heat gradient and stay muted. Both branches take
-	// the label from relativeDisplayID so a nested row reads the same closed as
-	// it does open — only the styling differs.
-	if isClosed {
-		item.RenderedID = lipgloss.NewStyle().Foreground(ui.Muted).Render(relativeDisplayID(issue, item.Depth))
-	}
 	renderedID := item.RenderedID
-	if renderedID == "" {
-		renderedID = idStyleForAge(issue).Render(relativeDisplayID(issue, item.Depth))
-	}
 
 	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s %s",
 		indent,
@@ -711,14 +781,14 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		renderedTitle,
 		prioStr,
 	)
-	line += dueBadge + deferBadge + commentBadge + hint
-
-	leftBorder := sec.BorderVertical
-	rightBorder := sec.BorderVertical
+	line += pinBadge + dueBadge + deferBadge + commentBadge + hint
 
 	if selected {
 		cursor := ui.ItemCursor.Render(ui.Cursor + " ")
 		content := ui.SelectedRow(cursor+line, innerWidth)
+		if item.Section == nil {
+			return content
+		}
 		return leftBorder + " " + content + " " + rightBorder
 	}
 
@@ -734,6 +804,9 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		content = lipgloss.NewStyle().Faint(true).Render(content)
 	}
 
+	if item.Section == nil {
+		return content
+	}
 	return leftBorder + " " + content + " " + rightBorder
 }
 

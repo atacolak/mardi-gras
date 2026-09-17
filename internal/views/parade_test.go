@@ -1,8 +1,10 @@
 package views
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -97,49 +99,6 @@ func TestMoveUpClampsAtTop(t *testing.T) {
 	}
 	if p.SelectedIssue.ID != firstIssue.ID {
 		t.Fatal("MoveUp past top changed SelectedIssue")
-	}
-}
-
-func TestToggleClosed(t *testing.T) {
-	p := newTestParade()
-	if p.ShowClosed {
-		t.Fatal("ShowClosed should default to false")
-	}
-
-	// Count items before toggle (closed section collapsed)
-	countBefore := len(p.Items)
-
-	p.ToggleClosed()
-	if !p.ShowClosed {
-		t.Fatal("ToggleClosed did not flip ShowClosed to true")
-	}
-	if len(p.Items) <= countBefore {
-		t.Fatalf("toggling closed on should add items: before=%d, after=%d", countBefore, len(p.Items))
-	}
-
-	p.ToggleClosed()
-	if p.ShowClosed {
-		t.Fatal("second ToggleClosed did not flip ShowClosed back to false")
-	}
-	if len(p.Items) != countBefore {
-		t.Fatalf("toggling closed off should restore count: got=%d, want=%d", len(p.Items), countBefore)
-	}
-}
-
-func TestToggleClosedPreservesSelection(t *testing.T) {
-	p := newTestParade()
-
-	// Select second issue
-	p.MoveDown()
-	selectedID := p.SelectedIssue.ID
-
-	p.ToggleClosed()
-	if p.SelectedIssue == nil || p.SelectedIssue.ID != selectedID {
-		got := "<nil>"
-		if p.SelectedIssue != nil {
-			got = p.SelectedIssue.ID
-		}
-		t.Fatalf("ToggleClosed changed selection: got %s, want %s", got, selectedID)
 	}
 }
 
@@ -342,7 +301,6 @@ func TestParadeRelativeDisplayIDClosed(t *testing.T) {
 		Dependencies: []data.Dependency{{IssueID: "mard-nob.7", DependsOnID: "mard-nob", Type: "parent-child"}},
 	}
 	p := NewParade([]data.Issue{epic, nested}, 100, 30, data.DefaultBlockingTypes)
-	p.ToggleClosed()
 
 	out := ansi.Strip(p.View())
 	if strings.Contains(out, "mard-nob.7") {
@@ -482,5 +440,166 @@ func TestParadeCommentBadgeRespectsWidth(t *testing.T) {
 				t.Errorf("width %d: row overflows to %d cells: %q", width, got, line)
 			}
 		}
+	}
+}
+
+func paradeParentEdge(child, parent string) []data.Dependency {
+	return []data.Dependency{{IssueID: child, DependsOnID: parent, Type: "parent-child"}}
+}
+
+func paradeIssueIDs(p Parade) []string {
+	var ids []string
+	for _, item := range p.Items {
+		if item.Issue != nil {
+			ids = append(ids, item.Issue.ID)
+		}
+	}
+	return ids
+}
+
+func TestParadeTree(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Status: data.StatusReview, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "epic.1", Status: data.StatusInProgress, Priority: 2, Dependencies: paradeParentEdge("epic.1", "epic")},
+		{ID: "epic.2", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("epic.2", "epic")},
+		{ID: "epic.3", Status: data.StatusClosed, Priority: 3, Dependencies: paradeParentEdge("epic.3", "epic")},
+		{ID: "epic.2.1", Status: data.StatusClosed, Priority: 1, Dependencies: paradeParentEdge("epic.2.1", "epic.2")},
+		{ID: "blocked", Status: data.StatusBlocked, Priority: 0},
+		{ID: "later", Status: data.StatusDeferred, Priority: 1},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+	want := []string{"epic", "epic.2", "epic.2.1", "epic.1", "epic.3", "blocked", "later"}
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
+		t.Fatalf("issue order = %v, want %v", got, want)
+	}
+}
+
+func TestParadeAttentionSections(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "ready", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeTask},
+		{ID: "blocked", Status: data.StatusBlocked, Priority: 0, IssueType: data.TypeTask},
+		{ID: "later", Status: data.StatusDeferred, Priority: 0, IssueType: data.TypeTask},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	out := ansi.Strip(p.View())
+	for _, header := range []string{"○ Ready", "● Working", "◐ Operator Review", "✓ Done"} {
+		if strings.Contains(out, header) {
+			t.Errorf("main-tree header %q should be omitted:\n%s", header, out)
+		}
+	}
+	if got := strings.Count(out, "⊘ Waiting/Blocked"); got != 1 {
+		t.Errorf("Waiting/Blocked header count = %d, want 1:\n%s", got, out)
+	}
+	if got := strings.Count(out, "⏸ Deferred"); got != 1 {
+		t.Errorf("Deferred header count = %d, want 1:\n%s", got, out)
+	}
+
+	readyOnly := NewParade([]data.Issue{{ID: "ready", Status: data.StatusOpen}}, 100, 20, data.DefaultBlockingTypes)
+	readyOut := ansi.Strip(readyOnly.View())
+	if strings.Contains(readyOut, "Waiting/Blocked") || strings.Contains(readyOut, "Deferred") {
+		t.Fatalf("empty attention sections should be omitted:\n%s", readyOut)
+	}
+}
+
+type paradeNodeToggler interface {
+	ToggleNode(string)
+}
+
+func TestParadeCollapse(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Status: data.StatusReview, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "epic.2", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("epic.2", "epic")},
+		{ID: "epic.2.1", Status: data.StatusClosed, Priority: 1, Dependencies: paradeParentEdge("epic.2.1", "epic.2")},
+		{ID: "epic.1", Status: data.StatusInProgress, Priority: 2, Dependencies: paradeParentEdge("epic.1", "epic")},
+		{ID: "attention", Status: data.StatusBlocked, Priority: 0},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+	toggler, ok := any(&p).(paradeNodeToggler)
+	if !ok {
+		t.Fatal("Parade must expose ToggleNode")
+	}
+	beforeLeafToggle := paradeIssueIDs(p)
+	toggler.ToggleNode("epic.2.1")
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, beforeLeafToggle) {
+		t.Fatalf("leaf toggle changed rows = %v, want %v", got, beforeLeafToggle)
+	}
+
+	toggler.ToggleNode("epic.2")
+	if got, want := paradeIssueIDs(p), []string{"epic", "epic.2", "epic.1", "attention"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("after child collapse = %v, want %v", got, want)
+	}
+	for i, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "epic.2" {
+			p.Cursor = i
+			p.SelectedIssue = item.Issue
+			break
+		}
+	}
+	toggler.ToggleNode("epic")
+	if got, want := paradeIssueIDs(p), []string{"epic", "attention"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("after ancestor collapse = %v, want %v", got, want)
+	}
+	if p.SelectedIssue == nil || p.SelectedIssue.ID != "epic" {
+		t.Fatalf("selection fallback = %v, want collapsed ancestor epic", p.SelectedIssue)
+	}
+}
+
+func TestParadeSemanticColor(t *testing.T) {
+	old := testIssue("old-ready", data.StatusOpen)
+	old.CreatedAt = time.Now().Add(-90 * 24 * time.Hour)
+	fresh := testIssue("fresh-ready", data.StatusOpen)
+	p := NewParade([]data.Issue{old, fresh}, 100, 20, data.DefaultBlockingTypes)
+	wantOld := lipgloss.NewStyle().Foreground(ui.ExecColor(int(data.StateReady))).Render(old.ID)
+	wantFresh := lipgloss.NewStyle().Foreground(ui.ExecColor(int(data.StateReady))).Render(fresh.ID)
+	for _, item := range p.Items {
+		if item.Issue == nil {
+			continue
+		}
+		want := wantOld
+		if item.Issue.ID == fresh.ID {
+			want = wantFresh
+		}
+		if item.RenderedID != want {
+			t.Errorf("%s RenderedID = %q, want semantic style %q", item.Issue.ID, item.RenderedID, want)
+		}
+	}
+}
+
+func TestParadePinnedBadge(t *testing.T) {
+	issue := testIssue("pinned", data.StatusOpen)
+	issue.Pinned = true
+	p := NewParade([]data.Issue{issue}, 100, 20, data.DefaultBlockingTypes)
+	out := ansi.Strip(p.View())
+	if !strings.Contains(out, "PIN") {
+		t.Fatalf("pinned row should contain PIN badge:\n%s", out)
+	}
+	state, ok := data.DeriveState(&issue, data.BuildIssueMap([]data.Issue{issue}), data.DefaultBlockingTypes)
+	if !ok || state != data.StateReady {
+		t.Fatalf("pinned issue state = %v/%v, want Ready/true", state, ok)
+	}
+}
+
+func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "ready", Status: data.StatusOpen, Priority: 0},
+		{ID: "blocked", Status: data.StatusBlocked, Priority: 0},
+	}
+	p := NewParade(issues, 100, 2, data.DefaultBlockingTypes)
+	p.ScrollOffset = 1
+	atRow, ok := any(&p).(interface{ IssueAtViewportRow(int) *data.Issue })
+	if !ok {
+		t.Fatal("Parade must expose IssueAtViewportRow")
+	}
+	if got := atRow.IssueAtViewportRow(0); got != nil {
+		t.Fatalf("header viewport row 0 = %v, want nil", got)
+	}
+	if got := atRow.IssueAtViewportRow(1); got == nil || got.ID != "blocked" {
+		t.Fatalf("viewport row 1 = %v, want blocked after scroll offset", got)
+	}
+	if got := atRow.IssueAtViewportRow(-1); got != nil {
+		t.Fatalf("negative viewport row = %v, want nil", got)
+	}
+	if got := atRow.IssueAtViewportRow(2); got != nil {
+		t.Fatalf("padding viewport row = %v, want nil", got)
 	}
 }
