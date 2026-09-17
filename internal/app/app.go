@@ -2100,16 +2100,19 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
 		if mouse.Button == tea.MouseLeft && !right {
+			// Ask 2: the cells left of the status glyph toggle collapse and do
+			// nothing else — no selection, no cursor move, selected or not.
+			if parentID, hit := m.parade.GutterHit(bodyRow, x); hit {
+				cursor := m.parade.Cursor
+				selected := m.parade.SelectedIssue
+				m.parade.ToggleNode(parentID)
+				m.parade.Cursor = cursor
+				m.parade.SelectedIssue = selected
+				return m, nil
+			}
 			issue := m.parade.IssueAtViewportRow(bodyRow)
 			if issue == nil {
 				return m, nil
-			}
-			if m.parade.Collapsed[issue.ID] {
-				m.parade.ToggleNode(issue.ID)
-				issue = m.parade.IssueAtViewportRow(bodyRow)
-				if issue == nil {
-					return m, nil
-				}
 			}
 			m.activPane = PaneParade
 			m.detail.Focused = false

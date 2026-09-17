@@ -1322,3 +1322,113 @@ func TestSortKeyCyclesParadeSortMode(t *testing.T) {
 		t.Fatal("command palette must offer the sort toggle")
 	}
 }
+
+func setupParentChildMouseModel(t *testing.T) Model {
+	t.Helper()
+	issues := []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic.1", Title: "Child one", Status: data.StatusOpen, Priority: 0,
+			Dependencies: []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}},
+		{ID: "other", Title: "Other root", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask},
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	return model.(Model)
+}
+
+// paradeViewportRowOf resolves an issue's visible row.
+func paradeViewportRowOf(t *testing.T, m Model, id string) int {
+	t.Helper()
+	for row := 0; row < m.parade.Height; row++ {
+		if iss := m.parade.IssueAtViewportRow(row); iss != nil && iss.ID == id {
+			return row
+		}
+	}
+	t.Fatalf("row for %s is not visible", id)
+	return -1
+}
+
+// titleClick clicks well right of the glyph column, on the title, so the
+// gutter branch never claims it.
+func titleClick(row int) tea.MouseClickMsg {
+	return tea.MouseClickMsg{X: 20, Y: headerHeight + row, Button: tea.MouseLeft}
+}
+
+func TestMouseGutterClickTogglesWithoutSelecting(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("other") {
+		t.Fatal("precondition: other root not found")
+	}
+	m.syncSelection()
+	beforeCursor := m.parade.Cursor
+	gutter := tea.MouseClickMsg{X: 0, Y: headerHeight + paradeViewportRowOf(t, m, "epic"), Button: tea.MouseLeft}
+
+	model, _ := m.Update(gutter)
+	m = model.(Model)
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("a gutter click on a parent must collapse it")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("gutter click moved selection to %v, want other untouched", m.parade.SelectedIssue)
+	}
+	if m.parade.Cursor != beforeCursor {
+		t.Fatalf("gutter click moved the cursor to %d, want %d", m.parade.Cursor, beforeCursor)
+	}
+
+	model, _ = m.Update(gutter)
+	m = model.(Model)
+	if m.parade.Collapsed["epic"] {
+		t.Fatal("a second gutter click must expand the parent again")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("second gutter click moved selection to %v, want other", m.parade.SelectedIssue)
+	}
+}
+
+func TestMouseTitleClickSelectsWithoutToggling(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	m.parade.ToggleNode("epic")
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("precondition: epic should start collapsed")
+	}
+
+	model, _ := m.Update(tea.MouseClickMsg{X: 20, Y: headerHeight + paradeViewportRowOf(t, m, "epic"), Button: tea.MouseLeft})
+	m = model.(Model)
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("a single click on the title must never expand — the old blanket auto-expand is gone")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic" {
+		t.Fatalf("title click selection = %v, want epic", m.parade.SelectedIssue)
+	}
+	if m.activPane != PaneParade || m.detail.Focused {
+		t.Fatalf("title click focus = pane %d/detail %v, want parade/false", m.activPane, m.detail.Focused)
+	}
+}
+
+func TestKeyboardGreaterThanStillToggles(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("epic") {
+		t.Fatal("precondition: epic row not found")
+	}
+	m.syncSelection()
+	visible := func(m Model, id string) bool {
+		for _, item := range m.parade.Items {
+			if item.Issue != nil && item.Issue.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	model, _ := m.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
+	m = model.(Model)
+	if visible(m, "epic.1") {
+		t.Fatal("keyboard > must still collapse the selected branch")
+	}
+	model, _ = m.Update(tea.KeyPressMsg{Code: '>', Text: ">"})
+	m = model.(Model)
+	if !visible(m, "epic.1") {
+		t.Fatal("keyboard > must still expand the selected branch")
+	}
+}

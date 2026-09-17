@@ -495,8 +495,32 @@ func (p *Parade) restoreSelection(selectedID string) {
 	p.SelectedIssue = nil
 }
 
-// IssueAtViewportRow resolves a visible issue row using the current scroll offset.
-func (p *Parade) IssueAtViewportRow(row int) *data.Issue {
+const (
+	// cursorPrefixWidth is the two-cell prefix renderIssue writes before the
+	// indent: "> " when the row is selected, two blanks otherwise. ui.Cursor
+	// lives in those cells, but it is a cursor, not a button — the gutter is a
+	// region of columns and the hit test never looks at the character.
+	cursorPrefixWidth = 2
+	// sectionGutterOffset is the "│ " a row inside the Closed section adds to
+	// the left of that prefix.
+	sectionGutterOffset = 2
+)
+
+// glyphColumn is the parade column holding a row's status glyph. Everything
+// strictly left of it is the gutter (ask 2); everything from it rightwards is
+// the selection surface.
+func (p *Parade) glyphColumn(item ParadeItem) int {
+	col := cursorPrefixWidth + item.Depth*2
+	if item.Section != nil {
+		col += sectionGutterOffset
+	}
+	return col
+}
+
+// itemAtViewportRow resolves a visible row to its item with the bounds and
+// selectability rules IssueAtViewportRow already applies; that method
+// becomes a thin wrapper returning item.Issue.
+func (p *Parade) itemAtViewportRow(row int) *ParadeItem {
 	if row < 0 || row >= p.Height {
 		return nil
 	}
@@ -504,7 +528,38 @@ func (p *Parade) IssueAtViewportRow(row int) *data.Issue {
 	if index < 0 || index >= len(p.Items) || !p.Items[index].isSelectable() {
 		return nil
 	}
-	return p.Items[index].Issue
+	return &p.Items[index]
+}
+
+// IssueAtViewportRow resolves a visible issue row using the current scroll offset.
+func (p *Parade) IssueAtViewportRow(row int) *data.Issue {
+	item := p.itemAtViewportRow(row)
+	if item == nil {
+		return nil
+	}
+	return item.Issue
+}
+
+// GutterHit reports the collapsible parent whose left gutter was clicked: a
+// visible row with children, clicked strictly left of its status glyph. A leaf,
+// a header or footer, an empty row, and any click at or right of the glyph all
+// return false — those are selection clicks, never collapse.
+func (p *Parade) GutterHit(row, x int) (string, bool) {
+	item := p.itemAtViewportRow(row)
+	if item == nil || item.Issue == nil || !item.HasChildren {
+		return "", false
+	}
+	if x < 0 || x >= p.glyphColumn(*item) {
+		return "", false
+	}
+	return item.Issue.ID, true
+}
+
+// HasChildrenAtViewportRow reports whether a visible row is a collapsible
+// parent, so the double-click gesture can ignore leaves.
+func (p *Parade) HasChildrenAtViewportRow(row int) bool {
+	item := p.itemAtViewportRow(row)
+	return item != nil && item.HasChildren
 }
 
 // clampScroll ensures ScrollOffset is within valid bounds for the current Items slice.

@@ -869,3 +869,64 @@ func TestParadeRowRightAlignsPriorityBadge(t *testing.T) {
 		}
 	}
 }
+
+func TestParadeGutterHit(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic.1", Title: "Mid", Status: data.StatusOpen, Priority: 0,
+			Dependencies: paradeParentEdge("epic.1", "epic")},
+		{ID: "epic.1.1", Title: "Leaf", Status: data.StatusOpen, Priority: 0,
+			Dependencies: paradeParentEdge("epic.1.1", "epic.1")},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	row := func(id string) int {
+		t.Helper()
+		for r := 0; r < p.Height; r++ {
+			if iss := p.IssueAtViewportRow(r); iss != nil && iss.ID == id {
+				return r
+			}
+		}
+		t.Fatalf("row for %s not visible", id)
+		return -1
+	}
+
+	// Depth 0 parent: the two cursor-prefix cells are the gutter, column 2 is
+	// the status glyph and already belongs to selection.
+	for _, x := range []int{0, 1} {
+		if id, ok := p.GutterHit(row("epic"), x); !ok || id != "epic" {
+			t.Errorf("GutterHit(epic row, %d) = %q/%v, want epic/true", x, id, ok)
+		}
+	}
+	for _, x := range []int{2, 3, 20} {
+		if id, ok := p.GutterHit(row("epic"), x); ok {
+			t.Errorf("GutterHit(epic row, %d) = %q/true, want no hit — that is the glyph/title", x, id)
+		}
+	}
+
+	// Depth 1 parent: two prefix cells plus two indent cells.
+	for _, x := range []int{0, 1, 2, 3} {
+		if id, ok := p.GutterHit(row("epic.1"), x); !ok || id != "epic.1" {
+			t.Errorf("GutterHit(epic.1 row, %d) = %q/%v, want epic.1/true", x, id, ok)
+		}
+	}
+	if id, ok := p.GutterHit(row("epic.1"), 4); ok {
+		t.Errorf("GutterHit(epic.1 row, 4) = %q/true, want no hit — that is the glyph", id)
+	}
+
+	// A leaf has nothing to collapse, at any column.
+	for _, x := range []int{0, 1, 2, 3, 4, 5} {
+		if id, ok := p.GutterHit(row("epic.1.1"), x); ok {
+			t.Errorf("GutterHit(leaf row, %d) = %q/true, want no hit", x, id)
+		}
+	}
+	if _, ok := p.GutterHit(-1, 0); ok {
+		t.Error("GutterHit on an out-of-range row must not hit")
+	}
+
+	if !p.HasChildrenAtViewportRow(row("epic")) {
+		t.Error("HasChildrenAtViewportRow(epic) = false, want true")
+	}
+	if p.HasChildrenAtViewportRow(row("epic.1.1")) {
+		t.Error("HasChildrenAtViewportRow(leaf) = true, want false")
+	}
+}
