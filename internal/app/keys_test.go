@@ -927,3 +927,167 @@ func TestStaleScopeStaysEmptyAcrossResize(t *testing.T) {
 		t.Errorf("expected the header to stay empty with the parade, got %v", tallied)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 32. the scope's lifecycle: reload, `c`, and esc against a committed filter
+// ---------------------------------------------------------------------------
+
+// TestKeyEScopeReloadsWhenRootReturns pins the reload half of the scope's
+// lifecycle. TestKeyEScopeStaleRootEmptiesParade proves the root's departure
+// empties the parade; nothing proved the scope recovers. A refresh is the
+// normal way a root comes back — a `git pull`, a `br sync`, another agent
+// closing a blocker — and the scope is an ID, so every reload must re-narrow to
+// it instead of staying empty forever or widening to the board.
+func TestKeyEScopeReloadsWhenRootReturns(t *testing.T) {
+	epic := testIssue("epic", data.StatusInProgress)
+	epic.IssueType = data.TypeEpic
+	child := testIssue("epic.1", data.StatusOpen)
+	child.Dependencies = []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}
+	full := []data.Issue{epic, child, testIssue("unrelated", data.StatusOpen)}
+
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.scopeRootID != "epic" {
+		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
+	}
+
+	// assertScoped is the whole claim: the scope is still lit, its subtree is
+	// on screen, and nothing outside it leaked in — to the parade or the header.
+	assertScoped := func(stage string) {
+		t.Helper()
+		if got.scopeRootID != "epic" {
+			t.Fatalf("%s: expected the scope root to survive, got %q", stage, got.scopeRootID)
+		}
+		visible := visibleParadeIDs(got)
+		if !visible["epic"] || !visible["epic.1"] {
+			t.Errorf("%s: expected the epic subtree visible, got %v", stage, visible)
+		}
+		if visible["unrelated"] {
+			t.Errorf("%s: expected the reload to stay scoped, got %v", stage, visible)
+		}
+		if tallied := headerIssueIDs(got); tallied["unrelated"] {
+			t.Errorf("%s: expected the header to tally only the scoped set, got %v", stage, tallied)
+		}
+	}
+
+	// A plain refresh — the board reloads, same root — stays narrowed.
+	model, _ = got.Update(data.FileChangedMsg{Issues: full})
+	got = model.(Model)
+	assertScoped("plain refresh")
+
+	// Root leaves the loaded set: the scope empties rather than widening.
+	model, _ = got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
+	got = model.(Model)
+	if n := got.parade.VisibleIssues(); n != 0 {
+		t.Fatalf("expected an empty parade for a stale scope root, got %d visible issue(s)", n)
+	}
+
+	// Same scope ID, and the reload brings the root and its child back.
+	model, _ = got.Update(data.FileChangedMsg{Issues: full})
+	got = model.(Model)
+	assertScoped("reload after the root returned")
+}
+
+// TestKeyCUnderScopeFoldsOnlyScopedDoneRows pins `c` as a lifecycle key, not a
+// one-shot render flag: under a scope it folds and unfolds the scoped Done rows
+// and still cannot reveal a closed issue the scope excludes. The closed child is
+// the operator's own evidence that the scoped work is finished.
+func TestKeyCUnderScopeFoldsOnlyScopedDoneRows(t *testing.T) {
+	epic := testIssue("epic", data.StatusInProgress)
+	epic.IssueType = data.TypeEpic
+	child := testIssue("epic.1", data.StatusClosed)
+	child.Dependencies = []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}
+	unrelatedClosed := testIssue("unrelated", data.StatusClosed)
+
+	m := New([]data.Issue{epic, child, unrelatedClosed}, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	m.driver = gastown.NewGTDriver()
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	got := model.(Model)
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.scopeRootID != "epic" {
+		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
+	}
+	if visibleParadeIDs(got)["epic.1"] {
+		t.Fatal("precondition: the scoped closed child should start folded")
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	got = model.(Model)
+
+	visible := visibleParadeIDs(got)
+	if !visible["epic.1"] {
+		t.Errorf("expected c to unfold the scoped Done row, got %v", visible)
+	}
+	if visible["unrelated"] {
+		t.Errorf("expected c to stay inside the scope, got %v", visible)
+	}
+	if n := len(got.parade.Groups[data.StateDone]); n != 1 {
+		t.Fatalf("expected exactly the scoped Done row in the Done group, got %d", n)
+	}
+
+	// And it folds again — the key is a toggle, not a permanent reveal.
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	got = model.(Model)
+	if visibleParadeIDs(got)["epic.1"] {
+		t.Errorf("expected a second c to fold the scoped Done row again, got %v", visibleParadeIDs(got))
+	}
+}
+
+// TestKeyEscWithCommittedFilterClearsScopeFirst pins esc's precedence once a
+// filter query is committed but the input is no longer focused. The README
+// promises esc clears the scope first and that a scope stacks on top of the
+// filter instead of resetting it, so the press must drop the scope and leave
+// the query — and the parade — under the filter alone. Only while the input
+// itself has focus is esc the input's own key.
+func TestKeyEscWithCommittedFilterClearsScopeFirst(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.scopeRootID != "epic" {
+		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	got = model.(Model)
+	for _, r := range "unrelated" {
+		model, _ = got.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		got = model.(Model)
+	}
+	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	got = model.(Model)
+
+	if got.filtering {
+		t.Fatal("precondition: enter should have released the filter input")
+	}
+	if got.filterInput.Value() != "unrelated" {
+		t.Fatalf("precondition: expected the committed query %q, got %q", "unrelated", got.filterInput.Value())
+	}
+	// The scope and the filter intersect: nothing is left to show.
+	if n := got.parade.VisibleIssues(); n != 0 {
+		t.Fatalf("precondition: expected scope ∩ filter to be empty, got %d visible issue(s): %v",
+			n, visibleParadeIDs(got))
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	got = model.(Model)
+
+	if got.scopeRootID != "" {
+		t.Errorf("expected esc to clear the scope, got %q", got.scopeRootID)
+	}
+	if got.filterInput.Value() != "unrelated" {
+		t.Errorf("expected the committed filter to survive the esc, got %q", got.filterInput.Value())
+	}
+	visible := visibleParadeIDs(got)
+	if !visible["unrelated"] {
+		t.Errorf("expected the filter to still narrow the parade after esc, got %v", visible)
+	}
+	if visible["epic"] || visible["epic.1"] {
+		t.Errorf("expected the scope's subtree to stay filtered out, got %v", visible)
+	}
+}

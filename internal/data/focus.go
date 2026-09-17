@@ -33,6 +33,14 @@ func FocusFilter(issues []Issue, blockingTypes map[string]bool) []Issue {
 		case isBlocked:
 			blocked = append(blocked, iss)
 		default:
+			// The ready budget is five real Ready rows. A status
+			// DeriveState refuses to classify (draft, tombstone, pinned,
+			// custom) is carried as unmapped at render, so letting it buy a
+			// slot here would silently shrink that budget. Ask the
+			// classifier before spending it.
+			if !mappedStatus(iss.Status) {
+				continue
+			}
 			ready = append(ready, iss)
 		}
 	}

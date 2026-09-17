@@ -312,7 +312,8 @@ func TestFetchIssuesCLIBackfillsGraphEdges(t *testing.T) {
 	}
 
 	// What br actually returns: the same issues, no dependencies key at all.
-	defer mockRun([]byte(`{"issues":[{"id":"epic","title":"parent","status":"open","priority":1,"issue_type":"epic","updated_at":"2026-09-16T00:00:00Z"},{"id":"child","title":"kid","status":"open","priority":1,"issue_type":"task","updated_at":"2026-09-16T00:00:00Z"}],"total":2}`), nil)()
+	calls, restore := mockRunCapture([]byte(`{"issues":[{"id":"epic","title":"parent","status":"open","priority":1,"issue_type":"epic","updated_at":"2026-09-16T00:00:00Z"},{"id":"child","title":"kid","status":"open","priority":1,"issue_type":"task","updated_at":"2026-09-16T00:00:00Z"}],"total":2}`), nil)
+	defer restore()
 
 	got, err := FetchIssuesCLI(projectDir, CLIBr)
 	if err != nil {
@@ -324,6 +325,21 @@ func TestFetchIssuesCLIBackfillsGraphEdges(t *testing.T) {
 	}
 	if parent := byID["child"].ParentRelationshipID(); parent != "epic" {
 		t.Errorf("child ParentRelationshipID() = %q, want %q", parent, "epic")
+	}
+
+	// The whole point of merging from the co-located export is that it is ONE
+	// pass: a per-issue `dep list` / `show` / `sync` fan-out would restore the
+	// same edges at N subprocesses a poll, which is what this test forbids. The
+	// invocation count is the observable — the operator's board has hundreds of
+	// issues and a 15s wallet.
+	if len(*calls) != 1 {
+		t.Fatalf("FetchIssuesCLI made %d subprocess call(s), want exactly 1 (the list): %v", len(*calls), *calls)
+	}
+	for _, arg := range (*calls)[0] {
+		switch arg {
+		case "dep", "show", "sync":
+			t.Errorf("FetchIssuesCLI argv contains %q; the backfill must not shell out per issue: %v", arg, (*calls)[0])
+		}
 	}
 }
 

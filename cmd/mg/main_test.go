@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -417,31 +419,89 @@ func TestLoadFailureHintDoltOnlyForBd(t *testing.T) {
 // the budget is generous; without it a wedged build hangs the test forever.
 const mardNobStatusTimeout = 120 * time.Second
 
+// statusWaitDelay bounds how long the process tests keep waiting on the child's
+// output pipes after that child exits or the deadline above fires. `go run`
+// compiles and runs the binary as a grandchild that inherits stdout: killing
+// the `go run` parent at the deadline leaves the binary holding the write end
+// of the pipe, so CombinedOutput can block indefinitely and the 120s deadline
+// never actually bounds the test. Five seconds is far below the deadline, which
+// keeps a wedged run failing with its own captured output instead of hanging
+// the suite.
+const statusWaitDelay = 5 * time.Second
+
+// boundedCommand is the one place the process tests apply their deadline and
+// pipe policy, so a hang cannot outlive the child by more than statusWaitDelay.
+func boundedCommand(ctx context.Context, dir, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	cmd.WaitDelay = statusWaitDelay
+	return cmd
+}
+
+// statusCommand builds the mg --status invocation over a fixture.
+func statusCommand(ctx context.Context, fixturePath string) *exec.Cmd {
+	return boundedCommand(ctx, filepath.Join("..", ".."),
+		"go", "run", "./cmd/mg", "--status", "--path", fixturePath)
+}
+
+// tmuxMarkup matches the #[fg=colourN] directives tmux.StatusLine emits.
+var tmuxMarkup = regexp.MustCompile(`#\[[^\]]*\]`)
+
+// TestStatusCommandWaitDelayBoundsThePipe is the regression for statusWaitDelay.
+// A child that exits while a grandchild inherits its stdout leaves the read end
+// of the output pipe open with nobody to close it; without WaitDelay the helper
+// above returns only when that grandchild finally exits, so the deadline is
+// decorative. `sleep` deliberately outlives this test's threshold.
+func TestStatusCommandWaitDelayBoundsThePipe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the probe needs a POSIX shell")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), mardNobStatusTimeout)
+	defer cancel()
+
+	cmd := boundedCommand(ctx, t.TempDir(), "sh", "-c", "sleep 30 & exit 0")
+
+	start := time.Now()
+	_, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
+	if elapsed > statusWaitDelay+10*time.Second {
+		t.Fatalf("CombinedOutput waited %s on a pipe the child had already abandoned — WaitDelay is not bounding it", elapsed)
+	}
+	// The probe's child exits 0 while `sleep` still holds the pipe, which is
+	// precisely the case WaitDelay resolves: Wait gives up on the open pipe and
+	// reports ErrWaitDelay instead of blocking. Any other error is a real one.
+	if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
+		t.Fatalf("probe command failed: %v", err)
+	}
+}
+
 // TestStatusModeMardNobAwaitingReview is the built-binary acceptance test for
 // the defect the Brief names: an epic whose every executable descendant is
 // closed, with operator acceptance still pending, is Awaiting Review — never
 // Working. It runs the real binary over a real fixture, so the loader,
 // hierarchy, derivation, grouping, and tmux render must all be correct at once.
 // A stubbed unit expectation cannot satisfy it.
+//
+// The six counts are asserted ORDERED, not as a set: the widget reads left to
+// right in StateOrder and a render that permutes them is the regression the
+// process test must catch. tmux's #[fg=...] markup sits between the tokens in
+// the raw stream, so the sequence is only contiguous once that markup is gone.
 func TestStatusModeMardNobAwaitingReview(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), mardNobStatusTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "go", "run", "./cmd/mg", "--status", "--path", "testdata/mard-nob-awaiting-review.jsonl")
-	cmd.Dir = filepath.Join("..", "..")
-	out, err := cmd.CombinedOutput()
+	out, err := statusCommand(ctx, "testdata/mard-nob-awaiting-review.jsonl").CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			t.Fatalf("go run exceeded %s: %s", mardNobStatusTimeout, out)
 		}
 		t.Fatalf("%v: %s", err, out)
 	}
-	for _, want := range []string{"0●", "1◐", "0♪", "0⏸", "0⊘", "7✓"} {
-		if !strings.Contains(string(out), want) {
-			t.Errorf("missing %q: %s", want, out)
-		}
+	plain := tmuxMarkup.ReplaceAllString(string(out), "")
+	if want := "0● 1◐ 0♪ 0⏸ 0⊘ 7✓"; !strings.Contains(plain, want) {
+		t.Errorf("status line does not carry the ordered counts %q: %q", want, plain)
 	}
-	if strings.Contains(string(out), "1●") {
+	if strings.Contains(plain, "1●") {
 		t.Fatalf("hard-example epic rendered Working: %s", out)
 	}
 }

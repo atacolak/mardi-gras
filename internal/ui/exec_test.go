@@ -65,6 +65,36 @@ func TestExecVocabulary(t *testing.T) {
 	}
 }
 
+// TestExecIndicatorRebakesOnThemeSwitch pins the reason CLAUDE.md forbids
+// capturing pre-rendered strings outside internal/ui: the Exec*Str indicators
+// are rendered once in rebuildStyles and must be re-rendered by SetTheme. A
+// package-init capture from the dark palette would leave the dark bytes in
+// place after SetTheme(ThemeLight) — the frozen-palette bug — and the
+// display-width-only assertion in TestExecVocabulary cannot see it. Every
+// execution-state color binds to a primitive with a distinct light variant, so
+// the light indicator must differ from the dark one for all six states.
+func TestExecIndicatorRebakesOnThemeSwitch(t *testing.T) {
+	t.Cleanup(func() { SetTheme(ThemeDark) })
+
+	SetTheme(ThemeDark)
+	dark := make([]string, len(execStates))
+	for _, tc := range execStates {
+		dark[tc.state] = ExecIndicator(tc.state)
+	}
+
+	SetTheme(ThemeLight)
+	for _, tc := range execStates {
+		light := ExecIndicator(tc.state)
+		if light == dark[tc.state] {
+			t.Errorf("ExecIndicator(%d) = %q under both palettes — the pre-rendered string was not rebaked",
+				tc.state, light)
+		}
+		if got, want := ExecColor(tc.state), tc.palette(); got != want {
+			t.Errorf("ExecColor(%d) = %v after SetTheme(ThemeLight), want the light %v primitive", tc.state, got, want)
+		}
+	}
+}
+
 // TestExecVocabularyOutOfRange pins the documented fallback. An integer
 // outside 0-5 is a broken SemanticState contract, not a seventh state: the
 // lookups must not panic and must not render as ready work.

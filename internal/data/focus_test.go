@@ -181,3 +181,50 @@ func TestFocusFilterOrdering(t *testing.T) {
 		t.Errorf("result[2] = %s, want blocked-1 (blocked)", result[2].ID)
 	}
 }
+
+// TestFocusFilterUnmappedStatusDoesNotConsumeReadySlot pins the ready budget
+// against statuses DeriveState refuses to classify. FocusFilter partitions raw
+// status itself, so its default arm used to admit draft/tombstone/pinned/custom
+// issues into the five-slot ready budget; the parade then drops them at render
+// (GroupBySemanticState carries them as unmapped), so focus mode could show
+// fewer than five real Ready rows with nothing on screen to explain the gap. An
+// unmapped status must not buy a slot.
+func TestFocusFilterUnmappedStatusDoesNotConsumeReadySlot(t *testing.T) {
+	t.Setenv("USER", "testuser")
+
+	for _, status := range []Status{StatusDraft, StatusTombstone, StatusPinned, Status("custom-review")} {
+		t.Run(string(status), func(t *testing.T) {
+			// PriorityCritical on purpose: on priority alone the unmapped issue
+			// sorts ahead of every real Ready row and takes the first slot.
+			issues := []Issue{focusTestIssue("unmapped", status, PriorityCritical)}
+			var wantReady []string
+			for i := range 5 {
+				id := "ready-" + string(rune('a'+i))
+				issues = append(issues, focusTestIssue(id, StatusOpen, PriorityLow))
+				wantReady = append(wantReady, id)
+			}
+
+			result := FocusFilter(issues, DefaultBlockingTypes)
+
+			var gotIDs []string
+			for _, iss := range result {
+				gotIDs = append(gotIDs, iss.ID)
+				if iss.ID == "unmapped" {
+					t.Errorf("%s occupied a focus slot: %v", status, gotIDs)
+				}
+			}
+			if len(result) != len(wantReady) {
+				t.Fatalf("got %d row(s) %v, want the %d real Ready rows", len(result), gotIDs, len(wantReady))
+			}
+			got := make(map[string]bool, len(result))
+			for _, iss := range result {
+				got[iss.ID] = true
+			}
+			for _, id := range wantReady {
+				if !got[id] {
+					t.Errorf("real Ready row %s was displaced from the five-slot budget: %v", id, gotIDs)
+				}
+			}
+		})
+	}
+}

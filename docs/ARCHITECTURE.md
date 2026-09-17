@@ -1,8 +1,8 @@
 # Architecture Overview
 
-Mardi Gras is a terminal UI (TUI) that visualizes [Beads](https://github.com/gastownhall/beads) issues as a parade — a motion-based metaphor where issues flow through four stages rather than sitting in static columns.
+Mardi Gras is a terminal UI (TUI) that visualizes [Beads](https://github.com/gastownhall/beads) issues as a parade — a motion-based metaphor where issues flow through six derived states rather than sitting in static columns.
 
-Built with [BubbleTea](https://github.com/charmbracelet/bubbletea) v2 (Elm architecture for Go), it supports two data sources: direct `.beads/issues.jsonl` reading and `bd list --json` CLI fallback (for Beads v0.56+ with Dolt). It groups issues by parade status and renders a two-pane interface with live polling. When an orchestrator — [Gas Town](https://github.com/gastownhall/gastown) or [Gas City](https://github.com/gastownhall/gascity) — is available, it becomes a full agent control surface with convoy management, mail, cost analytics, and operational intelligence.
+Built with [BubbleTea](https://github.com/charmbracelet/bubbletea) v2 (Elm architecture for Go), it supports two data sources: direct `.beads/issues.jsonl` reading and `bd list --json` CLI fallback (for Beads v0.56+ with Dolt). It derives every issue's semantic execution state from the issue graph and renders a two-pane interface with live polling. When an orchestrator — [Gas Town](https://github.com/gastownhall/gastown) or [Gas City](https://github.com/gastownhall/gascity) — is available, it becomes a full agent control surface with convoy management, mail, cost analytics, and operational intelligence.
 
 ## Package Layout
 
@@ -21,7 +21,9 @@ internal/
 
   data/
     issue.go              Domain types: Issue, Status, Priority, Dependency, DepEval
-    loader.go             JSONL parsing, sorting, parade grouping
+    loader.go             JSONL parsing, sorting
+    semantic.go           Six semantic execution states, DeriveState, grouping
+    hierarchy.go          Parent-child edge walkers: Descendants, ScopeToSubtree, RelativeDisplayID
     filter.go             Query filtering (type:, label:, priority:, free-text)
     watcher.go            File polling (1.2s JSONL / 5s CLI interval, change detection)
     source.go             Source config (JSONL vs CLI), bd list/show fetchers, bd version warning
@@ -166,7 +168,8 @@ The root model owns all state and delegates rendering to sub-models:
 type Model struct {
     // Data
     issues        []data.Issue
-    groups        map[data.ParadeStatus][]data.Issue
+    groups        map[data.SemanticState][]data.Issue
+    unmapped      []data.Issue       // issues DeriveState cannot classify
 
     // Sub-models (views)
     parade        views.Parade       // left pane
@@ -393,25 +396,19 @@ Initial load based on source.Mode:
     |
     v
 --status mode?
-  yes --> data.GroupByParade() --> tmux.StatusLine() --> print and exit
+  yes --> data.GroupBySemanticState() --> tmux.StatusLine() --> print and exit
   no  --> app.New(issues, source, ...) --> tea.NewProgram(model).Run()
 ```
 
-### 2. Parade grouping (data/loader.go)
+### 2. Semantic execution state (data/semantic.go)
 
-`GroupByParade` builds an issue lookup map, then classifies each issue:
+`GroupBySemanticState` builds an issue lookup map, then classifies each issue through `DeriveState`, the one classifier. It reads the dependency / parent-child graph rather than the raw status alone, and returns `(SemanticState, bool)`.
 
-```
-issue.ParadeGroup(issueMap, blockingTypes):
+The boolean is the honest-answer hole, not a seventh state. `ok=false` means the issue's raw status is one this wave is not authorised to map — draft, tombstone, pinned, and any custom status — or that it is an epic whose descendants include one. Such an issue is never bucketed: `GroupBySemanticState` returns those issues separately, so an unmapped status can be neither counted as work nor rendered as Ready, and there is no `default:` arm that buckets anything.
 
-  closed?                    --> Past the Stand
-  in_progress + not blocked? --> Rolling
-  in_progress + blocked?     --> Stalled
-  open + not blocked?        --> Lined Up
-  open + blocked?            --> Stalled
-```
+`StateOrder()` is the single source of render order. The parade, the header, and the tmux widget all iterate it instead of hard-coding a list of states, so they cannot disagree about which states exist or in what order. The six-state precedence table itself is the spec's contract and is deliberately not restated here: see the Mapping table in `docs/plans/2026-09-16-semantic-execution-state-spec.md`.
 
-"Blocked" is determined by `EvaluateDependencies`: an issue is blocked if it has any dependency where the type is in `blockingTypes` (default: `"blocks"` and `"conditional-blocks"`) and the target issue is either missing or still open.
+"Blocked" is determined by `EvaluateDependencies`: an issue is blocked if it has any dependency where the type is in `blockingTypes` (default: `"blocks"` and `"conditional-blocks"`) and the target issue is either missing or still open. `parent-child` edges are hierarchy, not blockers, so a child never reads as Waiting/Blocked merely for having a parent.
 
 ### 3. Dependency evaluation (data/issue.go)
 
@@ -583,7 +580,7 @@ Issue
 Status:        open | in_progress | closed
 IssueType:     task | bug | feature | chore | epic | spike | story | milestone
 Priority:      0 (critical) .. 4 (backlog)
-ParadeStatus:  Rolling | LinedUp | Stalled | PastTheStand
+SemanticState: Working | AwaitingReview | Ready | Deferred | WaitingBlocked | Done
 
 Dependency
   IssueID      (source -- the issue that has this dep)
@@ -654,7 +651,7 @@ All visual constants live in `internal/ui/`:
 
 - **theme.go** — Color palette (Mardi Gras purple, gold, green), plus `RoleColor()` for all 7 Gas Town agent roles (mayor/coordinator, deacon/health-check, polecat, crew, witness, refinery, dog) and `AgentStateColor()` for working/idle/spawning/backoff-degraded/stuck/awaiting-gate/fix_needed/propelled/patrolling/paused-muted states. The palette is **switchable**: `ui.SetTheme(ThemeDark|ThemeLight)` re-bakes it at startup from `--theme` / `MG_THEME` (`auto` sniffs the terminal background). Because of that, no package outside `internal/ui` may capture palette vars, styles, or pre-rendered strings in package-level variables — they would freeze the dark values before the theme is applied
 - **styles.go** — Pre-built lipgloss styles for every context: parade items, detail sections, Gas Town panel, DAG connectors, toast notifications, command palette
-- **symbols.go** — Unicode symbols: status indicators (●, ♪, ⊘, ✓), dependency arrows, DAG flow connectors (│, ┌, ├, └), progress bars
+- **symbols.go** — Unicode symbols: semantic execution-state indicators (●, ◐, ♪, ⏸, ⊘, ✓), dependency arrows, DAG flow connectors (│, ┌, ├, └), progress bars
 Convention: views and components import `ui` for all visual constants. No raw colors or symbols in view code.
 
 ### Receiver Conventions

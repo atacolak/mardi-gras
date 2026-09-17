@@ -114,6 +114,37 @@ func TestDeriveStatePrecedence(t *testing.T) {
 			},
 			StateWaitingBlocked,
 		},
+		{
+			// The epic rule (row 8) outranks deferral (rows 9-10): the epic's
+			// own raw status or DeferUntil says nothing about whether its work
+			// is finished and waiting on the operator. Swapping the deferred
+			// block above the epic block leaves the rest of this table green.
+			"deferred epic with every child closed is awaiting review",
+			Issue{ID: "x", Status: StatusDeferred, IssueType: TypeEpic},
+			[]Issue{{ID: "x.1", Status: StatusClosed, Dependencies: parentEdge("x.1", "x")}},
+			StateAwaitingReview,
+		},
+		{
+			"future defer on an epic with every child closed is awaiting review",
+			Issue{ID: "x", Status: StatusInProgress, IssueType: TypeEpic, DeferUntil: &future},
+			[]Issue{{ID: "x.1", Status: StatusClosed, Dependencies: parentEdge("x.1", "x")}},
+			StateAwaitingReview,
+		},
+		{
+			// `parent-child` is hierarchy, not a blocker. Every real child
+			// carries one, so if it ever blocked, every nested row on a real
+			// board would render Waiting/Blocked instead of its own state.
+			"parent-child edge to an open parent is not blocking",
+			Issue{ID: "x", Status: StatusOpen, Dependencies: parentEdge("x", "p")},
+			[]Issue{{ID: "p", Status: StatusOpen, IssueType: TypeEpic}},
+			StateReady,
+		},
+		{
+			"nested epic with an open parent is not blocked",
+			Issue{ID: "x", Status: StatusInProgress, IssueType: TypeEpic, Dependencies: parentEdge("x", "p")},
+			[]Issue{{ID: "p", Status: StatusOpen, IssueType: TypeEpic}},
+			StateWorking,
+		},
 	}
 
 	for _, tc := range tests {

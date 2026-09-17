@@ -11,7 +11,7 @@
 
 **Your Beads issues deserve a parade, not a spreadsheet.**
 
-Mardi Gras (`mg`) is a terminal UI for [Beads](https://github.com/gastownhall/beads), the issue tracker built for coding agents. It reads the same issues your agents write and shows them as a parade: what's rolling, what's lined up, what's stalled, and what's already past the stand. When something changes, the parade reshuffles in front of you.
+Mardi Gras (`mg`) is a terminal UI for [Beads](https://github.com/gastownhall/beads), the issue tracker built for coding agents. It reads the same issues your agents write and shows them as a parade: what's being worked, what's waiting on you, what's ready to pick up, what's parked, what's blocked, and what's done. When something changes, the parade reshuffles in front of you.
 
 One static binary. No daemon, no config file. Run `mg` in a Beads project and you're watching.
 
@@ -23,13 +23,15 @@ One static binary. No daemon, no config file. Run `mg` in a Beads project and yo
 Every issue is on the route somewhere:
 
 ```
-●  Rolling          in progress
-♪  Lined Up         open, and nothing is in its way
-⊘  Stalled          waiting on something that isn't done yet
-✓  Past the Stand   closed, folded away until you press c
+●  Working            in progress, with live work under it
+◐  Awaiting Review    work is finished; operator acceptance is pending
+♪  Ready              open, nothing in its way, not deferred
+⏸  Deferred           parked until its defer date passes
+⊘  Waiting/Blocked    waiting on something that isn't done yet
+✓  Done               closed, folded away until you press c
 ```
 
-The route is honest. A stalled row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
+The route is honest. A Waiting/Blocked row names what it's waiting on. Children nest under their parents, and a nested row prints the short form of its ID — `.7` under the epic `mard-nob` — whenever the full prefix would only repeat the parent sitting directly above it. Overdue work says so, in red. The header keeps a running tally and a progress bar, and the footer tells you where the data came from and how fresh it is.
 
 Blocked is computed from dependency edges, not from a status field somebody forgot to update. `blocks` and `conditional-blocks` count by default; widen that with `--block-types` if your project uses others.
 
@@ -86,7 +88,7 @@ mg
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
 | `f` | Focus mode: your work and the top priorities, nothing else |
 | `E` | Epic scope: the selected issue's whole epic subtree, cleared by `esc` |
-| `c` | Fold or unfold Past the Stand |
+| `c` | Fold or unfold the Done section |
 | `:` or `ctrl+k` | Command palette, with everything mg can do |
 | `?` | Help overlay, paged by section |
 | `q` | Leave the parade |
@@ -175,7 +177,7 @@ mg ships a dark theme and a light one, and picks by asking the terminal for its 
 
 ## tmux
 
-**Status line.** A compact, color-coded count of rolling, lined up, stalled, and closed issues:
+**Status line.** A compact, color-coded count of all six execution states:
 
 ```bash
 set -g status-right "#(mg --status)"

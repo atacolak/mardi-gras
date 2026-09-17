@@ -345,14 +345,73 @@ func TestParadeRelativeDisplayIDClosed(t *testing.T) {
 	p.ToggleClosed()
 
 	out := ansi.Strip(p.View())
-	if !strings.Contains(out, ".7 Closed child") {
-		t.Errorf("closed nested row should show the compacted ID:\n%s", out)
-	}
 	if strings.Contains(out, "mard-nob.7") {
 		t.Errorf("closed nested row should not repeat the redundant prefix:\n%s", out)
 	}
+	// The compacted label is a substring of the full one — "mard-nob.7 Closed
+	// child" satisfies a bare Contains(".7 Closed child") with no compaction
+	// having happened at all — so assert the label the way the row actually
+	// prints it: an ID token with its own leading separator, not a fragment of
+	// the longer ID.
+	row := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Closed child") {
+			row = line
+			break
+		}
+	}
+	if row == "" {
+		t.Fatalf("no rendered row for the closed child:\n%s", out)
+	}
+	if !strings.Contains(row, " .7 Closed child") {
+		t.Errorf("closed nested row does not print the compacted ID as a token: %q", row)
+	}
 	if !strings.Contains(out, "mard-nob Epic") {
 		t.Errorf("depth-0 root should keep its full ID:\n%s", out)
+	}
+}
+
+// A matching-prefix child whose parent is not in its own section renders at
+// depth 0, where the full ID is the only resolvable label: nothing above it
+// repeats the prefix, so ".7" would be a row the operator cannot look up. Real
+// boards reach this shape — a closed child lands in Done while its open epic is
+// still in Ready, and a blocked child lands in Waiting/Blocked while its epic
+// is Ready — which is why relativeDisplayID takes depth at all instead of
+// always deferring to data.RelativeDisplayID.
+func TestParadeRelativeDisplayIDKeepsFullIDForOutOfSectionParent(t *testing.T) {
+	epic := data.Issue{ID: "mard-nob", Title: "Epic", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeEpic}
+	blocked := data.Issue{
+		ID: "mard-nob.7", Title: "Blocked child", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{
+			{IssueID: "mard-nob.7", DependsOnID: "mard-nob", Type: "parent-child"},
+			{IssueID: "mard-nob.7", DependsOnID: "mard-boss", Type: "blocks"},
+		},
+	}
+	boss := data.Issue{ID: "mard-boss", Title: "Boss", Status: data.StatusInProgress, Priority: data.PriorityMedium, IssueType: data.TypeTask}
+
+	p := NewParade([]data.Issue{epic, blocked, boss}, 100, 30, data.DefaultBlockingTypes)
+
+	var seen bool
+	for _, item := range p.Items {
+		if item.Issue == nil || item.Issue.ID != "mard-nob.7" {
+			continue
+		}
+		seen = true
+		if item.Depth != 0 {
+			t.Fatalf("blocked child depth = %d, want 0 — its epic is in another section", item.Depth)
+		}
+		if got := ansi.Strip(item.RenderedID); got != "mard-nob.7" {
+			t.Errorf("rendered ID = %q, want the full %q at depth 0", got, "mard-nob.7")
+		}
+	}
+	if !seen {
+		var ids []string
+		for _, item := range p.Items {
+			if item.Issue != nil {
+				ids = append(ids, item.Issue.ID)
+			}
+		}
+		t.Fatalf("blocked child missing from the parade: %v", ids)
 	}
 }
 
