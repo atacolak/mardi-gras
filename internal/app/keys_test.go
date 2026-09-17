@@ -840,3 +840,90 @@ func TestKeyEScopeStaleRootEmptiesParade(t *testing.T) {
 		t.Fatalf("expected an empty parade for a stale scope root, got %d visible issue(s)", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 31. the scope survives a resize — header and parade keep one narrowing pipeline
+// ---------------------------------------------------------------------------
+
+// headerIssueIDs collects every issue ID the header currently tallies, across
+// all six semantic states. The header is the operator's board-level tally, so
+// it must describe the same set the parade shows.
+func headerIssueIDs(m Model) map[string]bool {
+	ids := make(map[string]bool)
+	for _, state := range data.StateOrder() {
+		for _, issue := range m.header.Groups[state] {
+			ids[issue.ID] = true
+		}
+	}
+	return ids
+}
+
+// TestScopeSurvivesResize pins the single narrowing pipeline behind the header
+// and the parade. layout() runs on every WindowSizeMsg (and on every layout
+// preset switch), so a resize with a scope lit must not re-tally the full board
+// into the header while the parade stays scoped — that would light the SCOPE
+// chip beside counts for issues the scope excludes.
+func TestScopeSurvivesResize(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.scopeRootID != "epic" {
+		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
+	}
+
+	model, _ = got.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	got = model.(Model)
+
+	visible := visibleParadeIDs(got)
+	if visible["unrelated"] {
+		t.Errorf("expected the unrelated issue to stay scoped out after resize, got %v", visible)
+	}
+	if !visible["epic"] || !visible["epic.1"] {
+		t.Errorf("expected the epic subtree to stay visible after resize, got %v", visible)
+	}
+
+	tallied := headerIssueIDs(got)
+	if tallied["unrelated"] {
+		t.Errorf("expected the header to keep tallying only the scoped set, but it counted the unrelated issue: %v", tallied)
+	}
+	if len(tallied) != len(visible) {
+		t.Errorf("header and parade disagree after resize: header tallies %v, parade shows %v", tallied, visible)
+	}
+	if n := len(got.header.Groups[data.StateReady]); n != 1 {
+		t.Errorf("expected the header to count 1 Ready issue under the scope (epic.1), got %d", n)
+	}
+}
+
+// TestStaleScopeStaysEmptyAcrossResize carries the stale-scope state from
+// TestKeyEScopeStaleRootEmptiesParade through a resize. The spec forbids
+// silently widening back to everything, so an empty scoped parade must stay
+// empty when layout() runs.
+func TestStaleScopeStaysEmptyAcrossResize(t *testing.T) {
+	got := setupEpicScopeModel(t)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	model, _ = got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
+	got = model.(Model)
+	if n := got.parade.VisibleIssues(); n != 0 {
+		t.Fatalf("precondition: expected an empty parade for a stale scope root, got %d visible issue(s)", n)
+	}
+
+	model, _ = got.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	got = model.(Model)
+
+	if n := got.parade.VisibleIssues(); n != 0 {
+		t.Fatalf("expected the stale scope to stay empty across a resize, got %d visible issue(s): %v",
+			n, visibleParadeIDs(got))
+	}
+	if visibleParadeIDs(got)["unrelated"] {
+		t.Error("expected a resize not to widen a stale scope back to the whole board")
+	}
+	if got.scopeRootID != "epic" {
+		t.Errorf("expected the stale scope root to stay pinned, got %q", got.scopeRootID)
+	}
+	if tallied := headerIssueIDs(got); tallied["unrelated"] {
+		t.Errorf("expected the header to stay empty with the parade, got %v", tallied)
+	}
+}

@@ -3402,6 +3402,23 @@ func (m *Model) detailFetchBatch() []tea.Cmd {
 	return cmds
 }
 
+// refreshHeader rebuilds the header around groups — the narrowed groups the
+// parade was built from. The header is constructed here and nowhere else, so
+// its tallies cannot drift from the rows on screen: layout() carries
+// rebuildParade's groups forward instead of re-tallying the full board.
+func (m *Model) refreshHeader(groups map[data.SemanticState][]data.Issue) {
+	m.header = components.Header{
+		Width:            m.width,
+		Groups:           groups,
+		AgentCount:       len(m.activeAgents),
+		TownStatus:       m.townStatus,
+		GasTownAvailable: m.orchestratorAvailable(),
+		ProblemCount:     len(m.allProblems()),
+		BeadOffset:       m.beadOffset,
+		CurrentIssueID:   m.currentIssueID,
+	}
+}
+
 // layout recalculates dimensions for all sub-components.
 func (m *Model) layout() {
 	headerH := 2
@@ -3424,16 +3441,13 @@ func (m *Model) layout() {
 		detailW = m.width - paradeW
 	}
 
-	m.header = components.Header{
-		Width:            m.width,
-		Groups:           m.groups,
-		AgentCount:       len(m.activeAgents),
-		TownStatus:       m.townStatus,
-		GasTownAvailable: m.orchestratorAvailable(),
-		ProblemCount:     len(m.allProblems()),
-		BeadOffset:       m.beadOffset,
-		CurrentIssueID:   m.currentIssueID,
-	}
+	// Geometry and the non-count header fields are layout()'s business; the
+	// per-state tallies are NOT. They come from rebuildParade's single
+	// narrowing pipeline (filter → exclude → focus → scope → group), the same
+	// pass list that feeds the parade, so carrying its groups forward is what
+	// keeps the header in agreement with the rows on screen. Re-tallying the
+	// full board here would print unscoped counts beside a lit SCOPE chip.
+	m.refreshHeader(m.header.Groups)
 
 	m.parade.SetSize(paradeW, bodyH)
 	m.detail.SetSize(detailW, bodyH)
@@ -3449,9 +3463,11 @@ func (m *Model) layout() {
 	m.detail.MetadataSchema = m.metadataSchema
 
 	if len(m.parade.Items) == 0 {
-		visibleIssues := data.ExcludeByLabel(data.ExcludeByType(m.issues, m.excludeTypes), m.excludeLabels)
-		m.parade = views.NewParadeWithData(visibleIssues, m.groups, m.unmapped, detailIssueMap, paradeW, bodyH, m.blockingTypes)
-		m.syncSelection()
+		// Bootstrap, and the stale-scope case where the narrowed parade is
+		// legitimately empty. rebuildParade owns the whole narrowing pass list,
+		// so delegating keeps layout() from widening an empty scoped parade
+		// back to the entire board from unscoped issues.
+		m.rebuildParade()
 		if m.pendingCurrentID != "" {
 			m.restoreParadeSelection(m.pendingCurrentID)
 			m.syncSelection()
@@ -3509,16 +3525,7 @@ func (m *Model) rebuildParade() {
 		paradeIssueMap = data.BuildIssueMap(filteredIssues)
 	}
 
-	m.header = components.Header{
-		Width:            m.width,
-		Groups:           groups,
-		AgentCount:       len(m.activeAgents),
-		TownStatus:       m.townStatus,
-		GasTownAvailable: m.orchestratorAvailable(),
-		ProblemCount:     len(m.allProblems()),
-		BeadOffset:       m.beadOffset,
-		CurrentIssueID:   m.currentIssueID,
-	}
+	m.refreshHeader(groups)
 
 	m.parade = views.NewParadeWithData(filteredIssues, groups, unmapped, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
 	m.parade.MatchHighlights = highlights
