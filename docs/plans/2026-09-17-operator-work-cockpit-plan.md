@@ -344,7 +344,7 @@ git commit -m "fix: sort default work by graph-ready priority"
 
 **Verification (anti-gameable):** one rendered fixture contains an Operator Review epic with Working, Ready, nested Done, and nested-grandchild rows contiguous beneath it; no Working/Ready/Operator Review/Done section headers exist; only populated Waiting/Blocked and Deferred sections exist; an old Done child is not displaced by timestamp. ANSI-aware tests verify every row ID/glyph uses its semantic color and no age gradient symbol remains.
 
-- [ ] **Step 1: Write failing tree and section tests**
+- [x] **Step 1: Write failing tree and section tests**
 
 Create a fixture with:
 
@@ -377,7 +377,7 @@ p.ToggleNode("epic")   // hides every epic descendant
 
 Require `Collapsed` state by full ID, selection fallback to collapsed ancestor, and unrelated attention rows unchanged.
 
-- [ ] **Step 2: Write failing semantic color, pin, and hit-test tests**
+- [x] **Step 2: Write failing semantic color, pin, and hit-test tests**
 
 Add a very old Ready issue and a fresh Ready issue; compare their rendered ID SGR color to `ui.ExecColor(int(data.StateReady))` and require equality. Add `Pinned:true` and require `PIN` in the row while `DeriveState` remains Ready and the group count is unchanged.
 
@@ -391,7 +391,7 @@ func TestParadeIssueAtViewportRowUsesScrollOffset(t *testing.T) {
 
 Require one line per item and no padding row target.
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run:
 
@@ -401,7 +401,7 @@ go test ./internal/views -run 'TestParade(Tree|AttentionSections|Collapse|Semant
 
 Expected: six section headers/global Done fold, no per-node collapse, age-based ID color, no pin badge/hit helper.
 
-- [ ] **Step 4: Implement the tree model in `parade.go`**
+- [x] **Step 4: Implement the tree model in `parade.go`**
 
 Replace global-section state with:
 
@@ -437,7 +437,7 @@ The main-tree set is `{Ready, Working, OperatorReview, Done}`. Append it first w
 
 `orderForest` sorts root and child slices by priority then ID before depth-first walking. Preserve cycle/missing-parent safety. Do not use timestamps or dotted text.
 
-- [ ] **Step 5: Implement collapse, semantic color, compact IDs, and pin badge**
+- [x] **Step 5: Implement collapse, semantic color, compact IDs, and pin badge**
 
 Disclosure marker:
 
@@ -457,7 +457,7 @@ idStyle := lipgloss.NewStyle().Foreground(statusColor(item.State))
 
 Use `data.RelativeDisplayID` whenever the actual parent is the visible ancestor in this forest, including a Done child under an open/review epic. Render `PIN` with an existing badge style or a new `internal/ui` badge only if required by theme conventions; do not change state or ordering.
 
-- [ ] **Step 6: Run targeted tests and deletion search**
+- [x] **Step 6: Run targeted tests and deletion search**
 
 Run:
 
@@ -468,7 +468,7 @@ rg -n 'idStyleForAge|ShowClosed|ToggleClosed|renderLegend|GradientHeat' internal
 
 Expected: tests PASS; search empty. `ui.GradientHeat` may remain for unrelated non-parade visuals.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/views/parade.go internal/views/parade_test.go internal/views/render_test.go internal/data/hierarchy.go internal/data/hierarchy_test.go
