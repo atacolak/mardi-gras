@@ -42,13 +42,12 @@ func TestGroupBySemanticStateSample(t *testing.T) {
 	}
 
 	groups, unmapped := GroupBySemanticState(issues, DefaultBlockingTypes)
-
-	// Counts in StateOrder(): Working, Awaiting Review, Ready, Deferred,
-	// Waiting/Blocked, Done. Four issues are in_progress but only three are
+	// Counts in StateOrder(): Ready, Working, Waiting/Blocked, Deferred,
+	// Operator Review, Done. Four issues are in_progress but only three are
 	// Working — mg-012 is blocked by mg-001, and blocked-wins. mg-017 carries a
 	// defer_until in the past, so it is Ready, not Deferred. The single epic has
-	// no parent-child edges, so the epic rule cannot fire: Awaiting Review is 0.
-	want := []int{3, 0, 12, 0, 3, 3}
+	// no parent-child edges, so the epic rule cannot fire: Operator Review is 0.
+	want := []int{12, 3, 3, 0, 0, 3}
 	for i, state := range StateOrder() {
 		if got := len(groups[state]); got != want[i] {
 			t.Errorf("%s: got %d, want %d (%v)", state.Label(), got, want[i], issueIDs(groups[state]))
