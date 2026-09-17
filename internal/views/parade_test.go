@@ -632,3 +632,22 @@ func TestParadeRowHasNoDisclosureGlyph(t *testing.T) {
 		t.Fatalf("collapsed parent should still hide its child:\n%s", collapsed)
 	}
 }
+func TestParadeRowHasNoNextBlockerHint(t *testing.T) {
+	blocker := data.Issue{ID: "mard-4vh", Title: "Ghost blocker", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeTask}
+	blocked := data.Issue{
+		ID: "mard-t29", Title: "Blocked work", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeTask,
+		Dependencies: []data.Dependency{{IssueID: "mard-t29", DependsOnID: "mard-4vh", Type: "blocks"}},
+	}
+	issues := []data.Issue{blocker, blocked}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+
+	eval := blocked.EvaluateDependencies(data.BuildIssueMap(issues), data.DefaultBlockingTypes)
+	if !eval.IsBlocked || eval.NextBlockerID == "" {
+		t.Fatalf("precondition: expected a blocked issue with a next blocker, got %+v", eval)
+	}
+
+	out := ansi.Strip(p.View())
+	if strings.Contains(out, "next") || strings.Contains(out, "Ghost blocker…") {
+		t.Fatalf("parade row still carries the next-blocker hint:\n%s", out)
+	}
+}

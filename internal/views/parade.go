@@ -557,16 +557,6 @@ func (p *Parade) renderBorderBottom(sec *paradeSection) string {
 func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int) string {
 	issue := item.Issue
 
-	var isBlocked bool
-	var eval data.DepEval
-	if item.Eval != nil {
-		eval = *item.Eval
-		isBlocked = eval.IsBlocked
-	} else {
-		eval = issue.EvaluateDependencies(p.issueMap, p.blockingTypes)
-		isBlocked = eval.IsBlocked
-	}
-
 	// The row's glyph and ID color come from the derived semantic state.
 	symStr := ui.ExecIndicator(int(item.State))
 	var prioStr string
@@ -712,45 +702,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		commentWidth = lipgloss.Width(commentBadge)
 	}
 
-	// Build the "next blocker" hint for stalled issues
-	var rawHint string
-	hintStyle := lipgloss.NewStyle().Foreground(ui.Muted)
-	if isBlocked && eval.NextBlockerID != "" {
-		if target, ok := p.issueMap[eval.NextBlockerID]; ok {
-			rawHint = fmt.Sprintf(" %s %s %s", ui.SymNextArrow, eval.NextBlockerID, target.Title)
-		} else {
-			rawHint = fmt.Sprintf(" %s missing %s", ui.SymNextArrow, eval.NextBlockerID)
-		}
-	}
-
-	// Reserve a floor for the title before spending width on the blocker
-	// hint: the issue's own title is the primary scent, the hint is context
-	// (audit #2). The hint degrades to id-only before character truncation.
-	titleFloor := min(lipgloss.Width(issue.Title), max(innerWidth/3, 12))
-	maxHint := innerWidth - 16 - titleFloor - agentWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
-	if maxHint < 0 {
-		maxHint = 0
-	}
-
-	if lipgloss.Width(rawHint) > maxHint && isBlocked && eval.NextBlockerID != "" {
-		idOnly := fmt.Sprintf(" %s %s", ui.SymNextArrow, eval.NextBlockerID)
-		if lipgloss.Width(idOnly) <= maxHint {
-			rawHint = idOnly
-		}
-	}
-	// Below ~10 cells a truncated hint is just fragments — drop it instead.
-	if maxHint < 10 {
-		rawHint = ""
-	} else if lipgloss.Width(rawHint) > maxHint {
-		rawHint = truncate(rawHint, maxHint)
-	}
-	hint := ""
-	if rawHint != "" {
-		hint = hintStyle.Render(rawHint)
-	}
-	hintLen := lipgloss.Width(hint)
-
-	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
+	maxTitle := innerWidth - 16 - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - commentWidth - orphanWidth - zombieWidth - pinWidth
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
@@ -784,7 +736,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		renderedTitle,
 		prioStr,
 	)
-	line += pinBadge + dueBadge + deferBadge + commentBadge + hint
+	line += pinBadge + dueBadge + deferBadge + commentBadge
 
 	if selected {
 		cursor := ui.ItemCursor.Render(ui.Cursor + " ")

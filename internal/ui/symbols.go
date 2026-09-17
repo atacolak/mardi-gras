@@ -28,7 +28,6 @@ const (
 	SymMissing     = "!"
 	SymResolved    = "✓" // alias of SymPassed
 	SymNonBlocking = "·"
-	SymNextArrow   = "next →"
 	SymAgent       = "⚡"
 	SymConvoy      = "◐"
 	SymMail        = "✉"
