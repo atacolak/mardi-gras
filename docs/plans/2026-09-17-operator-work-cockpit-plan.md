@@ -260,7 +260,7 @@ git commit -m "feat: store and render operator review as a real state"
 
 **Verification (anti-gameable):** a fixture with equal-priority IDs and deliberately reversed timestamps sorts by ID after both JSONL and `br` envelope parsing; changing only `UpdatedAt` cannot change output. A JSON row with `pinned:true` round-trips into `Issue.Pinned` without changing `Status`.
 
-- [ ] **Step 1: Write failing sort and pin tests**
+- [x] **Step 1: Write failing sort and pin tests**
 
 Replace the weak sort contract with:
 
@@ -291,7 +291,7 @@ func TestContractPinnedIsOrthogonal(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -301,7 +301,7 @@ go test ./internal/data -run 'Test(SortIssuesUsesPriorityThenIDNeverRecency|Pars
 
 Expected: recency/active partition produces the wrong order; `Issue.Pinned` is undefined.
 
-- [ ] **Step 3: Implement minimal data changes**
+- [x] **Step 3: Implement minimal data changes**
 
 Add:
 
@@ -311,7 +311,7 @@ Pinned bool `json:"pinned,omitempty"`
 
 Change `SortIssues` to priority ascending then ID ascending. Use `sort.SliceStable`; do not read status, `UpdatedAt`, `CreatedAt`, or semantic state. Do not sort pin badges ahead of unpinned rows.
 
-- [ ] **Step 4: Run targeted tests and recency search**
+- [x] **Step 4: Run targeted tests and recency search**
 
 Run:
 
@@ -322,7 +322,7 @@ rg -n 'UpdatedAt\.After|then by recency|active first' internal/data/loader.go in
 
 Expected: tests PASS; search is empty in the sort contract (unrelated timestamp tests may remain outside the selected files).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/data/loader.go internal/data/issue.go internal/data/contract_test.go internal/data/source_test.go
