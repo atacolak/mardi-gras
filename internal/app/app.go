@@ -2111,11 +2111,17 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Ask 2: the cells left of the status glyph toggle collapse and do
 			// nothing else — no selection, no cursor move, selected or not.
 			if parentID, hit := m.parade.GutterHit(bodyRow, x); hit {
-				cursor := m.parade.Cursor
-				selected := m.parade.SelectedIssue
+				selectedID := ""
+				if m.parade.SelectedIssue != nil {
+					selectedID = m.parade.SelectedIssue.ID
+				}
 				m.parade.ToggleNode(parentID)
-				m.parade.Cursor = cursor
-				m.parade.SelectedIssue = selected
+				if selectedID != "" {
+					if iss := m.parade.IssueByID(selectedID); iss != nil {
+						m.parade.SelectedIssue = iss
+					}
+				}
+				m.parade.PinCursorToSelected()
 				return m, nil
 			}
 			issue := m.parade.IssueAtViewportRow(bodyRow)
@@ -2343,7 +2349,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		toast, cmd := components.ShowToast("Focus mode OFF", components.ToastInfo, toastDuration)
 		m.toast = toast
 		return m, cmd
-
 
 	case "S":
 		m.paradeSortMode = m.paradeSortMode.Next()
@@ -3734,11 +3739,16 @@ func (m *Model) rebuildParade() {
 	m.parade.RebuildItems()
 	found := m.restoreParadeSelection(oldSelectedID)
 	if !found && oldSelectedID != "" {
-		// The previously-selected issue is gone. Fall back to the nearest
-		// selectable item relative to the old cursor position.
-		m.selectionLost = true
-		m.lostIssueID = oldSelectedID
-		m.selectNearestSelectable(oldCursor)
+		if iss := detailIssueMap[oldSelectedID]; iss != nil {
+			// Still in the ledger — just hidden by collapse/filter. Keep it
+			// selected so a later expand and the detail pane stay put.
+			m.parade.SelectedIssue = iss
+			m.parade.PinCursorToSelected()
+		} else {
+			m.selectionLost = true
+			m.lostIssueID = oldSelectedID
+			m.selectNearestSelectable(oldCursor)
+		}
 	}
 	if m.pendingSelectID != "" {
 		m.restoreParadeSelection(m.pendingSelectID)

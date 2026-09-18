@@ -495,6 +495,74 @@ func (p *Parade) restoreSelection(selectedID string) {
 	p.SelectedIssue = nil
 }
 
+// PinCursorToSelected puts the caret on the selected issue when that row is
+// still visible. If collapse hid it, the caret sits on the nearest visible
+// ancestor — never on a neighbor that merely inherited the old index.
+func (p *Parade) PinCursorToSelected() {
+	if p.SelectedIssue == nil {
+		return
+	}
+	id := p.SelectedIssue.ID
+	for id != "" {
+		for i, item := range p.Items {
+			if item.isSelectable() && item.Issue.ID == id {
+				p.Cursor = i
+				p.ensureVisible()
+				return
+			}
+		}
+		current := p.issueMap[id]
+		if current == nil {
+			break
+		}
+		id = p.loadedParentID(current)
+	}
+	if len(p.Items) == 0 {
+		p.Cursor = 0
+		return
+	}
+	if p.Cursor >= len(p.Items) {
+		p.Cursor = len(p.Items) - 1
+	}
+	if p.Cursor < 0 {
+		p.Cursor = 0
+	}
+}
+
+// IssueByID returns the loaded issue, visible or not. Gutter collapse uses it
+// to keep a hidden child selected instead of stealing a neighbor.
+func (p *Parade) IssueByID(id string) *data.Issue {
+	if id == "" || p.issueMap == nil {
+		return nil
+	}
+	return p.issueMap[id]
+}
+
+func (p *Parade) issueVisible(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// rowIsSelected draws the caret on the selected issue when it is visible.
+// A hidden selection keeps the caret on the pinned ancestor (Cursor), never
+// on a different bead that now occupies the old index.
+func (p *Parade) rowIsSelected(item ParadeItem, index int) bool {
+	if item.Issue != nil && p.SelectedIssue != nil && item.Issue.ID == p.SelectedIssue.ID {
+		return true
+	}
+	if p.SelectedIssue != nil && p.issueVisible(p.SelectedIssue.ID) {
+		return false
+	}
+	return index == p.Cursor
+}
+
 const (
 	// cursorPrefixWidth is the two-cell prefix renderIssue writes before the
 	// indent: "> " when the row is selected, two blanks otherwise. ui.Cursor
@@ -672,7 +740,7 @@ func (p *Parade) View() string {
 			lines = append(lines, p.renderBorderBottom(item.Section))
 		default:
 			highlight := item.Issue != nil && family[item.Issue.ID]
-			lines = append(lines, p.renderIssue(item, globalIdx == p.Cursor, highlight))
+			lines = append(lines, p.renderIssue(item, p.rowIsSelected(item, globalIdx), highlight))
 		}
 	}
 	free := p.Height - len(lines)
@@ -727,14 +795,17 @@ func (p *Parade) renderBorderBottom(sec *paradeSection) string {
 // visible descendant. That is the selected epic and its beads, not the old
 // same-depth sibling window and not a positional ±6 fade.
 func (p *Parade) familyGlyphIDs() map[string]bool {
-	if p.Cursor < 0 || p.Cursor >= len(p.Items) {
+	iss := p.SelectedIssue
+	if iss == nil {
+		if p.Cursor < 0 || p.Cursor >= len(p.Items) {
+			return nil
+		}
+		iss = p.Items[p.Cursor].Issue
+	}
+	if iss == nil {
 		return nil
 	}
-	cursor := p.Items[p.Cursor]
-	if cursor.Issue == nil {
-		return nil
-	}
-	rootID := p.familyRootID(cursor.Issue)
+	rootID := p.familyRootID(iss)
 	wanted := map[string]bool{rootID: true}
 	for _, desc := range data.Descendants(rootID, p.issueMap) {
 		wanted[desc.ID] = true

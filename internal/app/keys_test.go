@@ -1355,13 +1355,23 @@ func titleClick(row int) tea.MouseClickMsg {
 	return tea.MouseClickMsg{X: 20, Y: headerHeight + row, Button: tea.MouseLeft}
 }
 
+func cursorIssueID(m Model) string {
+	if m.parade.Cursor < 0 || m.parade.Cursor >= len(m.parade.Items) {
+		return ""
+	}
+	item := m.parade.Items[m.parade.Cursor]
+	if item.Issue == nil {
+		return ""
+	}
+	return item.Issue.ID
+}
+
 func TestMouseGutterClickTogglesWithoutSelecting(t *testing.T) {
 	m := setupParentChildMouseModel(t)
 	if !m.restoreParadeSelection("other") {
 		t.Fatal("precondition: other root not found")
 	}
 	m.syncSelection()
-	beforeCursor := m.parade.Cursor
 	gutter := tea.MouseClickMsg{X: 0, Y: headerHeight + paradeViewportRowOf(t, m, "epic"), Button: tea.MouseLeft}
 
 	model, _ := m.Update(gutter)
@@ -1372,8 +1382,8 @@ func TestMouseGutterClickTogglesWithoutSelecting(t *testing.T) {
 	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
 		t.Fatalf("gutter click moved selection to %v, want other untouched", m.parade.SelectedIssue)
 	}
-	if m.parade.Cursor != beforeCursor {
-		t.Fatalf("gutter click moved the cursor to %d, want %d", m.parade.Cursor, beforeCursor)
+	if cursorIssueID(m) != "other" {
+		t.Fatalf("gutter click moved the caret to %s, want other (same bead, not the old index)", cursorIssueID(m))
 	}
 
 	model, _ = m.Update(gutter)
@@ -1383,6 +1393,82 @@ func TestMouseGutterClickTogglesWithoutSelecting(t *testing.T) {
 	}
 	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
 		t.Fatalf("second gutter click moved selection to %v, want other", m.parade.SelectedIssue)
+	}
+}
+
+func TestMouseGutterCollapseKeepsHiddenChildSelected(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("epic.1") {
+		t.Fatal("precondition: child not found")
+	}
+	m.syncSelection()
+	gutter := tea.MouseClickMsg{X: 0, Y: headerHeight + paradeViewportRowOf(t, m, "epic"), Button: tea.MouseLeft}
+
+	model, _ := m.Update(gutter)
+	m = model.(Model)
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("gutter click must collapse the parent")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic.1" {
+		t.Fatalf("selection after collapse = %v, want hidden child epic.1", m.parade.SelectedIssue)
+	}
+	if m.detail.Issue == nil || m.detail.Issue.ID != "epic.1" {
+		t.Fatalf("detail after collapse = %v, want epic.1", m.detail.Issue)
+	}
+	if cursorIssueID(m) != "epic" {
+		t.Fatalf("caret after collapse = %s, want ancestor epic, not a neighbor", cursorIssueID(m))
+	}
+
+	m.rebuildParade()
+	if m.selectionLost {
+		t.Fatal("hidden selected child must not count as a lost selection on refresh")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic.1" {
+		t.Fatalf("refresh stole selection to %v, want epic.1", m.parade.SelectedIssue)
+	}
+	if m.detail.Issue == nil || m.detail.Issue.ID != "epic.1" {
+		t.Fatalf("refresh changed detail to %v, want epic.1", m.detail.Issue)
+	}
+
+	model, _ = m.Update(gutter)
+	m = model.(Model)
+	if m.parade.Collapsed["epic"] {
+		t.Fatal("second gutter click must expand the parent")
+	}
+	if cursorIssueID(m) != "epic.1" {
+		t.Fatalf("caret after expand = %s, want epic.1", cursorIssueID(m))
+	}
+}
+
+func TestMouseGutterExpandDoesNotStealSelection(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic.1", Title: "Child one", Status: data.StatusOpen, Priority: 0,
+			Dependencies: []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}},
+		{ID: "epic.2", Title: "Child two", Status: data.StatusOpen, Priority: 0,
+			Dependencies: []data.Dependency{{IssueID: "epic.2", DependsOnID: "epic", Type: "parent-child"}}},
+		{ID: "other", Title: "Other root", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask},
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	m = model.(Model)
+	m.parade.ToggleNode("epic")
+	if !m.restoreParadeSelection("other") {
+		t.Fatal("precondition: other root not found")
+	}
+	m.syncSelection()
+	gutter := tea.MouseClickMsg{X: 0, Y: headerHeight + paradeViewportRowOf(t, m, "epic"), Button: tea.MouseLeft}
+	model, _ = m.Update(gutter)
+	m = model.(Model)
+	if m.parade.Collapsed["epic"] {
+		t.Fatal("gutter click must expand the parent")
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("expand stole selection to %v, want other", m.parade.SelectedIssue)
+	}
+	if cursorIssueID(m) != "other" {
+		t.Fatalf("caret after expand = %s, want other, not the bead now sitting on the old row", cursorIssueID(m))
 	}
 }
 

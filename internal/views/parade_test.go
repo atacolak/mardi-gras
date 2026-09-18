@@ -917,6 +917,66 @@ func TestParadeNestedPriorityBadgeInsets(t *testing.T) {
 	}
 }
 
+func TestParadePinCursorToSelectedKeepsHiddenChild(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic.1", Title: "Child", Status: data.StatusOpen, Priority: 0,
+			Dependencies: paradeParentEdge("epic.1", "epic")},
+		{ID: "other", Title: "Other", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	for i, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "epic.1" {
+			p.Cursor, p.SelectedIssue = i, item.Issue
+		}
+	}
+	stale := p.Cursor
+	p.ToggleNode("epic")
+	p.SelectedIssue = p.IssueByID("epic.1")
+	p.Cursor = stale
+	p.PinCursorToSelected()
+	if p.SelectedIssue == nil || p.SelectedIssue.ID != "epic.1" {
+		t.Fatalf("selected = %v, want hidden child epic.1", p.SelectedIssue)
+	}
+	if p.Items[p.Cursor].Issue == nil || p.Items[p.Cursor].Issue.ID != "epic" {
+		t.Fatalf("caret after collapse = %v, want ancestor epic, not the neighbor at the old index", p.Items[p.Cursor].Issue)
+	}
+	p.ToggleNode("epic")
+	p.SelectedIssue = p.IssueByID("epic.1")
+	p.PinCursorToSelected()
+	if p.Items[p.Cursor].Issue == nil || p.Items[p.Cursor].Issue.ID != "epic.1" {
+		t.Fatalf("caret after expand = %v, want epic.1 again", p.Items[p.Cursor].Issue)
+	}
+}
+
+func TestParadeRowIsSelectedIgnoresStaleCursor(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "a", Title: "A", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "b", Title: "B", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask},
+	}
+	p := NewParade(issues, 100, 10, data.DefaultBlockingTypes)
+	var a, b ParadeItem
+	for _, item := range p.Items {
+		if item.Issue == nil {
+			continue
+		}
+		if item.Issue.ID == "a" {
+			a = item
+			p.SelectedIssue = item.Issue
+		}
+		if item.Issue.ID == "b" {
+			b = item
+			p.Cursor = 1
+		}
+	}
+	if !p.rowIsSelected(a, 0) {
+		t.Fatal("visible selected issue must keep the caret")
+	}
+	if p.rowIsSelected(b, p.Cursor) {
+		t.Fatal("stale cursor index must not mark a different bead selected")
+	}
+}
+
 func TestParadeGutterHit(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
