@@ -2141,9 +2141,16 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
 		if mouse.Button == tea.MouseLeft && !right {
-			// Left-area clicks select, same as the title. Collapse is `>` or
-			// a double-click on a parent — never a single click in the gutter
-			// or on the Closed ╭─ corner.
+			if m.parade.ClosedHeaderHit(bodyRow, x) {
+				m.parade.ToggleClosedSection()
+				return m, nil
+			}
+			// Cells left of the status glyph toggle collapse and do
+			// nothing else — no selection, no cursor move.
+			if parentID, hit := m.parade.GutterHit(bodyRow, x); hit {
+				m.parade.ToggleNode(parentID)
+				return m, nil
+			}
 			issue := m.parade.IssueAtViewportRow(bodyRow)
 			if issue == nil {
 				return m, nil

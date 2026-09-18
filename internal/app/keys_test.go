@@ -1409,7 +1409,7 @@ func cursorIssueID(m Model) string {
 	return item.Issue.ID
 }
 
-func TestMouseClosedHeaderCornerDoesNotCollapse(t *testing.T) {
+func TestMouseClosedHeaderCornerTogglesClosed(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "open", Title: "Open epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
 		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
@@ -1437,24 +1437,20 @@ func TestMouseClosedHeaderCornerDoesNotCollapse(t *testing.T) {
 	click := tea.MouseClickMsg{X: 0, Y: headerHeight + headerRow, Button: tea.MouseLeft}
 	model, _ = m.Update(click)
 	m = model.(Model)
-	if m.parade.ClosedCollapsed {
-		t.Fatal("clicking ╭─ must not collapse the Closed list")
+	if !m.parade.ClosedCollapsed {
+		t.Fatal("clicking ╭─ must collapse the Closed list")
 	}
-	found := false
 	for _, item := range m.parade.Items {
 		if item.Issue != nil && item.Issue.ID == "shut" {
-			found = true
+			t.Fatal("Collapsed Closed list must hide shut")
 		}
-	}
-	if !found {
-		t.Fatal("Closed list must still show shut after a ╭─ click")
 	}
 	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
 		t.Fatalf("╭─ click stole selection: %v", m.parade.SelectedIssue)
 	}
 }
 
-func TestMouseGutterClickSelectsWithoutCollapsing(t *testing.T) {
+func TestMouseGutterClickCollapsesWithoutSelecting(t *testing.T) {
 	m := setupParentChildMouseModel(t)
 	if !m.restoreParadeSelection("other") {
 		t.Fatal("precondition: other root not found")
@@ -1464,11 +1460,16 @@ func TestMouseGutterClickSelectsWithoutCollapsing(t *testing.T) {
 
 	model, _ := m.Update(gutter)
 	m = model.(Model)
-	if m.parade.Collapsed["epic"] {
-		t.Fatal("a gutter click must not collapse the parent")
+	if !m.parade.Collapsed["epic"] {
+		t.Fatal("a gutter click must collapse the parent")
 	}
-	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "epic" {
-		t.Fatalf("gutter click selection = %v, want epic", m.parade.SelectedIssue)
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("gutter click selection = %v, want other (no steal)", m.parade.SelectedIssue)
+	}
+	for _, item := range m.parade.Items {
+		if item.Issue != nil && item.Issue.ID == "epic.1" {
+			t.Fatal("collapsed epic must hide epic.1")
+		}
 	}
 }
 
