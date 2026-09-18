@@ -670,6 +670,39 @@ func TestParadeClosedHeaderKeepsTopRightCorner(t *testing.T) {
 	}
 }
 
+func TestParadeCollapsedClosedHeaderIsStraight(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
+	}
+	for _, width := range []int{40, 60, 80, 100, 140} {
+		p := NewParade(issues, width, 12, data.DefaultBlockingTypes)
+		p.ToggleClosedSection()
+		found := false
+		for _, line := range strings.Split(p.View(), "\n") {
+			plain := ansi.Strip(line)
+			if !strings.Contains(plain, "Closed") {
+				continue
+			}
+			found = true
+			if got := lipgloss.Width(line); got != width {
+				t.Fatalf("width %d collapsed Closed header width = %d, want %d: %q", width, got, width, plain)
+			}
+			if strings.Contains(plain, ui.BoxTopLeft) || strings.Contains(plain, ui.BoxTopRight) {
+				t.Fatalf("width %d collapsed Closed header = %q, want no ╭/╮", width, plain)
+			}
+			if !strings.HasPrefix(strings.TrimLeft(plain, " "), ui.BoxHorizontal) {
+				t.Fatalf("width %d collapsed Closed header = %q, want it to start with %s", width, plain, ui.BoxHorizontal)
+			}
+			if !strings.HasSuffix(plain, ui.BoxHorizontal) {
+				t.Fatalf("width %d collapsed Closed header = %q, want it to end with %s", width, plain, ui.BoxHorizontal)
+			}
+		}
+		if !found {
+			t.Fatalf("width %d: collapsed Closed header not rendered", width)
+		}
+	}
+}
+
 func TestParadeToggleClosedSectionHidesEpics(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "open", Title: "Open epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},

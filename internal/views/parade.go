@@ -123,7 +123,7 @@ type Parade struct {
 	MatchHighlights map[string][]int // issueID -> matched char indices in title (fuzzy search)
 	Collapsed       map[string]bool
 	// ClosedCollapsed hides every Closed-section epic (and its children).
-	// Toggle by clicking the header's ╭─ corner — not the c key.
+	// Toggle by clicking the header's left bar — not the c key.
 	ClosedCollapsed bool
 }
 
@@ -667,9 +667,9 @@ func (p *Parade) GutterHit(row, x int) (string, bool) {
 	return item.Issue.ID, true
 }
 
-// ClosedHeaderHit is the ╭─ corner of the Closed section header. Clicking it
-// collapses or expands the list; it does not select anything. The title text
-// is not a hit — only the left box edge.
+// ClosedHeaderHit is the left three cells of the Closed section header
+// (╭─ or ── when collapsed). Clicking it collapses or expands the list;
+// it does not select anything. The title text is not a hit.
 func (p *Parade) ClosedHeaderHit(row, x int) bool {
 	if row < 0 || row >= p.Height || x < 0 || x >= 3 {
 		return false
@@ -817,8 +817,13 @@ func (p *Parade) renderBorderTop(sec *paradeSection) string {
 	titleText := fmt.Sprintf("%s %s%s", sec.Symbol, sec.Title, ui.Superscript(count))
 	coloredTitle := sec.Style.Render(titleText)
 	titleWidth := lipgloss.Width(coloredTitle)
-	prefix := borderStyle.Render(ui.BoxTopLeft + ui.BoxHorizontal + " ")
-	suffix := borderStyle.Render(ui.BoxTopRight)
+	left, right := ui.BoxTopLeft, ui.BoxTopRight
+	if p.ClosedCollapsed {
+		// A collapsed Closed list is a bar, not a box: ╭/╮ become ─.
+		left, right = ui.BoxHorizontal, ui.BoxHorizontal
+	}
+	prefix := borderStyle.Render(left + ui.BoxHorizontal + " ")
+	suffix := borderStyle.Render(right)
 	prefixW := lipgloss.Width(prefix)
 	suffixW := lipgloss.Width(suffix)
 	availableForTitle := p.Width - prefixW - suffixW
