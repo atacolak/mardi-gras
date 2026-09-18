@@ -89,6 +89,38 @@ func TestHeaderRigCountSingleRig(t *testing.T) {
 	}
 }
 
+func TestBeadStringIdleIsStaticGradient(t *testing.T) {
+	h := Header{Width: 40}
+	got := h.renderBeadString()
+	beads := []string{ui.BeadRound, ui.BeadDiamond}
+	var parts []string
+	visibleWidth := 0
+	ci := 0
+	for visibleWidth < 38 {
+		parts = append(parts, beads[ci%2])
+		visibleWidth++
+		if visibleWidth < 38 {
+			parts = append(parts, ui.BeadDash)
+			visibleWidth++
+		}
+		ci++
+	}
+	raw := strings.Join(parts, "")
+	want := ui.ApplyMardiGrasGradient(raw) + strings.Repeat(" ", 40-visibleWidth)
+	if got != want {
+		t.Fatal("idle necklace must be the static Mardi Gras gradient")
+	}
+	h.BeadOffset = 8
+	moved := h.renderBeadString()
+	if moved == got {
+		t.Fatal("ring frame must shift necklace colours")
+	}
+	h.BeadOffset = ui.BeadRingFrames
+	if h.renderBeadString() != got {
+		t.Fatal("full-cycle frame must land on the rest necklace")
+	}
+}
+
 func TestRenderProgressBarZeroTotal(t *testing.T) {
 	h := Header{}
 	if got := h.renderProgressBar(0, 0, 20); got != "" {

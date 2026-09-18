@@ -36,6 +36,19 @@ func TestGradientBar(t *testing.T) {
 	}
 }
 
+func TestApplyBeadRingPhaseZeroMatchesStatic(t *testing.T) {
+	text := "●─◆─●─◆─●─◆─●─◆─●─◆"
+	if got, want := ApplyBeadRing(text, 0), ApplyMardiGrasGradient(text); got != want {
+		t.Fatal("phase 0 must be the rest necklace")
+	}
+	if got, want := ApplyBeadRing(text, 1), ApplyMardiGrasGradient(text); got != want {
+		t.Fatal("phase 1 must land on the rest necklace")
+	}
+	if ApplyBeadRing(text, 0.5) == ApplyMardiGrasGradient(text) {
+		t.Fatal("mid-ring colours must have moved")
+	}
+}
+
 func TestGradientBarEdgeCases(t *testing.T) {
 	if got := GradientBar(0, 10, GradientProgress); got == "" {
 		t.Error("0% bar should still render empty blocks")

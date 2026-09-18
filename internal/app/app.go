@@ -263,7 +263,7 @@ type Model struct {
 	lastMouseY   int
 	previews     []previewLayer
 
-	// Bead string shimmer animation
+	// Bead necklace ring: 0 = rest, 1..BeadRingFrames-1 = one colour spin.
 	beadOffset int
 
 	// Metadata schema from .beads/config.yaml
@@ -289,7 +289,7 @@ type Model struct {
 	pendingKeys  []pendingDeferredKey
 	pendingKeyID uint64
 
-	// When true, confetti and header shimmer animations are disabled.
+	// When true, confetti and the header necklace ring are disabled.
 	noAnimations bool
 
 	// Transient flag set by rebuildParade when the previously-selected issue ID
@@ -394,7 +394,7 @@ func (m Model) Init() tea.Cmd {
 		agentPoll,
 	}
 	if !m.noAnimations {
-		cmds = append(cmds, headerShimmerCmd(), m.spinner.Tick)
+		cmds = append(cmds, m.spinner.Tick)
 	}
 	if m.sourceMode == data.SourceCLI {
 		cmds = append(cmds, fetchCurrentIssue, fetchDoctorDiagnostics, fetchBeadsContext)
@@ -789,8 +789,8 @@ type doctorResultMsg struct {
 // gasTownTickMsg drives liveness animations (breathing dots, duration timers).
 type gasTownTickMsg struct{}
 
-// headerShimmerMsg drives the bead string shimmer animation.
-type headerShimmerMsg struct{}
+// beadRingTickMsg advances one frame of the necklace colour ring.
+type beadRingTickMsg struct{}
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1284,6 +1284,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, tea.Tick(changeIndicatorDuration, func(time.Time) tea.Msg {
 				return changeIndicatorExpiredMsg{}
 			}))
+			if cmd := m.startBeadRing(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 
 		// Update snapshot for next diff
@@ -1973,9 +1976,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gasTownTicking = false
 		return m, nil
 
-	case headerShimmerMsg:
+	case beadRingTickMsg:
+		if m.beadOffset == 0 {
+			return m, nil
+		}
 		m.beadOffset++
-		return m, headerShimmerCmd()
+		if m.beadOffset >= ui.BeadRingFrames {
+			m.beadOffset = 0
+			m.refreshHeader(m.header.Groups)
+			return m, nil
+		}
+		m.refreshHeader(m.header.Groups)
+		return m, beadRingTickCmd()
 
 	case components.ToastDismissMsg:
 		m.toast = components.Toast{}
@@ -4040,12 +4052,24 @@ func (m *Model) gatedPollAgentState() tea.Cmd {
 }
 
 const gasTownTickInterval = 1 * time.Second
-const headerShimmerInterval = 500 * time.Millisecond
+const beadRingTickInterval = 40 * time.Millisecond
 
-// headerShimmerCmd returns a Cmd that fires a headerShimmerMsg for bead animation.
-func headerShimmerCmd() tea.Cmd {
-	return tea.Tick(headerShimmerInterval, func(time.Time) tea.Msg {
-		return headerShimmerMsg{}
+func (m *Model) startBeadRing() tea.Cmd {
+	if m.noAnimations {
+		return nil
+	}
+	wasIdle := m.beadOffset == 0
+	m.beadOffset = 1
+	m.refreshHeader(m.header.Groups)
+	if wasIdle {
+		return beadRingTickCmd()
+	}
+	return nil
+}
+
+func beadRingTickCmd() tea.Cmd {
+	return tea.Tick(beadRingTickInterval, func(time.Time) tea.Msg {
+		return beadRingTickMsg{}
 	})
 }
 

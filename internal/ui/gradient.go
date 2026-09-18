@@ -49,23 +49,54 @@ func ApplyMardiGrasGradient(text string) string {
 		return ""
 	}
 
+	var b strings.Builder
+	for i, r := range runes {
+		b.WriteString(getCachedChar(r, mardiGrasAt(i, width).Hex()))
+	}
+	return b.String()
+}
+
+func mardiGrasAt(i, width int) colorful.Color {
 	c1 := toColorful(Purple)
 	c2 := toColorful(Gold)
 	c3 := toColorful(Green)
+	t := 0.0
+	if width > 1 {
+		t = float64(i) / float64(width-1)
+	}
+	if t < 0.5 {
+		return c1.BlendLuv(c2, t*2)
+	}
+	return c2.BlendLuv(c3, (t-0.5)*2)
+}
 
+// BeadRingFrames is the number of colour-shift steps in one necklace rotation.
+// 15 ticks × 40ms = 600ms, inside the 0.3–1.0s window. Phase 0 and 1 are the
+// rest assortment: ApplyMardiGrasGradient.
+const BeadRingFrames = 16
+
+// ApplyBeadRing is the static Mardi Gras necklace with its colours rotated
+// as a ring. Increasing phase gives each cell the colour that sat to its
+// right, so the ink flows left and the necklace feels like it is travelling
+// right. Phase 0 and 1 are identical to ApplyMardiGrasGradient.
+func ApplyBeadRing(text string, phase float64) string {
+	runes := []rune(text)
+	width := len(runes)
+	if width == 0 {
+		return ""
+	}
+	phase -= math.Floor(phase)
 	var b strings.Builder
 	for i, r := range runes {
-		t := 0.0
-		if width > 1 {
-			t = float64(i) / float64(width-1)
+		src := float64(i) + phase*float64(width)
+		src = math.Mod(src, float64(width))
+		if src < 0 {
+			src += float64(width)
 		}
-		var c colorful.Color
-		if t < 0.5 {
-			c = c1.BlendLuv(c2, t*2)
-		} else {
-			c = c2.BlendLuv(c3, (t-0.5)*2)
-		}
-
+		j0 := int(math.Floor(src)) % width
+		j1 := (j0 + 1) % width
+		frac := src - math.Floor(src)
+		c := mardiGrasAt(j0, width).BlendLuv(mardiGrasAt(j1, width), frac)
 		b.WriteString(getCachedChar(r, c.Hex()))
 	}
 	return b.String()

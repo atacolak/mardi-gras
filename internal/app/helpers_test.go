@@ -2,9 +2,12 @@ package app
 
 import (
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
+	"github.com/matt-wright86/mardi-gras/internal/ui"
 )
 
 // ---------------------------------------------------------------------------
@@ -361,5 +364,65 @@ func TestGasTownLoading(t *testing.T) {
 		if got := c.m.gasTownLoading(); got != c.want {
 			t.Errorf("%s: gasTownLoading() = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestBeadRingStartsOnlyOnIssueChange(t *testing.T) {
+	open := testIssue("a", data.StatusOpen)
+	m := New([]data.Issue{open}, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = model.(Model)
+	if m.beadOffset != 0 {
+		t.Fatalf("startup beadOffset = %d, want rest", m.beadOffset)
+	}
+
+	model, _ = m.Update(data.FileChangedMsg{Issues: []data.Issue{open}})
+	m = model.(Model)
+	if m.beadOffset != 0 {
+		t.Fatalf("unchanged poll beadOffset = %d, want rest", m.beadOffset)
+	}
+
+	working := testIssue("a", data.StatusInProgress)
+	model, _ = m.Update(data.FileChangedMsg{Issues: []data.Issue{working}})
+	m = model.(Model)
+	if m.beadOffset != 1 {
+		t.Fatalf("status change beadOffset = %d, want 1", m.beadOffset)
+	}
+	if m.header.BeadOffset != 1 {
+		t.Fatalf("header BeadOffset = %d, want 1", m.header.BeadOffset)
+	}
+}
+
+func TestBeadRingCompletesAFullCycle(t *testing.T) {
+	m := New([]data.Issue{testIssue("a", data.StatusOpen)}, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = model.(Model)
+	m.beadOffset = 1
+	m.refreshHeader(m.header.Groups)
+	for i := 0; i < ui.BeadRingFrames; i++ {
+		model, _ = m.Update(beadRingTickMsg{})
+		m = model.(Model)
+	}
+	if m.beadOffset != 0 {
+		t.Fatalf("after %d ticks beadOffset = %d, want rest", ui.BeadRingFrames, m.beadOffset)
+	}
+	if m.header.BeadOffset != 0 {
+		t.Fatalf("header after cycle = %d, want rest", m.header.BeadOffset)
+	}
+}
+
+func TestBeadRingDisabledWithNoAnimations(t *testing.T) {
+	open := testIssue("a", data.StatusOpen)
+	m := NewWithGuard([]data.Issue{open}, data.Source{}, data.DefaultBlockingTypes, nil, true)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = model.(Model)
+	working := testIssue("a", data.StatusInProgress)
+	model, _ = m.Update(data.FileChangedMsg{Issues: []data.Issue{working}})
+	m = model.(Model)
+	if m.beadOffset != 0 {
+		t.Fatalf("no-animations beadOffset = %d, want rest", m.beadOffset)
 	}
 }
