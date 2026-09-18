@@ -1683,6 +1683,60 @@ func TestCtrlClickOpensPreview(t *testing.T) {
 	}
 }
 
+func TestPreviewClickOnOuterClosesNested(t *testing.T) {
+	m := setupMentionModel(t)
+	m.pushPreview(&m.issues[1])
+	m.pushPreview(&m.issues[2])
+	if len(m.previews) != 2 {
+		t.Fatal("precondition: nested preview not open")
+	}
+	x0, y0, _, _ := m.previewGeom(0)
+	x1, y1, _, _ := m.previewGeom(1)
+	if x0+1 >= x1 || y0+2 >= y1 {
+		t.Fatalf("precondition: no visible outer frame (outer=%d,%d nested=%d,%d)", x0, y0, x1, y1)
+	}
+	x := m.parade.Width + x0 + 1
+	y := headerHeight + y0 + 2
+	model, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	m = model.(Model)
+	if len(m.previews) != 1 {
+		t.Fatalf("outer-body click left %d previews, want 1 (the first)", len(m.previews))
+	}
+	if m.previews[0].issue == nil || m.previews[0].issue.ID != "other-bb" {
+		t.Fatalf("remaining preview = %#v, want other-bb", m.previews[0].issue)
+	}
+	if m.detail.Issue == nil || m.detail.Issue.ID != "src-aa" {
+		t.Fatalf("parent detail = %v, want src-aa", m.detail.Issue)
+	}
+}
+
+func TestPreviewClickOnTopDoesNotClose(t *testing.T) {
+	m := setupMentionModel(t)
+	m.pushPreview(&m.issues[1])
+	m.pushPreview(&m.issues[2])
+	x1, y1, _, _ := m.previewGeom(1)
+	x := m.parade.Width + x1 + 2
+	y := headerHeight + y1 + 2
+	model, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	m = model.(Model)
+	if len(m.previews) != 2 {
+		t.Fatalf("top-preview body click left %d previews, want both still open", len(m.previews))
+	}
+}
+
+func TestPreviewGapClickClosesNestedStack(t *testing.T) {
+	m := setupMentionModel(t)
+	m.pushPreview(&m.issues[1])
+	m.pushPreview(&m.issues[2])
+	x := m.parade.Width + 1
+	y := headerHeight
+	model, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	m = model.(Model)
+	if len(m.previews) != 0 {
+		t.Fatalf("parent-body click left %d previews, want 0", len(m.previews))
+	}
+}
+
 func TestPreviewGapClickCloses(t *testing.T) {
 	m := setupMentionModel(t)
 	row, col := mentionViewport(t, m, "other-bb")

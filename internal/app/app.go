@@ -2166,15 +2166,34 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.popPreviewTo(hit.layer)
 				return m, nil
 			}
-			var issue *data.Issue
 			if hit := m.hitPreview(dx, bodyRow); hit.kind == previewHitContent && hit.detail != nil {
-				issue = hit.detail.ReferenceAtXY(hit.bodyRow, hit.contentX)
-			} else {
-				contentX := dx - m.detail.ContentInsetX()
-				issue = m.detail.ReferenceAtXY(bodyRow, contentX)
-				if issue == nil && mouse.Button == tea.MouseRight {
-					issue = m.detail.ReferenceAt(bodyRow)
+				issue := hit.detail.ReferenceAtXY(hit.bodyRow, hit.contentX)
+				// An outer preview's visible body is that preview again.
+				// Clicking it pops everything stacked on top of it, the
+				// same way a parent-body click pops the whole stack.
+				if hit.layer < len(m.previews)-1 {
+					m.popPreviewTo(hit.layer + 1)
+					if issue != nil && ctrl {
+						m.pushPreview(issue)
+					}
+					return m, nil
 				}
+				if issue != nil && ctrl {
+					m.pushPreview(issue)
+					return m, nil
+				}
+				if issue != nil {
+					m.openIssueInDetail(issue)
+					return m, nil
+				}
+				m.activPane = PaneDetail
+				m.detail.Focused = true
+				return m, nil
+			}
+			contentX := dx - m.detail.ContentInsetX()
+			issue := m.detail.ReferenceAtXY(bodyRow, contentX)
+			if issue == nil && mouse.Button == tea.MouseRight {
+				issue = m.detail.ReferenceAt(bodyRow)
 			}
 			if issue != nil && ctrl {
 				m.pushPreview(issue)
