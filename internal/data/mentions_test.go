@@ -34,3 +34,26 @@ func TestFindLoadedMentionsEmpty(t *testing.T) {
 		t.Fatalf("empty text: got %#v", got)
 	}
 }
+
+func TestFindLoadedMentionsSentencePeriod(t *testing.T) {
+	known := map[string]*Issue{
+		"mard-nfy": {ID: "mard-nfy"},
+		"mard-r43": {ID: "mard-r43"},
+		"mard-nob": {ID: "mard-nob"},
+	}
+	got := FindLoadedMentions("does not close mard-nfy / mard-r43 / mard-nob.", known)
+	if len(got) != 3 {
+		t.Fatalf("mentions = %#v, want nfy, r43, nob", got)
+	}
+	if got[0].ID != "mard-nfy" || got[1].ID != "mard-r43" || got[2].ID != "mard-nob" {
+		t.Fatalf("ids = %s %s %s", got[0].ID, got[1].ID, got[2].ID)
+	}
+}
+
+func TestFindLoadedMentionsPeriodDoesNotStealChildID(t *testing.T) {
+	known := map[string]*Issue{"mard-wte": {ID: "mard-wte"}, "mard-wte.7": {ID: "mard-wte.7"}}
+	got := FindLoadedMentions("see mard-wte.7.", known)
+	if len(got) != 1 || got[0].ID != "mard-wte.7" {
+		t.Fatalf("mentions = %#v, want only mard-wte.7", got)
+	}
+}

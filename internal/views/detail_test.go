@@ -1450,3 +1450,32 @@ func TestDetailDependencyIDIsLinked(t *testing.T) {
 		t.Fatalf("click closed resolved ID = %#v, want detail-resolved", got)
 	}
 }
+
+func TestDetailSentencePeriodMentionIsClickable(t *testing.T) {
+	now := time.Now()
+	issues := []data.Issue{
+		{ID: "mard-wte", Title: "Dogfood", Status: data.StatusInProgress, Priority: 1, IssueType: data.TypeEpic,
+			CreatedAt: now, Description: "does not close mard-nfy / mard-r43 / mard-nob."},
+		{ID: "mard-nfy", Title: "NFY", Status: data.StatusClosed, Priority: 0, IssueType: data.TypeEpic, CreatedAt: now},
+		{ID: "mard-r43", Title: "R43", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic, CreatedAt: now},
+		{ID: "mard-nob", Title: "NOB", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic, CreatedAt: now},
+	}
+	d := NewDetail(80, 40, issues)
+	d.SetIssue(&issues[0])
+	plain := ansi.Strip(d.renderContent())
+	for _, id := range []string{"mard-nfy", "mard-r43", "mard-nob"} {
+		line, col := -1, -1
+		for i, text := range strings.Split(plain, "\n") {
+			if j := strings.Index(text, id); j >= 0 {
+				line, col = i, j
+				break
+			}
+		}
+		if line < 0 {
+			t.Fatalf("%s not in body:\n%s", id, plain)
+		}
+		if got := d.ReferenceAtXY(line-d.Viewport.YOffset(), col); got == nil || got.ID != id {
+			t.Fatalf("click %s = %#v", id, got)
+		}
+	}
+}

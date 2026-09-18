@@ -67,15 +67,35 @@ func rangeUsed(used []bool, start, end int) bool {
 }
 
 func isMentionBoundary(s string, start, end int) bool {
-	if start > 0 && isMentionChar(s[start-1]) {
+	if start > 0 && continuesID(s, start-1, start) {
 		return false
 	}
-	if end < len(s) && isMentionChar(s[end]) {
+	if end < len(s) && continuesID(s, end, end+1) {
 		return false
 	}
 	return true
 }
 
-func isMentionChar(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '.'
+func isIDChar(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-'
+}
+
+// continuesID reports whether the byte at i is still part of the same bead ID
+// as the byte at j. A '.' only continues when the next rune is alphanumeric
+// (mard-wte.7). A sentence period (mard-nob.) is a boundary.
+func continuesID(s string, i, j int) bool {
+	if i < 0 || i >= len(s) {
+		return false
+	}
+	b := s[i]
+	if isIDChar(b) {
+		return true
+	}
+	if b != '.' {
+		return false
+	}
+	if j < 0 || j >= len(s) {
+		return false
+	}
+	return isIDChar(s[j])
 }
