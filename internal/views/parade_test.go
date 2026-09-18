@@ -1164,3 +1164,61 @@ func TestParadeGutterHit(t *testing.T) {
 		t.Error("HasChildrenAtViewportRow(leaf) = true, want false")
 	}
 }
+
+func TestParadeEpicGlyphShowsChildSuperscript(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "a", Title: "Epic A", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "a.1", Title: "A one", Status: data.StatusOpen, Priority: 0,
+			Dependencies: paradeParentEdge("a.1", "a")},
+		{ID: "a.2", Title: "A two", Status: data.StatusInProgress, Priority: 1,
+			Dependencies: paradeParentEdge("a.2", "a")},
+		{ID: "a.1.1", Title: "A one one", Status: data.StatusInProgress, Priority: 0,
+			Dependencies: paradeParentEdge("a.1.1", "a.1")},
+		{ID: "leaf", Title: "Leaf", Status: data.StatusOpen, Priority: 2, IssueType: data.TypeTask},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+	var epic, leaf *ParadeItem
+	for i := range p.Items {
+		if p.Items[i].Issue == nil {
+			continue
+		}
+		switch p.Items[i].Issue.ID {
+		case "a":
+			epic = &p.Items[i]
+		case "leaf":
+			leaf = &p.Items[i]
+		}
+	}
+	if epic == nil || epic.ChildCount != 2 {
+		t.Fatalf("epic ChildCount = %v, want 2 (direct children, same as Progress Total)", epic)
+	}
+	if leaf == nil || leaf.ChildCount != 0 {
+		t.Fatalf("non-epic ChildCount = %v, want 0", leaf)
+	}
+	out := ansi.Strip(p.View())
+	want := ui.ExecSymbol(int(data.StateReady)) + ui.Superscript(2)
+	if !strings.Contains(out, want) {
+		t.Fatalf("parade missing epic superscript %q:\n%s", want, out)
+	}
+	if strings.Contains(out, ui.ExecSymbol(int(data.StateReady))+ui.Superscript(3)) {
+		t.Fatal("epic superscript counted descendants, not direct children")
+	}
+}
+
+func TestParadeNonEpicHasNoChildSuperscript(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "task", Title: "Just a task", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeTask},
+		{ID: "task.1", Title: "Should not count on a task", Status: data.StatusOpen, Priority: 1,
+			Dependencies: paradeParentEdge("task.1", "task")},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	for _, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "task" && item.ChildCount != 0 {
+			t.Fatalf("task ChildCount = %d, want 0 (superscript is epic-only)", item.ChildCount)
+		}
+	}
+	out := ansi.Strip(p.View())
+	if strings.Contains(out, ui.Superscript(1)) {
+		t.Fatalf("non-epic row rendered a child superscript:\n%s", out)
+	}
+}

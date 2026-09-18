@@ -1831,3 +1831,79 @@ func TestPreviewWheelAtEdgePassesToParent(t *testing.T) {
 		t.Fatalf("edge wheel parent offset %d → %d, want pass-through", parentOff, m.detail.Viewport.YOffset())
 	}
 }
+
+func TestPreviewWheelOnOuterPreviewScrollsOuter(t *testing.T) {
+	m := setupMentionModel(t)
+	m.issues[0].Description = strings.Repeat("parent line for scroll\n", 80)
+	m.issues[1].Description = strings.Repeat("outer preview line\n", 80)
+	m.issues[2].Description = strings.Repeat("nested preview line\n", 80)
+	m.detail.IssueMap = data.BuildIssueMap(m.issues)
+	m.detail.SetIssue(&m.issues[0])
+	m.pushPreview(&m.issues[1])
+	m.pushPreview(&m.issues[2])
+	if len(m.previews) != 2 {
+		t.Fatal("precondition: nested preview not open")
+	}
+	if m.previews[0].detail.Viewport.TotalLineCount() <= m.previews[0].detail.Viewport.Height() {
+		t.Fatalf("outer preview is not scrollable: lines=%d height=%d",
+			m.previews[0].detail.Viewport.TotalLineCount(), m.previews[0].detail.Viewport.Height())
+	}
+	parentOff := m.detail.Viewport.YOffset()
+	outerOff := m.previews[0].detail.Viewport.YOffset()
+	innerOff := m.previews[1].detail.Viewport.YOffset()
+	x0, y0, _, _ := m.previewGeom(0)
+	x1, y1, _, _ := m.previewGeom(1)
+	if x0+1 >= x1 || y0+2 >= y1 {
+		t.Fatalf("precondition: no visible outer frame (outer=%d,%d nested=%d,%d)", x0, y0, x1, y1)
+	}
+	// Visible gold frame of the preview that opened the nested one.
+	x := m.parade.Width + x0 + 1
+	y := headerHeight + y0 + 2
+	model, _ := m.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.detail.Viewport.YOffset() != parentOff {
+		t.Fatalf("parent offset %d → %d, want unchanged", parentOff, m.detail.Viewport.YOffset())
+	}
+	if m.previews[1].detail.Viewport.YOffset() != innerOff {
+		t.Fatalf("nested offset %d → %d, want unchanged", innerOff, m.previews[1].detail.Viewport.YOffset())
+	}
+	if m.previews[0].detail.Viewport.YOffset() <= outerOff {
+		t.Fatalf("outer preview offset %d → %d, want a downward scroll", outerOff, m.previews[0].detail.Viewport.YOffset())
+	}
+}
+
+func TestPreviewWheelAtNestedEdgePassesToOuter(t *testing.T) {
+	m := setupMentionModel(t)
+	m.issues[0].Description = strings.Repeat("parent line for scroll\n", 80)
+	m.issues[1].Description = strings.Repeat("outer preview line\n", 80)
+	m.issues[2].Description = strings.Repeat("nested preview line\n", 80)
+	m.detail.IssueMap = data.BuildIssueMap(m.issues)
+	m.detail.SetIssue(&m.issues[0])
+	m.pushPreview(&m.issues[1])
+	m.pushPreview(&m.issues[2])
+	if m.previews[1].detail.Viewport.TotalLineCount() <= m.previews[1].detail.Viewport.Height() {
+		t.Fatalf("nested preview is not scrollable: lines=%d height=%d",
+			m.previews[1].detail.Viewport.TotalLineCount(), m.previews[1].detail.Viewport.Height())
+	}
+	m.previews[1].detail.Viewport.GotoBottom()
+	if !m.previews[1].detail.Viewport.AtBottom() {
+		t.Fatal("precondition: nested preview should be at its scroll edge")
+	}
+	if m.previews[0].detail.Viewport.TotalLineCount() <= m.previews[0].detail.Viewport.Height() {
+		t.Fatalf("outer preview is not scrollable: lines=%d height=%d",
+			m.previews[0].detail.Viewport.TotalLineCount(), m.previews[0].detail.Viewport.Height())
+	}
+	parentOff := m.detail.Viewport.YOffset()
+	outerOff := m.previews[0].detail.Viewport.YOffset()
+	x1, y1, _, _ := m.previewGeom(1)
+	x := m.parade.Width + x1 + 2
+	y := headerHeight + y1 + 2
+	model, _ := m.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.detail.Viewport.YOffset() != parentOff {
+		t.Fatalf("parent offset %d → %d, want unchanged (pass to outer, not parent)", parentOff, m.detail.Viewport.YOffset())
+	}
+	if m.previews[0].detail.Viewport.YOffset() <= outerOff {
+		t.Fatalf("nested-edge wheel outer offset %d → %d, want pass-through", outerOff, m.previews[0].detail.Viewport.YOffset())
+	}
+}

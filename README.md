@@ -1,5 +1,46 @@
 # ⚜ Mardi Gras
 
+## This fork
+
+This is the `mg` we actually run: [`atacolak/mardi-gras`](https://github.com/atacolak/mardi-gras) on `feat/operator-observability`. Upstream Mardi Gras is a Beads parade. This fork is an operator work cockpit — same `br` / `.beads` data, rebuilt around how the work actually sits: parent-child trees, six semantic execution states, and a mouse that can reach the beads.
+
+The difference is easiest to see. Upstream still dumps the board into carnival buckets (Rolling / Lined Up / Past the Stand) with a faded, hard-to-scan list. Here the tree stays a tree: children live under their epic, blocked and deferred rows stay with their parent, closed epics tuck into a Closed section, and the selected family's status glyphs light up. The purple divider is drag-resizable. Bead IDs in the body and in DEPENDENCIES are clickable. Ctrl (or Ctrl-click) opens a gold preview you can scroll; a second Ctrl nests another preview on top, and the wheel stays on the overlay you pointed at.
+
+```bash
+git clone -b feat/operator-observability https://github.com/atacolak/mardi-gras.git
+cd mardi-gras
+make build      # → ./mg
+```
+
+### After
+
+The live cockpit, a preview, and a nested preview:
+
+<img src="docs/screenshots/fork-after-cockpit.png" alt="Operator work cockpit" />
+
+<img src="docs/screenshots/fork-after-preview.png" alt="Bead preview overlay" />
+
+<img src="docs/screenshots/fork-after-nested-preview.png" alt="Nested bead preview" />
+
+### Before (upstream)
+
+<img src="docs/screenshots/fork-before-upstream.png" alt="Upstream Mardi Gras" />
+
+### Opinionated changes
+
+**Semantic execution, not raw Beads status.** Every surface derives one of six named states from the issue graph: Ready `●`, Working `◐`, Waiting/Blocked `⊘`, Deferred `⏸`, Operator Attention `○`, Done `✓`. Unknown statuses stay unmapped instead of collapsing into Lined Up. Operator Attention is a real stored Beads `review` status — closing children does not auto-promote an epic.
+
+**A parent-child forest.** The parade follows parent-child edges, not dotted-ID paint. Nested rows show compact relative IDs (`.7` under `mard-nob`) when the prefix is redundant. `E` scopes the view to an owned epic subtree. Blocked and deferred children render under their parent. Closed epics (and their families) live in a Closed section, collapsed by default; click the header `╭─` to open it.
+
+**Parade chrome we actually want.** No disclosure triangles. Click the left gutter to collapse a parent without selecting it; double-click a parent to collapse/expand and select it. `S` cycles sibling sort (attention, priority, chronological). The selected epic family's glyphs highlight — glyph only, no positional fade. Priority badges right-align to the divider, with nested rows inset by the same indent. The purple middle divider is click-drag resizable for the session. Exec colors follow a six-swatch palette. The old parade next-blocker hint is gone. Done titles are shaded; the Closed box is steel. An epic with children shows that count as a superscript on its status glyph (`◐²`) — the same direct-child total as the detail `Progress:` line.
+
+**A mouse that reaches the beads.** Click a row to select it and focus the pane under the pointer. Wheel scrolls that pane. Bead IDs in markdown bodies are clickable; DEPENDENCIES IDs are gold-underlined and clickable too (closed beads link if they're loaded). Ctrl or Ctrl-click opens a scrollable gold preview (stack of two). Wheel on a preview scrolls that preview; leftover ticks at its edge pass to the preview that opened it, then the parent bead. Wheel in the gap around the overlays scrolls the parent. The header necklace rings when a bead changes.
+
+**Cockpit plumbing.** Collapse state survives rebuilds. An actors pane shows who is live and what they own. The footer reports the real Beads CLI (`br`). Hover-scroll and pane focus are first-class.
+
+The original Mardi Gras README continues below for install options, the sixty-second tour, and upstream context.
+
+
 [![CI](https://github.com/quietpublish/mardi-gras/actions/workflows/ci.yml/badge.svg)](https://github.com/quietpublish/mardi-gras/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/tag/quietpublish/mardi-gras?label=release)](https://github.com/quietpublish/mardi-gras/releases/latest)
 [![Go](https://img.shields.io/github/go-mod/go-version/quietpublish/mardi-gras)](https://go.dev/)
@@ -68,7 +109,7 @@ go install github.com/matt-wright86/mardi-gras/cmd/mg@latest
 **From source**
 
 ```bash
-git clone https://github.com/quietpublish/mardi-gras.git
+git clone -b feat/operator-observability https://github.com/atacolak/mardi-gras.git
 cd mardi-gras
 make build      # → ./mg
 ```

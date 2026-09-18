@@ -207,11 +207,14 @@ func (m Model) hitPreview(dx, dy int) previewHit {
 		return previewHit{}
 	}
 	w, h := m.detail.Width, m.detail.Height
+	// Innermost box wins. The visible frame of an outer preview (the bead
+	// that opened the nested one) is that outer preview's content — not a
+	// gap — so wheel and clicks stay on it. Only the true margin around
+	// every overlay is a gap.
 	for i := len(m.previews) - 1; i >= 0; i-- {
 		x, y, innerW, innerH := m.previewGeom(i)
 		boxW, boxH := innerW+2, innerH+2
-		inBox := dx >= x && dx < x+boxW && dy >= y && dy < y+boxH
-		if inBox {
+		if dx >= x && dx < x+boxW && dy >= y && dy < y+boxH {
 			return previewHit{
 				kind:     previewHitContent,
 				layer:    i,
@@ -220,16 +223,9 @@ func (m Model) hitPreview(dx, dy int) previewHit {
 				contentX: dx - x - 1,
 			}
 		}
-		if i == 0 {
-			if dx >= 0 && dx < w && dy >= 0 && dy < h {
-				return previewHit{kind: previewHitGap, layer: i}
-			}
-			continue
-		}
-		px, py, pw, ph := m.previewGeom(i - 1)
-		if dx >= px && dx < px+pw+2 && dy >= py && dy < py+ph+2 {
-			return previewHit{kind: previewHitGap, layer: i}
-		}
+	}
+	if dx >= 0 && dx < w && dy >= 0 && dy < h {
+		return previewHit{kind: previewHitGap, layer: 0}
 	}
 	return previewHit{}
 }

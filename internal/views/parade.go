@@ -59,6 +59,9 @@ type ParadeItem struct {
 	RenderedID  string
 	Depth       int
 	HasChildren bool
+	// ChildCount is the number of direct parent-child beads under an epic
+	// (same count as the detail Progress: n/N Total). Zero for non-epics.
+	ChildCount int
 }
 
 func (item ParadeItem) isSelectable() bool {
@@ -399,6 +402,10 @@ func (p *Parade) appendForestRows(issues []data.Issue, sec *paradeSection, fallb
 			state = fallback
 		}
 		eval := actual.EvaluateDependencies(p.issueMap, p.blockingTypes)
+		childCount := 0
+		if actual.IssueType == data.TypeEpic {
+			childCount = len(data.ChildrenOf(actual.ID, p.AllIssues))
+		}
 		p.Items = append(p.Items, ParadeItem{
 			Section:     sec,
 			Issue:       actual,
@@ -407,6 +414,7 @@ func (p *Parade) appendForestRows(issues []data.Issue, sec *paradeSection, fallb
 			RenderedID:  lipgloss.NewStyle().Foreground(statusColor(state)).Render(relativeDisplayID(actual, depths[issue.ID])),
 			Depth:       depths[issue.ID],
 			HasChildren: children[issue.ID],
+			ChildCount:  childCount,
 		})
 	}
 }
@@ -917,6 +925,14 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 	if siblingGlyph {
 		symStr = ui.ExecIndicatorHighlight(int(item.State))
 	}
+	if item.ChildCount > 0 {
+		count := ui.Superscript(item.ChildCount)
+		countStyle := lipgloss.NewStyle().Foreground(ui.ExecColor(int(item.State)))
+		if siblingGlyph {
+			countStyle = countStyle.Bold(true)
+		}
+		symStr += countStyle.Render(count)
+	}
 	var prioStr string
 	switch issue.Priority {
 	case 0:
@@ -1060,8 +1076,12 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 	rightInset := indentWidth
 
 	idWidth := lipgloss.Width(item.RenderedID)
+	countWidth := 0
+	if item.ChildCount > 0 {
+		countWidth = lipgloss.Width(ui.Superscript(item.ChildCount))
+	}
 	maxTitle := innerWidth - 4 - indentWidth - 1 - selectWidth - changeWidth -
-		orphanWidth - zombieWidth - agentWidth - idWidth - trailingWidth - rightInset
+		orphanWidth - zombieWidth - agentWidth - idWidth - countWidth - trailingWidth - rightInset
 	if maxTitle < 0 {
 		maxTitle = 0
 	}

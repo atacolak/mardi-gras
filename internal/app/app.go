@@ -2207,13 +2207,17 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		dx := x - paradeWidth
-		// Pointer inside the gold box scrolls the preview. Outside it — the
-		// gap around the overlay — scrolls the parent bead. At the preview's
-		// own scroll edge, leftover wheel ticks pass through to the parent.
+		// Pointer inside a gold box scrolls that preview. At its scroll
+		// edge, leftover ticks pass to the preview that opened it, then
+		// the parent bead. The true gap around every overlay is the parent.
 		if hit := m.hitPreview(dx, bodyRow); hit.kind == previewHitContent && hit.detail != nil {
-			moved := scrollViewport(&hit.detail.Viewport, down)
-			if moved {
+			if scrollViewport(&hit.detail.Viewport, down) {
 				return m, nil
+			}
+			for i := hit.layer - 1; i >= 0; i-- {
+				if scrollViewport(&m.previews[i].detail.Viewport, down) {
+					return m, nil
+				}
 			}
 		}
 		scrollViewport(&m.detail.Viewport, down)
