@@ -163,9 +163,10 @@ func (d *Detail) ReferenceAt(viewportRow int) *data.Issue {
 // ContentInsetX is the columns the left border + padding occupy in View().
 func (d *Detail) ContentInsetX() int { return 2 }
 
-// ReferenceAtXY returns a loaded issue under a visible cell. Body mentions are
-// column-grained; structured dependency rows stay row-grained. The current
-// issue's own ID is never returned — self-mentions are ink, not links.
+// ReferenceAtXY returns a loaded issue under a visible cell. Body mentions and
+// dependency IDs are column-grained. The rest of a dependency row stays
+// row-grained. The current issue's own ID is never returned — self-mentions
+// are ink, not links.
 func (d *Detail) ReferenceAtXY(viewportRow, contentX int) *data.Issue {
 	if viewportRow < 0 || viewportRow >= d.Viewport.Height() {
 		return nil
@@ -443,10 +444,8 @@ func (d *Detail) renderContent() string {
 			if dep, ok := d.IssueMap[id]; ok {
 				title = dep.Title
 			}
-			recordReference(id)
-			lines = append(lines, ui.DepBlocked.Render(
-				fmt.Sprintf("  %s waiting on %s %s (%s)", ui.SymStalled, ui.DepArrow, id, truncate(title, 30)),
-			))
+			d.appendLinkedDepLine(&lines, ui.DepBlocked, id,
+				fmt.Sprintf("  %s waiting on %s %s (%s)", ui.SymStalled, ui.DepArrow, id, truncate(title, 30)))
 		}
 
 		for _, id := range eval.MissingIDs {
@@ -460,10 +459,8 @@ func (d *Detail) renderContent() string {
 			if dep, ok := d.IssueMap[id]; ok {
 				title = dep.Title
 			}
-			recordReference(id)
-			lines = append(lines, ui.DepResolved.Render(
-				fmt.Sprintf("  %s resolved %s %s (%s)", ui.SymResolved, ui.DepArrow, id, truncate(title, 30)),
-			))
+			d.appendLinkedDepLine(&lines, ui.DepResolved, id,
+				fmt.Sprintf("  %s resolved %s %s (%s)", ui.SymResolved, ui.DepArrow, id, truncate(title, 30)))
 		}
 
 		for _, edge := range eval.NonBlocking {
@@ -472,10 +469,8 @@ func (d *Detail) renderContent() string {
 				title = dep.Title
 			}
 			sym, verb, style := depTypeDisplay(edge.Type)
-			recordReference(edge.DependsOnID)
-			lines = append(lines, style.Render(
-				fmt.Sprintf("  %s %s %s %s (%s)", sym, verb, ui.DepArrow, edge.DependsOnID, truncate(title, 25)),
-			))
+			d.appendLinkedDepLine(&lines, style, edge.DependsOnID,
+				fmt.Sprintf("  %s %s %s %s (%s)", sym, verb, ui.DepArrow, edge.DependsOnID, truncate(title, 25)))
 		}
 
 		for _, id := range blocks {
@@ -483,10 +478,8 @@ func (d *Detail) renderContent() string {
 			if dep, ok := d.IssueMap[id]; ok {
 				title = dep.Title
 			}
-			recordReference(id)
-			lines = append(lines, ui.DepBlocks.Render(
-				fmt.Sprintf("  %s blocks %s %s (%s)", ui.SymRolling, ui.DepArrow, id, truncate(title, 30)),
-			))
+			d.appendLinkedDepLine(&lines, ui.DepBlocks, id,
+				fmt.Sprintf("  %s blocks %s %s (%s)", ui.SymRolling, ui.DepArrow, id, truncate(title, 30)))
 		}
 	}
 
@@ -994,6 +987,40 @@ func nextContentLine(lines []string) int {
 		n += strings.Count(line, "\n")
 	}
 	return n
+}
+
+// appendLinkedDepLine paints a DEPENDENCIES row and gold-underlines the loaded
+// bead ID. Closed beads link the same as open ones. Missing IDs stay plain.
+func (d *Detail) appendLinkedDepLine(lines *[]string, style lipgloss.Style, id, plain string) {
+	idx := nextContentLine(*lines)
+	if _, ok := d.IssueMap[id]; ok {
+		d.referenceLines[idx] = id
+	}
+	selfID := ""
+	if d.Issue != nil {
+		selfID = d.Issue.ID
+	}
+	start := strings.Index(plain, id)
+	if start < 0 || d.IssueMap[id] == nil {
+		*lines = append(*lines, style.Render(plain))
+		return
+	}
+	prefix := plain[:start]
+	suffix := plain[start+len(id):]
+	link := lipgloss.NewStyle().Foreground(ui.Gold).Underline(true)
+	self := lipgloss.NewStyle().Foreground(ui.Gold)
+	mid := id
+	if id == selfID {
+		mid = self.Render(id)
+	} else {
+		mid = link.Render(id)
+		d.referenceSpans[idx] = append(d.referenceSpans[idx], mentionSpan{
+			ID:    id,
+			Start: lipgloss.Width(prefix),
+			End:   lipgloss.Width(prefix + id),
+		})
+	}
+	*lines = append(*lines, style.Render(prefix)+mid+style.Render(suffix))
 }
 
 func (d *Detail) appendLinkedMarkdown(lines *[]string, text string) {

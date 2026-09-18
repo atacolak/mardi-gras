@@ -1385,3 +1385,68 @@ func TestDetailSelfMentionIsGoldNotUnderlined(t *testing.T) {
 		}
 	}
 }
+
+func TestDetailClosedMentionIsClickable(t *testing.T) {
+	now := time.Now()
+	issues := []data.Issue{
+		{ID: "src-aa", Title: "Source", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask,
+			CreatedAt: now, Description: "See closed-zz after it shipped."},
+		{ID: "closed-zz", Title: "Done work", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeTask, CreatedAt: now},
+	}
+	d := NewDetail(80, 40, issues)
+	d.SetIssue(&issues[0])
+	plain := ansi.Strip(d.renderContent())
+	line, col := -1, -1
+	for i, text := range strings.Split(plain, "\n") {
+		if j := strings.Index(text, "closed-zz"); j >= 0 {
+			line, col = i, j
+			break
+		}
+	}
+	if line < 0 {
+		t.Fatalf("closed-zz not in body:\n%s", plain)
+	}
+	if got := d.ReferenceAtXY(line-d.Viewport.YOffset(), col); got == nil || got.ID != "closed-zz" {
+		t.Fatalf("closed mention = %#v, want closed-zz", got)
+	}
+}
+
+func TestDetailDependencyIDIsLinked(t *testing.T) {
+	issues := detailReferenceIssues()
+	d := NewDetail(100, 80, issues)
+	d.SetIssue(&issues[0])
+	content := d.renderContent()
+	plain := ansi.Strip(content)
+	var line, col int
+	found := false
+	for i, text := range strings.Split(plain, "\n") {
+		if strings.Contains(text, "child of") {
+			if j := strings.Index(text, "detail-parent"); j >= 0 {
+				line, col, found = i, j, true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("child-of row missing:\n%s", plain)
+	}
+	if got := d.ReferenceAtXY(line-d.Viewport.YOffset(), col); got == nil || got.ID != "detail-parent" {
+		t.Fatalf("click parent ID = %#v, want detail-parent", got)
+	}
+	// Closed resolved blocker must also be a link.
+	found = false
+	for i, text := range strings.Split(plain, "\n") {
+		if strings.Contains(text, "resolved") {
+			if j := strings.Index(text, "detail-resolved"); j >= 0 {
+				line, col, found = i, j, true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("resolved row missing:\n%s", plain)
+	}
+	if got := d.ReferenceAtXY(line-d.Viewport.YOffset(), col); got == nil || got.ID != "detail-resolved" {
+		t.Fatalf("click closed resolved ID = %#v, want detail-resolved", got)
+	}
+}
