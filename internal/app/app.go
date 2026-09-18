@@ -259,6 +259,9 @@ type Model struct {
 	lastClickAt  time.Time
 	lastClickRow int
 	lastClickX   int
+	lastMouseX   int
+	lastMouseY   int
+	previews     []previewLayer
 
 	// Bead string shimmer animation
 	beadOffset int
@@ -2063,6 +2066,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.draggingDivider = false
 		return m, nil
 	case tea.MouseMotionMsg:
+		m.lastMouseX, m.lastMouseY = mouse.X, mouse.Y
 		if !m.draggingDivider {
 			return m, nil
 		}
@@ -2072,14 +2076,18 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var x, y int
+	var mouseMod tea.KeyMod
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
 		x, y = mouse.X, mouse.Y
+		mouseMod = mouse.Mod
 	case tea.MouseWheelMsg:
 		x, y = mouse.X, mouse.Y
+		mouseMod = mouse.Mod
 	default:
 		return m, nil
 	}
+	m.lastMouseX, m.lastMouseY = x, y
 	if x < 0 || x >= m.width || y < top || y >= top+bodyHeight {
 		return m, nil
 	}
@@ -2117,6 +2125,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.activPane = PaneParade
 			m.detail.Focused = false
+			m.clearPreviews()
 			m.restoreParadeSelection(issue.ID)
 			m.syncSelection()
 
@@ -2138,15 +2147,34 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastClickX = x
 			return m, nil
 		}
-		if mouse.Button == tea.MouseRight && right {
-			m.activPane = PaneDetail
-			m.detail.Focused = true
-			if issue := m.detail.ReferenceAt(bodyRow); issue != nil {
-				m.detail.SetIssue(issue)
-				if m.restoreParadeSelection(issue.ID) {
-					m.syncSelection()
+		if right && (mouse.Button == tea.MouseLeft || mouse.Button == tea.MouseRight) {
+			ctrl := mouseMod&tea.ModCtrl != 0
+			dx := x - paradeWidth
+			if hit := m.hitPreview(dx, bodyRow); hit.kind == previewHitGap {
+				m.popPreviewTo(hit.layer)
+				return m, nil
+			}
+			var issue *data.Issue
+			if hit := m.hitPreview(dx, bodyRow); hit.kind == previewHitContent && hit.detail != nil {
+				issue = hit.detail.ReferenceAtXY(hit.bodyRow, hit.contentX)
+			} else {
+				contentX := dx - m.detail.ContentInsetX()
+				issue = m.detail.ReferenceAtXY(bodyRow, contentX)
+				if issue == nil && mouse.Button == tea.MouseRight {
+					issue = m.detail.ReferenceAt(bodyRow)
 				}
 			}
+			if issue != nil && ctrl {
+				m.pushPreview(issue)
+				return m, nil
+			}
+			if issue != nil {
+				m.openIssueInDetail(issue)
+				return m, nil
+			}
+			m.activPane = PaneDetail
+			m.detail.Focused = true
+			return m, nil
 		}
 	case tea.MouseWheelMsg:
 		if !right {
@@ -2280,6 +2308,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if isBareCtrl(msg) {
+		return m.handlePreviewTrigger()
+	}
+
 	switch str {
 	case "q":
 		logAction("quit")
@@ -2306,6 +2338,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
+		if len(m.previews) > 0 {
+			m.popPreview()
+			return m, nil
+		}
 		// Scope exits first: esc out of a scope is one press, and it must not
 		// also drop focus mode or the detail pane as a side effect. The
 		// unscoped esc behaviour still follows below on the next press.
@@ -3673,6 +3709,7 @@ func (m *Model) layout() {
 	if m.parade.SelectedIssue != nil {
 		m.detail.SetIssue(m.parade.SelectedIssue)
 	}
+	m.resizePreviews()
 }
 
 // rebuildParade owns the full filter → layout → restore-selection → sync cycle.
@@ -4134,7 +4171,7 @@ func (m Model) fetchMoleculeDAG(issueID string) tea.Cmd {
 func altView(s string) tea.View {
 	v := tea.NewView(s)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	v.MouseMode = tea.MouseModeAllMotion
 	return v
 }
 
@@ -4192,7 +4229,7 @@ func (m Model) View() tea.View {
 			}
 			rightPanel = m.actors.View()
 		default:
-			rightPanel = m.detail.View()
+			rightPanel = m.viewDetailWithPreviews()
 		}
 		body = lipgloss.JoinHorizontal(
 			lipgloss.Top,

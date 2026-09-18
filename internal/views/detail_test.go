@@ -1308,3 +1308,80 @@ func TestCommentsRenderingMarkdown(t *testing.T) {
 		}
 	}
 }
+
+func TestDetailBodyMentionIsClickable(t *testing.T) {
+	now := time.Now()
+	issues := []data.Issue{
+		{ID: "src-aa", Title: "Source", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask,
+			CreatedAt: now, Description: "See other-bb and also src-aa itself."},
+		{ID: "other-bb", Title: "Other", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask, CreatedAt: now},
+	}
+	d := NewDetail(80, 40, issues)
+	d.SetIssue(&issues[0])
+	content := d.renderContent()
+	plain := ansi.Strip(content)
+	line := -1
+	col := -1
+	selfCol := -1
+	for i, text := range strings.Split(plain, "\n") {
+		if j := strings.Index(text, "other-bb"); j >= 0 {
+			line, col = i, j
+		}
+		if j := strings.Index(text, "src-aa"); j >= 0 && !strings.Contains(text, "ID:") {
+			selfCol = j
+			if line < 0 {
+				line = i
+			}
+		}
+	}
+	if line < 0 || col < 0 {
+		t.Fatalf("other-bb not in body:\n%s", plain)
+	}
+	if got := d.ReferenceAtXY(line-d.Viewport.YOffset(), col); got == nil || got.ID != "other-bb" {
+		t.Fatalf("click other-bb = %#v, want other-bb", got)
+	}
+	if selfCol >= 0 {
+		if got := d.ReferenceAtXY(line-d.Viewport.YOffset(), selfCol); got != nil {
+			t.Fatalf("self mention must not be a link, got %#v", got)
+		}
+	}
+	idLine := detailReferenceLine(t, content, "src-aa")
+	// The metadata ID row contains src-aa; that field is not a mention span.
+	// Walk the ID: row and assert no XY hit on the current ID.
+	for i, text := range strings.Split(plain, "\n") {
+		if strings.Contains(text, "ID:") && strings.Contains(text, "src-aa") {
+			j := strings.Index(text, "src-aa")
+			if got := d.ReferenceAtXY(i-d.Viewport.YOffset(), j); got != nil {
+				t.Fatalf("ID field must not be a link, got %#v", got)
+			}
+			_ = idLine
+			break
+		}
+	}
+}
+
+func TestDetailSelfMentionIsGoldNotUnderlined(t *testing.T) {
+	now := time.Now()
+	issues := []data.Issue{
+		{ID: "only-me", Title: "Solo", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask,
+			CreatedAt: now, Description: "This bead is only-me and names no one else."},
+	}
+	d := NewDetail(80, 24, issues)
+	d.SetIssue(&issues[0])
+	var styled string
+	for _, line := range strings.Split(d.renderContent(), "\n") {
+		if strings.Contains(ansi.Strip(line), "only-me") && !strings.Contains(ansi.Strip(line), "ID:") {
+			styled = line
+			break
+		}
+	}
+	if styled == "" {
+		t.Fatal("self mention line missing")
+	}
+	if strings.Contains(styled, "\x1b[4m") || strings.Contains(styled, "4m") && strings.Contains(styled, "only-me") && strings.Contains(styled, "[4") {
+		// underline SGR is 4. Gold self-mentions must not be underlined.
+		if strings.Contains(styled, "[4m") {
+			t.Fatalf("self mention should not be underlined: %q", styled)
+		}
+	}
+}

@@ -1600,3 +1600,125 @@ func TestMouseDoubleClickOnLeafOnlySelects(t *testing.T) {
 		t.Fatalf("leaf double click selection = %v, want epic.1", m.parade.SelectedIssue)
 	}
 }
+
+func mentionBodyIssues() []data.Issue {
+	now := time.Now()
+	return []data.Issue{
+		{ID: "src-aa", Title: "Source bead", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeTask,
+			CreatedAt: now, Description: "Please read other-bb next."},
+		{ID: "other-bb", Title: "Other bead", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask, CreatedAt: now},
+		{ID: "third-cc", Title: "Third bead", Status: data.StatusOpen, Priority: 2, IssueType: data.TypeTask, CreatedAt: now},
+	}
+}
+
+func setupMentionModel(t *testing.T) Model {
+	t.Helper()
+	m := New(mentionBodyIssues(), data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = model.(Model)
+	if !m.restoreParadeSelection("src-aa") {
+		t.Fatal("precondition: src-aa missing")
+	}
+	m.syncSelection()
+	return m
+}
+
+func mentionViewport(t *testing.T, m Model, id string) (row, col int) {
+	t.Helper()
+	for r := 0; r < m.detail.Viewport.Height(); r++ {
+		if got := m.detail.ReferenceAtXY(r, 0); got != nil && got.ID == id {
+			// column 0 is rarely the ID; scan the row
+		}
+		// scan a reasonable width
+		for x := 0; x < 80; x++ {
+			if got := m.detail.ReferenceAtXY(r, x); got != nil && got.ID == id {
+				return r, x
+			}
+		}
+	}
+	t.Fatalf("visible mention %s not found", id)
+	return 0, 0
+}
+
+func TestMouseClickBodyMentionNavigates(t *testing.T) {
+	m := setupMentionModel(t)
+	row, col := mentionViewport(t, m, "other-bb")
+	x := m.parade.Width + m.detail.ContentInsetX() + col
+	y := headerHeight + row
+	model, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.detail.Issue == nil || m.detail.Issue.ID != "other-bb" {
+		t.Fatalf("detail after click = %v, want other-bb", m.detail.Issue)
+	}
+	if len(m.previews) != 0 {
+		t.Fatal("plain click must navigate, not preview")
+	}
+}
+
+func TestBareCtrlOpensPreview(t *testing.T) {
+	m := setupMentionModel(t)
+	row, col := mentionViewport(t, m, "other-bb")
+	m.lastMouseX = m.parade.Width + m.detail.ContentInsetX() + col
+	m.lastMouseY = headerHeight + row
+	model, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyLeftCtrl})
+	m = model.(Model)
+	if len(m.previews) != 1 || m.previews[0].issue == nil || m.previews[0].issue.ID != "other-bb" {
+		t.Fatalf("previews after leftctrl = %#v, want other-bb", m.previews)
+	}
+	if m.detail.Issue == nil || m.detail.Issue.ID != "src-aa" {
+		t.Fatalf("ctrl must not navigate the parent, detail=%v", m.detail.Issue)
+	}
+}
+
+func TestCtrlClickOpensPreview(t *testing.T) {
+	m := setupMentionModel(t)
+	row, col := mentionViewport(t, m, "other-bb")
+	x := m.parade.Width + m.detail.ContentInsetX() + col
+	y := headerHeight + row
+	model, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft, Mod: tea.ModCtrl})
+	m = model.(Model)
+	if len(m.previews) != 1 || m.previews[0].issue.ID != "other-bb" {
+		t.Fatalf("ctrl+click previews = %#v, want other-bb", m.previews)
+	}
+}
+
+func TestPreviewGapClickCloses(t *testing.T) {
+	m := setupMentionModel(t)
+	row, col := mentionViewport(t, m, "other-bb")
+	m.lastMouseX = m.parade.Width + m.detail.ContentInsetX() + col
+	m.lastMouseY = headerHeight + row
+	model, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyLeftCtrl})
+	m = model.(Model)
+	if len(m.previews) != 1 {
+		t.Fatal("precondition: preview not open")
+	}
+	// First cell inside the detail pane (not the divider) is the pad/gap.
+	x := m.parade.Width + 1
+	y := headerHeight
+	model, _ = m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	m = model.(Model)
+	if len(m.previews) != 0 {
+		t.Fatalf("gap click left %d previews", len(m.previews))
+	}
+}
+
+func TestPreviewCapIsTwo(t *testing.T) {
+	m := setupMentionModel(t)
+	m.pushPreview(&m.issues[1])
+	m.pushPreview(&m.issues[2])
+	m.pushPreview(&m.issues[1])
+	if len(m.previews) != 2 {
+		t.Fatalf("preview cap = %d, want 2", len(m.previews))
+	}
+}
+
+func TestEscPopsPreview(t *testing.T) {
+	m := setupMentionModel(t)
+	m.pushPreview(&m.issues[1])
+	model, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = model.(Model)
+	if len(m.previews) != 0 {
+		t.Fatalf("esc should pop preview, left %d", len(m.previews))
+	}
+}

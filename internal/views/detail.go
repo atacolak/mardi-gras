@@ -8,6 +8,7 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
 	"github.com/matt-wright86/mardi-gras/internal/ui"
@@ -37,6 +38,15 @@ type Detail struct {
 	AgentOutputID    string   // which issue the agent output belongs to
 	mdRenderer       goldmark.Markdown
 	referenceLines   map[int]string
+	referenceSpans   map[int][]mentionSpan
+}
+
+// mentionSpan is a clickable loaded ID in a rendered body line. Start/End are
+// display columns in the viewport content, not including the pane border.
+type mentionSpan struct {
+	ID    string
+	Start int
+	End   int
 }
 
 // NewDetail creates a detail panel.
@@ -150,6 +160,39 @@ func (d *Detail) ReferenceAt(viewportRow int) *data.Issue {
 	return d.IssueMap[id]
 }
 
+// ContentInsetX is the columns the left border + padding occupy in View().
+func (d *Detail) ContentInsetX() int { return 2 }
+
+// ReferenceAtXY returns a loaded issue under a visible cell. Body mentions are
+// column-grained; structured dependency rows stay row-grained. The current
+// issue's own ID is never returned — self-mentions are ink, not links.
+func (d *Detail) ReferenceAtXY(viewportRow, contentX int) *data.Issue {
+	if viewportRow < 0 || viewportRow >= d.Viewport.Height() {
+		return nil
+	}
+	line := d.Viewport.YOffset() + viewportRow
+	for _, s := range d.referenceSpans[line] {
+		if contentX >= s.Start && contentX < s.End {
+			if iss := d.IssueMap[s.ID]; iss != nil {
+				if d.Issue != nil && iss.ID == d.Issue.ID {
+					return nil
+				}
+				return iss
+			}
+		}
+	}
+	return d.ReferenceAt(viewportRow)
+}
+
+// ContentView is the scrollable body without the pane divider. Preview
+// overlays wrap this in their own box.
+func (d *Detail) ContentView() string {
+	if d.Issue == nil {
+		return "No issue selected"
+	}
+	return d.Viewport.View()
+}
+
 // View renders the detail panel.
 func (d *Detail) View() string {
 	// The left border doubles as the pane divider and the focus cue: it
@@ -211,6 +254,7 @@ func (d *Detail) renderMarkdown(text string) string {
 
 func (d *Detail) renderContent() string {
 	d.referenceLines = make(map[int]string)
+	d.referenceSpans = make(map[int][]mentionSpan)
 	issue := d.Issue
 	if issue == nil {
 		return ""
@@ -349,7 +393,7 @@ func (d *Detail) renderContent() string {
 	if issue.Description != "" {
 		lines = append(lines, "")
 		lines = append(lines, ui.DetailSection.Render("DESCRIPTION"))
-		lines = append(lines, d.renderMarkdown(issue.Description))
+		d.appendLinkedMarkdown(&lines, issue.Description)
 	}
 
 	// Metadata (from issue data, rendered against schema)
@@ -362,28 +406,28 @@ func (d *Detail) renderContent() string {
 	if issue.CloseReason != "" {
 		lines = append(lines, "")
 		lines = append(lines, ui.DetailSection.Render("CLOSE REASON"))
-		lines = append(lines, d.renderMarkdown(issue.CloseReason))
+		d.appendLinkedMarkdown(&lines, issue.CloseReason)
 	}
 
 	// Notes (markdown rendered)
 	if issue.Notes != "" {
 		lines = append(lines, "")
 		lines = append(lines, ui.DetailSection.Render("NOTES"))
-		lines = append(lines, d.renderMarkdown(issue.Notes))
+		d.appendLinkedMarkdown(&lines, issue.Notes)
 	}
 
 	// Acceptance Criteria (markdown rendered)
 	if issue.AcceptanceCriteria != "" {
 		lines = append(lines, "")
 		lines = append(lines, ui.DetailSection.Render("ACCEPTANCE CRITERIA"))
-		lines = append(lines, d.renderMarkdown(issue.AcceptanceCriteria))
+		d.appendLinkedMarkdown(&lines, issue.AcceptanceCriteria)
 	}
 
 	// Design (markdown rendered)
 	if issue.Design != "" {
 		lines = append(lines, "")
 		lines = append(lines, ui.DetailSection.Render("DESIGN"))
-		lines = append(lines, d.renderMarkdown(issue.Design))
+		d.appendLinkedMarkdown(&lines, issue.Design)
 	}
 
 	// Dependencies
@@ -482,7 +526,7 @@ func (d *Detail) renderContent() string {
 	// Comments section
 	if len(d.Comments) > 0 && d.CommentsIssueID == issue.ID {
 		lines = append(lines, "")
-		lines = append(lines, d.renderComments())
+		d.appendComments(&lines)
 	}
 
 	// Agent output section (live tail from tmux pane)
@@ -704,7 +748,12 @@ func (d *Detail) renderGateStatus() string {
 // renderComments renders the comments section.
 func (d *Detail) renderComments() string {
 	var lines []string
-	lines = append(lines, ui.DetailSection.Render(fmt.Sprintf("COMMENTS (%d)", len(d.Comments))))
+	d.appendComments(&lines)
+	return strings.Join(lines, "\n")
+}
+
+func (d *Detail) appendComments(lines *[]string) {
+	*lines = append(*lines, ui.DetailSection.Render(fmt.Sprintf("COMMENTS (%d)", len(d.Comments))))
 
 	timeStyle := lipgloss.NewStyle().Foreground(ui.Muted)
 	authorStyle := lipgloss.NewStyle().Foreground(ui.Light).Bold(true)
@@ -718,19 +767,23 @@ func (d *Detail) renderComments() string {
 		header := fmt.Sprintf("  %s  %s",
 			authorStyle.Render(truncate(c.Author, 20)),
 			timeStyle.Render(timeLabel))
-		lines = append(lines, header)
+		*lines = append(*lines, header)
 
-		// Body (markdown rendered)
+		// Body (markdown rendered). Mentions are indented with the comment.
 		if c.Body != "" {
 			rendered := d.renderMarkdown(c.Body)
+			selfID := ""
+			if d.Issue != nil {
+				selfID = d.Issue.ID
+			}
 			for _, bline := range strings.Split(rendered, "\n") {
-				lines = append(lines, "    "+bline)
+				idx := nextContentLine(*lines)
+				styled := d.recordStyledLine(idx, bline, selfID, 4)
+				*lines = append(*lines, "    "+styled)
 			}
 		}
-		lines = append(lines, "") // blank line between comments
+		*lines = append(*lines, "") // blank line between comments
 	}
-
-	return strings.Join(lines, "\n")
 }
 
 // renderAgentOutput renders live agent output captured from a tmux pane.
@@ -933,6 +986,72 @@ func (d *Detail) epicProgress(issue *data.Issue) (issueProgress, bool) {
 		return issueProgress{}, false
 	}
 	return progress, true
+}
+
+func nextContentLine(lines []string) int {
+	n := len(lines)
+	for _, line := range lines {
+		n += strings.Count(line, "\n")
+	}
+	return n
+}
+
+func (d *Detail) appendLinkedMarkdown(lines *[]string, text string) {
+	rendered := d.renderMarkdown(text)
+	if rendered == "" {
+		return
+	}
+	selfID := ""
+	if d.Issue != nil {
+		selfID = d.Issue.ID
+	}
+	for _, line := range strings.Split(rendered, "\n") {
+		idx := nextContentLine(*lines)
+		styled := d.recordStyledLine(idx, line, selfID, 0)
+		*lines = append(*lines, styled)
+	}
+}
+
+func (d *Detail) recordStyledLine(lineIdx int, line, selfID string, xOff int) string {
+	styled, spans := d.styleMentions(line, selfID)
+	for i := range spans {
+		spans[i].Start += xOff
+		spans[i].End += xOff
+	}
+	if len(spans) > 0 {
+		d.referenceSpans[lineIdx] = append(d.referenceSpans[lineIdx], spans...)
+	}
+	return styled
+}
+
+func (d *Detail) styleMentions(line, selfID string) (string, []mentionSpan) {
+	plain := ansi.Strip(line)
+	mentions := data.FindLoadedMentions(plain, d.IssueMap)
+	if len(mentions) == 0 {
+		return line, nil
+	}
+	link := lipgloss.NewStyle().Foreground(ui.Gold).Underline(true)
+	self := lipgloss.NewStyle().Foreground(ui.Gold)
+	var b strings.Builder
+	var spans []mentionSpan
+	last := 0
+	for _, m := range mentions {
+		b.WriteString(plain[last:m.Start])
+		frag := plain[m.Start:m.End]
+		if m.ID == selfID {
+			b.WriteString(self.Render(frag))
+		} else {
+			b.WriteString(link.Render(frag))
+			spans = append(spans, mentionSpan{
+				ID:    m.ID,
+				Start: lipgloss.Width(plain[:m.Start]),
+				End:   lipgloss.Width(plain[:m.End]),
+			})
+		}
+		last = m.End
+	}
+	b.WriteString(plain[last:])
+	return b.String(), spans
 }
 
 func truncate(s string, maxLen int) string {
