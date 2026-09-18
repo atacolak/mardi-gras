@@ -48,6 +48,10 @@ func isBareCtrl(msg tea.KeyPressMsg) bool {
 
 const previewVertGrow = 2
 
+// previewRightTighten pulls the gold box 3 columns closer to the right edge
+// so the right gap matches the left instead of sitting a few cells wide.
+const previewRightTighten = 3
+
 func previewPad(w, h int) int {
 	p := 7
 	if max := w / 8; max < p {
@@ -137,7 +141,11 @@ func (m Model) previewGeom(stackIndex int) (x, y, innerW, innerH int) {
 	w, h := m.detail.Width, m.detail.Height
 	x = previewPad(w, h) * (stackIndex + 1)
 	y = previewYInset(x)
-	innerW = w - 2*x - 2
+	right := x - previewRightTighten
+	if right < 2 {
+		right = 2
+	}
+	innerW = w - x - right - 2
 	innerH = h - 2*y - 2
 	return x, y, innerW, innerH
 }

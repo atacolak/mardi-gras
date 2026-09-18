@@ -1289,6 +1289,43 @@ func TestDividerPressDoesNotChangeParadeSelection(t *testing.T) {
 	}
 }
 
+func TestDividerRatioSurvivesResize(t *testing.T) {
+	m := setupMouseModel(t)
+	m.draggingDivider = true
+	model, _ := m.Update(tea.MouseMotionMsg{X: 70, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	model, _ = m.Update(tea.MouseReleaseMsg{X: 70, Y: headerHeight + 1, Button: tea.MouseLeft})
+	m = model.(Model)
+	if m.parade.Width != 70 {
+		t.Fatalf("dragged parade = %d, want 70", m.parade.Width)
+	}
+	model, _ = m.Update(tea.WindowSizeMsg{Width: 200, Height: m.height})
+	m = model.(Model)
+	if m.parade.Width != 140 {
+		t.Fatalf("after 2x width parade = %d, want 140 (same 70%%)", m.parade.Width)
+	}
+	if m.detail.Width != 60 {
+		t.Fatalf("after 2x width detail = %d, want 60", m.detail.Width)
+	}
+}
+
+func TestPreviewRightGapIsTighter(t *testing.T) {
+	m := setupMentionModel(t)
+	x, _, innerW, _ := m.previewGeom(0)
+	w := m.detail.Width
+	right := w - (x + innerW + 2)
+	want := x - previewRightTighten
+	if want < 2 {
+		want = 2
+	}
+	if right != want {
+		t.Fatalf("right gap = %d, left = %d, want right %d", right, x, want)
+	}
+	if innerW <= w-2*x-2 {
+		t.Fatalf("innerW = %d, want it wider than the old symmetric %d", innerW, w-2*x-2)
+	}
+}
+
 func TestSortKeyCyclesParadeSortMode(t *testing.T) {
 	m := setupMouseModel(t)
 	if m.parade.SortMode != views.SortAttention {

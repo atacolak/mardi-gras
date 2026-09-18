@@ -3,10 +3,12 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 // Pre-built styles for the Mardi Gras theme. Assigned by rebuildStyles (via
@@ -37,8 +39,8 @@ var (
 	ExecOperatorReviewStr string
 	ExecDoneStr           string
 
-	// Pre-rendered highlighted indicators (see ExecIndicatorHighlight): same
-	// color, bold, for the cursor's sibling group.
+	// Pre-rendered highlighted indicators (see ExecIndicatorHighlight): a
+	// lit-up family glyph — brighter ink plus underline, still one cell.
 	ExecReadyHiStr          string
 	ExecWorkingHiStr        string
 	ExecWaitingHiStr        string
@@ -221,12 +223,12 @@ func rebuildStyles() {
 	ExecOperatorReviewStr = lipgloss.NewStyle().Foreground(ExecOperatorReview).Render(SymExecOperatorReview)
 	ExecDoneStr = lipgloss.NewStyle().Foreground(ExecDone).Render(SymExecDone)
 
-	ExecReadyHiStr = lipgloss.NewStyle().Foreground(ExecReady).Bold(true).Render(SymExecReady)
-	ExecWorkingHiStr = lipgloss.NewStyle().Foreground(ExecWorking).Bold(true).Render(SymExecWorking)
-	ExecWaitingHiStr = lipgloss.NewStyle().Foreground(ExecWaiting).Bold(true).Render(SymExecWaiting)
-	ExecDeferredHiStr = lipgloss.NewStyle().Foreground(ExecDeferred).Bold(true).Render(SymExecDeferred)
-	ExecOperatorReviewHiStr = lipgloss.NewStyle().Foreground(ExecOperatorReview).Bold(true).Render(SymExecOperatorReview)
-	ExecDoneHiStr = lipgloss.NewStyle().Foreground(ExecDone).Bold(true).Render(SymExecDone)
+	ExecReadyHiStr = execHighlight(ExecReady, SymExecReady)
+	ExecWorkingHiStr = execHighlight(ExecWorking, SymExecWorking)
+	ExecWaitingHiStr = execHighlight(ExecWaiting, SymExecWaiting)
+	ExecDeferredHiStr = execHighlight(ExecDeferred, SymExecDeferred)
+	ExecOperatorReviewHiStr = execHighlight(ExecOperatorReview, SymExecOperatorReview)
+	ExecDoneHiStr = execHighlight(ExecDone, SymExecDone)
 
 	// Contract-violation fallback
 	execSectionFallback = lipgloss.NewStyle().Bold(true).Foreground(Muted)
@@ -570,9 +572,29 @@ func ExecIndicator(state int) string {
 	}
 }
 
+// execHighlight lights a status glyph so the selected family is actually
+// visible. Bold-on-the-same-color is a no-op in most terminals.
+func execHighlight(c color.Color, glyph string) string {
+	return lipgloss.NewStyle().
+		Foreground(lightenExec(c)).
+		Bold(true).
+		Underline(true).
+		Render(glyph)
+}
+
+func lightenExec(c color.Color) color.Color {
+	col, ok := colorful.MakeColor(c)
+	if !ok {
+		return BrightGold
+	}
+	h, s, l := col.Hsl()
+	return colorful.Hsl(h, math.Min(1, s+0.12), math.Min(0.90, l+0.22))
+}
+
 // ExecIndicatorHighlight is ExecIndicator for a row in the selected family:
-// the same state color, bold. Highlights the status character only — never
-// the id, title or row.
+// brighter ink and an underline on the status character only — never the id,
+// title or row. Bold on the same color was invisible, which is why family
+// lighting looked broken.
 func ExecIndicatorHighlight(state int) string {
 	switch state {
 	case 0:

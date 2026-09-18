@@ -191,8 +191,8 @@ func TestExecColorsUseEverySwatch(t *testing.T) {
 	}
 }
 
-// TestExecIndicatorHighlight pins ask 11's "glyph only" highlight: same color,
-// same one-cell width, visibly different bytes, and rebaked on theme switch.
+// TestExecIndicatorHighlight pins ask 11's "glyph only" highlight: one-cell
+// width, visibly different bytes (brighter + underline), rebaked on theme switch.
 func TestExecIndicatorHighlight(t *testing.T) {
 	t.Cleanup(func() { SetTheme(ThemeDark) })
 	for _, tc := range execStates {

@@ -2,9 +2,9 @@
 
 ## This fork
 
-This is the `mg` we actually run: [`atacolak/mardi-gras`](https://github.com/atacolak/mardi-gras) on `main`. Upstream Mardi Gras is a Beads parade. This fork is an operator work cockpit — same `br` / `.beads` data, rebuilt around how the work actually sits: parent-child trees, six semantic execution states, and a mouse that can reach the beads.
+This is the `mg` we actually run: [`atacolak/mardi-gras`](https://github.com/atacolak/mardi-gras) on `main`. Upstream Mardi Gras is a Beads parade aimed at `bd`. This fork is an operator work cockpit: `br` is first-class, the tree stays a tree, and the mouse can reach the beads.
 
-The difference is easiest to see. Upstream still dumps the board into carnival buckets (Rolling / Lined Up / Past the Stand) with a faded, hard-to-scan list. Here the tree stays a tree: children live under their epic, blocked and deferred rows stay with their parent, closed epics tuck into a Closed section, and the selected family's status glyphs light up. The purple divider is drag-resizable. Bead IDs in the body and in DEPENDENCIES are clickable. Ctrl (or Ctrl-click) opens a gold preview you can scroll; a second Ctrl nests another preview on top, and the wheel stays on the overlay you pointed at.
+The difference is easiest to see. Upstream still dumps the board into carnival buckets (Rolling / Lined Up / Past the Stand) with a faded, hard-to-scan list. Here children live under their epic, blocked and deferred rows stay with their parent, closed epics tuck into a Closed section, and the selected family's status glyphs actually light (brighter + underline — bold-on-the-same-color was invisible). The top of the screen is only the bead necklace; the old `⚜ MARDI GRAS ⚜` tally / progress line is gone. When a bead changes, that necklace rings for about 600ms. The purple divider is drag-resizable and keeps its left/right percentage when the terminal zooms. Previews are ours: we keep moving them — scrollable gold overlays, a nest of two, click the first to pop the second, a tighter right gap so the box sits balanced.
 
 ```bash
 git clone https://github.com/atacolak/mardi-gras.git
@@ -32,11 +32,19 @@ The live cockpit, a preview, and a nested preview:
 
 **A parent-child forest.** The parade follows parent-child edges, not dotted-ID paint. Nested rows show compact relative IDs (`.7` under `mard-nob`) when the prefix is redundant. `E` scopes the view to an owned epic subtree. Blocked and deferred children render under their parent. Closed epics (and their families) live in a Closed section, collapsed by default; click the header `╭─` to open it.
 
-**Parade chrome we actually want.** No disclosure triangles. Click the left gutter to collapse a parent without selecting it; double-click a parent to collapse/expand and select it. `S` cycles sibling sort (attention, priority, chronological). The selected epic family's glyphs highlight — glyph only, no positional fade. Priority badges right-align to the divider, with nested rows inset by the same indent. The purple middle divider is click-drag resizable for the session. Exec colors follow a six-swatch palette. The old parade next-blocker hint is gone. Done titles are shaded; the Closed box is steel. An epic with children shows that count as a superscript on its status glyph (`◐²`) — the same direct-child total as the detail `Progress:` line.
+**Sibling sort is a first-class mode, not a hidden key.** `S` cycles three orderings that apply inside every sibling group, roots included:
 
-**A mouse that reaches the beads.** Click a row to select it and focus the pane under the pointer. Wheel scrolls that pane. Bead IDs in markdown bodies are clickable, including one sitting against a sentence period (`mard-nob.`); DEPENDENCIES IDs are gold-underlined and clickable too (closed beads link if they're loaded). Ctrl or Ctrl-click opens a scrollable gold preview (stack of two). Wheel on a preview scrolls that preview; leftover ticks at its edge pass to the preview that opened it, then the parent bead. Click the first preview's visible body to dismiss the nested one; click the parent body to close the stack. Wheel in the gap around the overlays scrolls the parent. The header necklace rings when a bead changes.
+- **attention** (default) — Operator Attention, blocked, working, ready, deferred, done; then priority; then id
+- **priority** — P0 first, then id
+- **chronological** — bead-id order, the stable proxy for create time
 
-**Cockpit plumbing.** Collapse state survives rebuilds. An actors pane shows who is live and what they own. The footer reports the real Beads CLI (`br`). Hover-scroll and pane focus are first-class.
+**Parade chrome we actually want.** No disclosure triangles. Click the left gutter to collapse a parent without selecting it; double-click a parent to collapse/expand and select it. The selected epic family's glyphs light — brighter ink and an underline on the status character only, no positional fade. Priority badges right-align to the divider, with nested rows inset by the same indent. The purple middle divider is click-drag resizable and remembers the split as a percentage, so a 70/30 zoom-in stays 70/30 when you zoom out. Exec colors follow a six-swatch palette. The old parade next-blocker hint is gone. Done titles are shaded; the Closed box is steel. An epic with children shows that count as a superscript on its status glyph (`◐²`) — the same direct-child total as the detail `Progress:` line. The header is the bead necklace alone; when work changes it spins for ~600ms (16 frames × 40ms).
+
+**A mouse that reaches the beads — and previews we keep moving.** Click a row to select it and focus the pane under the pointer. Wheel scrolls that pane. Bead IDs in markdown bodies are clickable, including one sitting against a sentence period (`mard-nob.`); DEPENDENCIES IDs are gold-underlined and clickable too (closed beads link if they're loaded). Ctrl or Ctrl-click opens a scrollable gold preview (stack of two). Wheel on a preview scrolls that preview; leftover ticks at its edge pass to the preview that opened it, then the parent bead. Click the first preview's visible body to dismiss the nested one; click the parent body to close the stack. Wheel in the gap around the overlays scrolls the parent. The overlay is inset equally left and right (three extra columns of the old right gap went into the box).
+
+**`br` is first-class.** This fork prefers `br list --json` (schema 17, `br` 0.5.x) and grafts graph edges back from `.beads/issues.jsonl` so parent-child and blockers still work. `bd` still runs if that is what you have. Upstream `mg` is `bd`-shaped; we do not treat `bd` as the operator path.
+
+**Cockpit plumbing, with honest WIP.** Collapse state survives rebuilds. Hover-scroll and pane focus are first-class. The footer reports the real Beads CLI (`br`). The actors pane (`o`) is still WIP — a read-only sketch of who is live and what they own. Do not build process around it yet. Gas City invariants are on the way out; we are going to remove them soon rather than keep a second orchestrator personality in the cockpit.
 
 The original Mardi Gras README continues below for install options, the sixty-second tour, and upstream context.
 
@@ -114,7 +122,7 @@ cd mardi-gras
 make build      # → ./mg
 ```
 
-You need a Beads project. With `bd` on your `PATH`, mg talks to it directly. Without it, mg falls back to reading `.beads/issues.jsonl`.
+You need a Beads project. This fork talks to `br` first. `bd` still works if that is the binary on `PATH`. Without either, mg falls back to reading `.beads/issues.jsonl`. Homebrew / `go install` of upstream still get `bd`-first `mg` — clone this repo for the cockpit.
 
 ## Sixty seconds in
 
@@ -127,7 +135,8 @@ mg
 | --- | --- |
 | `j` / `k` | Move along the route |
 | `enter` | Open the detail pane for the selected issue |
-| `o` | Actor society pane: who is live, what they own, what they're doing (needs the `actor` CLI) |
+| `o` | Actor pane (WIP, read-only sketch — do not depend on it yet) |
+| `S` | Cycle sibling sort: attention → priority → chronological |
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
 | `f` | Focus mode: your work and the top priorities, nothing else |
 | `E` | Scope to selected epic subtree |

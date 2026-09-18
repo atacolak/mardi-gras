@@ -13,7 +13,7 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 )
 
-// Header renders the top title bar with bead string and counts.
+// Header renders the bead necklace at the top of the screen.
 type Header struct {
 	Width            int
 	Groups           map[data.SemanticState][]data.Issue
@@ -25,104 +25,10 @@ type Header struct {
 	CurrentIssueID   string // active issue from bd show --current
 }
 
-// View renders the header.
+// View renders the header: just the bead necklace. The old title / tally /
+// progress line is gone — the parade already shows the work.
 func (h Header) View() string {
-	// One count per semantic state, in StateOrder — the same order the parade
-	// sections and the tmux widget use, so a four-bucket header cannot be
-	// written and the three surfaces cannot drift apart.
-	var countsB strings.Builder
-	total := 0
-	for _, state := range data.StateOrder() {
-		count := len(h.Groups[state])
-		total += count
-		countsB.WriteString(" ")
-		countsB.WriteString(lipgloss.NewStyle().
-			Foreground(ui.ExecColor(int(state))).
-			Render(fmt.Sprintf("%d%s", count, ui.ExecSymbol(int(state)))))
-	}
-
-	titleStr := fmt.Sprintf("%s MARDI GRAS %s", ui.FleurDeLis, ui.FleurDeLis)
-	title := ui.HeaderStyle.Render(ui.ApplyMardiGrasGradient(titleStr))
-
-	counts := countsB.String()
-
-	agentInfo := ""
-	if h.AgentCount > 0 {
-		agentStyle := lipgloss.NewStyle().Foreground(ui.StatusAgent).Bold(true)
-		agentInfo = agentStyle.Render(fmt.Sprintf(" %s%d", ui.SymAgent, h.AgentCount))
-	}
-
-	gasTownInfo := ""
-	if h.GasTownAvailable && h.TownStatus != nil {
-		working := h.TownStatus.WorkingCount()
-		totalAgents := len(h.TownStatus.Agents)
-		gtStyle := lipgloss.NewStyle().Foreground(ui.BrightPurple).Italic(true)
-
-		parts := []string{fmt.Sprintf("gt:%d/%d", working, totalAgents)}
-
-		if rigCount := len(h.TownStatus.Rigs); rigCount > 1 {
-			parts = append(parts, fmt.Sprintf("%d rigs", rigCount))
-		}
-
-		if mail := h.TownStatus.UnreadMail(); mail > 0 {
-			parts = append(parts, fmt.Sprintf("%s%d", ui.SymMail, mail))
-		}
-
-		activeConvoys := 0
-		for _, c := range h.TownStatus.Convoys {
-			if c.Status == "open" {
-				activeConvoys++
-			}
-		}
-		if activeConvoys > 0 {
-			parts = append(parts, fmt.Sprintf("%s%d", ui.SymConvoy, activeConvoys))
-		}
-
-		if mq := h.TownStatus.MQStatus(); mq != nil && (mq.Pending > 0 || mq.InFlight > 0) {
-			mqLabel := fmt.Sprintf("MQ:%d", mq.Pending+mq.InFlight)
-			if mq.Health == "stale" || mq.State == "blocked" {
-				mqLabel = lipgloss.NewStyle().Foreground(ui.StatusStalled).Bold(true).Render(mqLabel)
-			} else {
-				mqLabel = gtStyle.Render(mqLabel)
-			}
-			parts = append(parts, mqLabel)
-		}
-
-		gasTownInfo = gtStyle.Render(" " + strings.Join(parts, " "))
-	}
-
-	currentInfo := ""
-	if h.CurrentIssueID != "" {
-		currentStyle := lipgloss.NewStyle().Foreground(ui.BrightGold).Italic(true)
-		currentInfo = currentStyle.Render(fmt.Sprintf(" %s %s", ui.SymWorking, h.CurrentIssueID))
-	}
-
-	problemInfo := ""
-	if h.ProblemCount > 0 {
-		warnStyle := lipgloss.NewStyle().Foreground(ui.StatusStalled).Bold(true)
-		problemInfo = warnStyle.Render(fmt.Sprintf(" %s%d", ui.SymWarning, h.ProblemCount))
-	}
-
-	bar := h.renderProgressBar(total, len(h.Groups[data.StateDone]), 20)
-
-	titleLine := lipgloss.JoinHorizontal(
-		lipgloss.Center,
-		title,
-		counts,
-		currentInfo,
-		agentInfo,
-		gasTownInfo,
-		problemInfo,
-		"  ",
-		bar,
-	)
-
-	// Pad to full width
-	titleLine = lipgloss.NewStyle().Width(h.Width).Render(titleLine)
-
-	beadStr := h.renderBeadString()
-
-	return lipgloss.JoinVertical(lipgloss.Left, titleLine, beadStr)
+	return h.renderBeadString()
 }
 
 // renderBeadString creates the decorative bead string separator with shimmer animation.

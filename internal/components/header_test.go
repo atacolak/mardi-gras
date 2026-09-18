@@ -1,19 +1,17 @@
 package components
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 )
 
-func TestHeaderCountsSixSemanticStates(t *testing.T) {
+func TestHeaderIsBeadLineOnly(t *testing.T) {
 	issues, _, err := data.LoadIssues(filepath.Join("..", "..", "testdata", "sample.jsonl"))
 	if err != nil {
 		t.Fatalf("LoadIssues: %v", err)
@@ -23,69 +21,29 @@ func TestHeaderCountsSixSemanticStates(t *testing.T) {
 		t.Fatalf("sample fixture has unmapped issues: %v", unmapped)
 	}
 
-	h := Header{Width: 200, Groups: groups}
+	h := Header{
+		Width:            200,
+		Groups:           groups,
+		GasTownAvailable: true,
+		TownStatus: &gastown.TownStatus{
+			Rigs: []gastown.RigStatus{{Name: "rig_alpha"}, {Name: "rig_beta"}},
+		},
+		AgentCount:     3,
+		ProblemCount:   2,
+		CurrentIssueID: "mard-wte",
+	}
 	out := ansi.Strip(h.View())
-
-	// Six counts in StateOrder. A four-count header cannot satisfy this, and
-	// can no longer be written: the field is keyed by semantic state.
-	if !strings.Contains(out, "12● 3◐ 3⊘ 0⏸ 0○ 3✓") {
-		t.Fatalf("header should show six ordered counts, got:\n%s", out)
+	if strings.Contains(out, "MARDI GRAS") {
+		t.Fatal("title line must be gone")
 	}
-}
-
-// TestHeaderCountsUseExecColors pins ask 10's "header tally uses the same Exec*
-// colors": each count is rendered in its own state color, not one flat ink.
-func TestHeaderCountsUseExecColors(t *testing.T) {
-	groups := map[data.SemanticState][]data.Issue{
-		data.StateReady:          {{ID: "r1"}},
-		data.StateWorking:        {{ID: "w1"}},
-		data.StateWaitingBlocked: {{ID: "b1"}},
-		data.StateDeferred:       {{ID: "d1"}},
-		data.StateOperatorReview: {{ID: "a1"}},
-		data.StateDone:           {{ID: "z1"}},
+	if strings.Contains(out, "12●") || strings.Contains(out, "✓70%") || strings.Contains(out, "3 rigs") {
+		t.Fatalf("tally/progress/rig chrome must be gone, got:\n%s", out)
 	}
-	out := Header{Width: 200, Groups: groups}.View()
-	for _, state := range data.StateOrder() {
-		want := lipgloss.NewStyle().
-			Foreground(ui.ExecColor(int(state))).
-			Render(fmt.Sprintf("1%s", ui.ExecSymbol(int(state))))
-		if !strings.Contains(out, want) {
-			t.Errorf("header tally missing %s count in its Exec color", state.Label())
-		}
+	if strings.Count(out, "\n") != 0 {
+		t.Fatalf("header should be a single bead line, got %d newlines:\n%s", strings.Count(out, "\n"), out)
 	}
-}
-
-func TestHeaderRigCountMultiRig(t *testing.T) {
-	h := Header{
-		Width:            120,
-		GasTownAvailable: true,
-		TownStatus: &gastown.TownStatus{
-			Rigs: []gastown.RigStatus{
-				{Name: "rig_alpha"},
-				{Name: "rig_beta"},
-				{Name: "rig_gamma"},
-			},
-		},
-	}
-	output := h.View()
-	if !strings.Contains(output, "3 rigs") {
-		t.Fatalf("expected header to contain '3 rigs' for multi-rig, got: %s", output)
-	}
-}
-
-func TestHeaderRigCountSingleRig(t *testing.T) {
-	h := Header{
-		Width:            120,
-		GasTownAvailable: true,
-		TownStatus: &gastown.TownStatus{
-			Rigs: []gastown.RigStatus{
-				{Name: "rig_alpha"},
-			},
-		},
-	}
-	output := h.View()
-	if strings.Contains(output, "rigs") {
-		t.Fatalf("expected header to NOT show rig count for single rig, got: %s", output)
+	if !strings.Contains(out, ui.BeadRound) {
+		t.Fatal("header must still be the bead necklace")
 	}
 }
 

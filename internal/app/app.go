@@ -19,6 +19,7 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 	"github.com/matt-wright86/mardi-gras/internal/views"
 	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,11 +54,13 @@ const (
 )
 
 const (
-	headerHeight = 2
+	headerHeight = 1
 	footerHeight = 2
 	// minPaneWidth is the floor each body pane keeps when the operator drags the
 	// divider, so neither pane can be dragged out of existence (ask 12).
 	minPaneWidth = 30
+	// defaultParadeRatio is the undragged split: parade 2/5, detail 3/5.
+	defaultParadeRatio = 2.0 / 5.0
 	// doubleClickWindow is how close two clicks on the same row must be to count
 	// as a double click. tea.MouseClickMsg carries no click count, so the model
 	// keeps the last click itself.
@@ -250,10 +253,11 @@ type Model struct {
 	// paradeSortMode survives rebuildParade; the fresh Parade copies it.
 	paradeSortMode views.SortMode
 
-	// paradeWidthOverride is the operator's dragged divider column, session-only
-	// (0 = use the computed default). No config file: this wave persists nothing
-	// to disk, exactly like collapse state.
+	// paradeWidthOverride is the live drag column (0 = not following the pointer).
+	// paradeWidthRatio is the session split, so a zoom/resize keeps 70/30 as 70/30
+	// instead of pinning the old absolute column. 0 = default 2/5.
 	paradeWidthOverride int
+	paradeWidthRatio    float64
 	draggingDivider     bool
 
 	lastClickAt  time.Time
@@ -1250,6 +1254,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.draggingDivider = false
+		// Drop the absolute drag column so the stored ratio re-applies.
+		m.paradeWidthOverride = 0
 		m.layout()
 		m.ready = true
 		return m, nil
@@ -2083,7 +2089,14 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.paradeWidthOverride = mouse.X
-		m.layout()
+		if m.width > 0 {
+			clamped := min(max(mouse.X, minPaneWidth), m.width-minPaneWidth)
+			m.paradeWidthRatio = float64(clamped) / float64(m.width)
+		}
+		// Drag is width-only. Full layout() rebuilds issue maps, resets the
+		// detail viewport, and restamps previews — that is what made the
+		// purple bar feel a frame behind the pointer.
+		m.layoutPanes()
 		return m, nil
 	}
 
@@ -3715,20 +3728,40 @@ func (m Model) bodyBounds() (top, height, paradeWidth int) {
 	if m.layoutPreset == LayoutWide {
 		return top, height, m.width
 	}
-	paradeWidth = m.width * 2 / 5
-	if paradeWidth < minPaneWidth {
-		paradeWidth = minPaneWidth
+	ratio := defaultParadeRatio
+	if m.paradeWidthRatio > 0 {
+		ratio = m.paradeWidthRatio
 	}
+	paradeWidth = int(math.Round(float64(m.width) * ratio))
 	if m.paradeWidthOverride > 0 && m.width >= 2*minPaneWidth {
-		paradeWidth = min(max(m.paradeWidthOverride, minPaneWidth), m.width-minPaneWidth)
+		paradeWidth = m.paradeWidthOverride
+	}
+	if m.width >= 2*minPaneWidth {
+		paradeWidth = min(max(paradeWidth, minPaneWidth), m.width-minPaneWidth)
+	} else if paradeWidth < minPaneWidth {
+		paradeWidth = minPaneWidth
 	}
 	return top, height, paradeWidth
 }
 
-// layout recalculates dimensions for all sub-components.
-func (m *Model) layout() {
+// layoutPanes applies the current split to every body pane without rebuilding
+// issue maps or resetting viewports. Used while the divider is following the
+// pointer so a fast drag does not restamp the whole cockpit every motion.
+func (m *Model) layoutPanes() {
 	_, bodyH, paradeW := m.bodyBounds()
 	detailW := m.width - paradeW
+	m.parade.SetSize(paradeW, bodyH)
+	m.detail.SetSize(detailW, bodyH)
+	m.gasTown.SetSize(detailW, bodyH)
+	m.actors.SetSize(detailW, bodyH)
+	m.problems.SetSize(detailW, bodyH)
+	m.doctor.SetSize(detailW, bodyH)
+	m.codexTranscript.SetSize(detailW, bodyH)
+}
+
+// layout recalculates dimensions for all sub-components.
+func (m *Model) layout() {
+	m.layoutPanes()
 
 	// Geometry and the non-count header fields are layout()'s business; the
 	// per-state tallies are NOT. They come from rebuildParade's single
@@ -3737,14 +3770,6 @@ func (m *Model) layout() {
 	// keeps the header in agreement with the rows on screen. Re-tallying the
 	// full board here would print unscoped counts beside a lit SCOPE chip.
 	m.refreshHeader(m.header.Groups)
-
-	m.parade.SetSize(paradeW, bodyH)
-	m.detail.SetSize(detailW, bodyH)
-	m.gasTown.SetSize(detailW, bodyH)
-	m.actors.SetSize(detailW, bodyH)
-	m.problems.SetSize(detailW, bodyH)
-	m.doctor.SetSize(detailW, bodyH)
-	m.codexTranscript.SetSize(detailW, bodyH)
 	m.detail.AllIssues = m.issues
 	detailIssueMap := data.BuildIssueMap(m.issues)
 	m.detail.IssueMap = detailIssueMap
