@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -144,6 +145,22 @@ func (m Model) previewGeom(stackIndex int) (x, y, innerW, innerH int) {
 func (m Model) previewInnerSize(stackIndex int) (w, h int) {
 	_, _, w, h = m.previewGeom(stackIndex)
 	return w, h
+}
+
+func scrollViewport(vp *viewport.Model, down bool) bool {
+	before := vp.YOffset()
+	if down {
+		if vp.AtBottom() {
+			return false
+		}
+		vp.ScrollDown(1)
+	} else {
+		if vp.AtTop() {
+			return false
+		}
+		vp.ScrollUp(1)
+	}
+	return vp.YOffset() != before
 }
 
 func (m *Model) scrollTopPreview(n int) bool {

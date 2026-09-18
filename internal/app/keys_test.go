@@ -1780,3 +1780,54 @@ func TestPreviewKeysScrollPreview(t *testing.T) {
 		t.Fatalf("k did not scroll preview back, offset=%d", m.previews[0].detail.Viewport.YOffset())
 	}
 }
+
+func TestPreviewWheelOutsideScrollsParent(t *testing.T) {
+	m := setupMentionModel(t)
+	m.issues[0].Description = strings.Repeat("parent line for scroll\n", 80)
+	m.issues[1].Description = strings.Repeat("preview line for scroll\n", 80)
+	m.detail.IssueMap = data.BuildIssueMap(m.issues)
+	m.detail.SetIssue(&m.issues[0])
+	m.pushPreview(&m.issues[1])
+	if m.detail.Viewport.TotalLineCount() <= m.detail.Viewport.Height() {
+		t.Fatalf("parent is not scrollable: lines=%d height=%d",
+			m.detail.Viewport.TotalLineCount(), m.detail.Viewport.Height())
+	}
+	parentOff := m.detail.Viewport.YOffset()
+	prevOff := m.previews[0].detail.Viewport.YOffset()
+	xInset, _, _, _ := m.previewGeom(0)
+	if xInset < 1 {
+		t.Fatal("precondition: no gap left of the overlay")
+	}
+	// One cell inside the detail pane, left of the gold box.
+	x := m.parade.Width + 1
+	y := headerHeight + 1
+	model, _ := m.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.previews[0].detail.Viewport.YOffset() != prevOff {
+		t.Fatalf("gap wheel moved preview %d → %d", prevOff, m.previews[0].detail.Viewport.YOffset())
+	}
+	if m.detail.Viewport.YOffset() <= parentOff {
+		t.Fatalf("gap wheel parent offset %d → %d, want a downward scroll", parentOff, m.detail.Viewport.YOffset())
+	}
+}
+
+func TestPreviewWheelAtEdgePassesToParent(t *testing.T) {
+	m := setupMentionModel(t)
+	m.issues[0].Description = strings.Repeat("parent line for scroll\n", 80)
+	m.issues[1].Description = "short preview"
+	m.detail.IssueMap = data.BuildIssueMap(m.issues)
+	m.detail.SetIssue(&m.issues[0])
+	m.pushPreview(&m.issues[1])
+	if !m.previews[0].detail.Viewport.AtBottom() {
+		t.Fatal("precondition: short preview should already be at its scroll edge")
+	}
+	parentOff := m.detail.Viewport.YOffset()
+	xInset, yInset, _, _ := m.previewGeom(0)
+	x := m.parade.Width + xInset + 2
+	y := headerHeight + yInset + 2
+	model, _ := m.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.detail.Viewport.YOffset() <= parentOff {
+		t.Fatalf("edge wheel parent offset %d → %d, want pass-through", parentOff, m.detail.Viewport.YOffset())
+	}
+}

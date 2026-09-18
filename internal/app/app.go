@@ -2201,26 +2201,22 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.syncSelection()
 			return m, nil
 		}
+		down := mouse.Button == tea.MouseWheelDown
+		up := mouse.Button == tea.MouseWheelUp
+		if !down && !up {
+			return m, nil
+		}
 		dx := x - paradeWidth
+		// Pointer inside the gold box scrolls the preview. Outside it — the
+		// gap around the overlay — scrolls the parent bead. At the preview's
+		// own scroll edge, leftover wheel ticks pass through to the parent.
 		if hit := m.hitPreview(dx, bodyRow); hit.kind == previewHitContent && hit.detail != nil {
-			switch mouse.Button {
-			case tea.MouseWheelUp:
-				hit.detail.Viewport.ScrollUp(1)
-			case tea.MouseWheelDown:
-				hit.detail.Viewport.ScrollDown(1)
-			default:
+			moved := scrollViewport(&hit.detail.Viewport, down)
+			if moved {
 				return m, nil
 			}
-			return m, nil
 		}
-		switch mouse.Button {
-		case tea.MouseWheelUp:
-			m.detail.Viewport.ScrollUp(1)
-		case tea.MouseWheelDown:
-			m.detail.Viewport.ScrollDown(1)
-		default:
-			return m, nil
-		}
+		scrollViewport(&m.detail.Viewport, down)
 	}
 	return m, nil
 }
