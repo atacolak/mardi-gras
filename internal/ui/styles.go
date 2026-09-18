@@ -39,14 +39,14 @@ var (
 	ExecOperatorReviewStr string
 	ExecDoneStr           string
 
-	// Pre-rendered highlighted indicators (see ExecIndicatorHighlight): a
-	// lit-up family glyph — brighter ink plus underline, still one cell.
-	ExecReadyHiStr          string
-	ExecWorkingHiStr        string
-	ExecWaitingHiStr        string
-	ExecDeferredHiStr       string
-	ExecOperatorReviewHiStr string
-	ExecDoneHiStr           string
+	// Pre-rendered dimmed indicators (see ExecIndicatorDim): everyone
+	// outside the selected family recedes. Family glyphs stay full color.
+	ExecReadyDimStr          string
+	ExecWorkingDimStr        string
+	ExecWaitingDimStr        string
+	ExecDeferredDimStr       string
+	ExecOperatorReviewDimStr string
+	ExecDoneDimStr           string
 
 	// Issue items in the list
 	ItemNormal   lipgloss.Style
@@ -223,12 +223,12 @@ func rebuildStyles() {
 	ExecOperatorReviewStr = lipgloss.NewStyle().Foreground(ExecOperatorReview).Render(SymExecOperatorReview)
 	ExecDoneStr = lipgloss.NewStyle().Foreground(ExecDone).Render(SymExecDone)
 
-	ExecReadyHiStr = execHighlight(ExecReady, SymExecReady)
-	ExecWorkingHiStr = execHighlight(ExecWorking, SymExecWorking)
-	ExecWaitingHiStr = execHighlight(ExecWaiting, SymExecWaiting)
-	ExecDeferredHiStr = execHighlight(ExecDeferred, SymExecDeferred)
-	ExecOperatorReviewHiStr = execHighlight(ExecOperatorReview, SymExecOperatorReview)
-	ExecDoneHiStr = execHighlight(ExecDone, SymExecDone)
+	ExecReadyDimStr = execDim(ExecReady, SymExecReady)
+	ExecWorkingDimStr = execDim(ExecWorking, SymExecWorking)
+	ExecWaitingDimStr = execDim(ExecWaiting, SymExecWaiting)
+	ExecDeferredDimStr = execDim(ExecDeferred, SymExecDeferred)
+	ExecOperatorReviewDimStr = execDim(ExecOperatorReview, SymExecOperatorReview)
+	ExecDoneDimStr = execDim(ExecDone, SymExecDone)
 
 	// Contract-violation fallback
 	execSectionFallback = lipgloss.NewStyle().Bold(true).Foreground(Muted)
@@ -574,41 +574,39 @@ func ExecIndicator(state int) string {
 
 // execHighlight lights a status glyph so the selected family is actually
 // visible. Bold-on-the-same-color is a no-op in most terminals.
-func execHighlight(c color.Color, glyph string) string {
-	return lipgloss.NewStyle().
-		Foreground(lightenExec(c)).
-		Bold(true).
-		Underline(true).
-		Render(glyph)
+func execDim(c color.Color, glyph string) string {
+	return lipgloss.NewStyle().Foreground(darkenExec(c)).Render(glyph)
 }
 
-func lightenExec(c color.Color) color.Color {
+func darkenExec(c color.Color) color.Color {
 	col, ok := colorful.MakeColor(c)
 	if !ok {
-		return BrightGold
+		return Muted
 	}
 	h, s, l := col.Hsl()
-	return colorful.Hsl(h, math.Min(1, s+0.12), math.Min(0.90, l+0.22))
+	return colorful.Hsl(h, math.Max(0, s-0.08), math.Max(0.18, l-0.18))
 }
 
-// ExecIndicatorHighlight is ExecIndicator for a row in the selected family:
-// brighter ink and an underline on the status character only — never the id,
-// title or row. Bold on the same color was invisible, which is why family
-// lighting looked broken.
-func ExecIndicatorHighlight(state int) string {
+func ExecColorDim(state int) color.Color {
+	return darkenExec(ExecColor(state))
+}
+
+// ExecIndicatorDim is ExecIndicator for a row outside the selected family.
+// The family itself uses ExecIndicator — full color, no extra chrome.
+func ExecIndicatorDim(state int) string {
 	switch state {
 	case 0:
-		return ExecReadyHiStr
+		return ExecReadyDimStr
 	case 1:
-		return ExecWorkingHiStr
+		return ExecWorkingDimStr
 	case 2:
-		return ExecWaitingHiStr
+		return ExecWaitingDimStr
 	case 3:
-		return ExecDeferredHiStr
+		return ExecDeferredDimStr
 	case 4:
-		return ExecOperatorReviewHiStr
+		return ExecOperatorReviewDimStr
 	case 5:
-		return ExecDoneHiStr
+		return ExecDoneDimStr
 	default:
 		return execIndicatorFallback
 	}

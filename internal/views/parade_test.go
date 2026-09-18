@@ -958,8 +958,11 @@ func TestParadeFamilyGlyphHighlight(t *testing.T) {
 	}
 
 	out := p.View()
-	if got := strings.Count(out, ui.ExecIndicatorHighlight(int(data.StateWorking))); got != 2 {
-		t.Errorf("highlighted Working glyphs = %d, want 2 (a.2 and a.1.1; b.1 is the other family)", got)
+	if got := strings.Count(out, ui.ExecIndicator(int(data.StateWorking))); got != 2 {
+		t.Errorf("full-color Working glyphs = %d, want 2 (a.2 and a.1.1; b.1 recedes)", got)
+	}
+	if got := strings.Count(out, ui.ExecIndicatorDim(int(data.StateWorking))); got != 1 {
+		t.Errorf("receded Working glyphs = %d, want 1 (b.1)", got)
 	}
 
 	for i, item := range p.Items {

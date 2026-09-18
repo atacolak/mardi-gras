@@ -191,23 +191,23 @@ func TestExecColorsUseEverySwatch(t *testing.T) {
 	}
 }
 
-// TestExecIndicatorHighlight pins ask 11's "glyph only" highlight: one-cell
-// width, visibly different bytes (brighter + underline), rebaked on theme switch.
-func TestExecIndicatorHighlight(t *testing.T) {
+// TestExecIndicatorDim pins the quiet family cue: one-cell width, quieter
+// ink than the full-color family glyph, rebaked on theme switch.
+func TestExecIndicatorDim(t *testing.T) {
 	t.Cleanup(func() { SetTheme(ThemeDark) })
 	for _, tc := range execStates {
-		plain, hi := ExecIndicator(tc.state), ExecIndicatorHighlight(tc.state)
-		if plain == hi {
-			t.Errorf("ExecIndicatorHighlight(%d) == ExecIndicator(%d); the highlight is invisible", tc.state, tc.state)
+		plain, dim := ExecIndicator(tc.state), ExecIndicatorDim(tc.state)
+		if plain == dim {
+			t.Errorf("ExecIndicatorDim(%d) == ExecIndicator(%d); the recede is invisible", tc.state, tc.state)
 		}
-		if ansi.StringWidth(hi) != 1 {
-			t.Errorf("ExecIndicatorHighlight(%d) width = %d, want 1", tc.state, ansi.StringWidth(hi))
+		if ansi.StringWidth(dim) != 1 {
+			t.Errorf("ExecIndicatorDim(%d) width = %d, want 1", tc.state, ansi.StringWidth(dim))
 		}
 	}
 	SetTheme(ThemeDark)
-	dark := ExecIndicatorHighlight(0)
+	dark := ExecIndicatorDim(0)
 	SetTheme(ThemeLight)
-	if ExecIndicatorHighlight(0) == dark {
-		t.Error("ExecIndicatorHighlight was not rebaked by SetTheme")
+	if ExecIndicatorDim(0) == dark {
+		t.Error("ExecIndicatorDim was not rebaked by SetTheme")
 	}
 }

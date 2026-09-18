@@ -914,23 +914,25 @@ func (p *Parade) loadedParentID(iss *data.Issue) string {
 	return parentID
 }
 
-// renderIssue renders one issue row. siblingGlyph highlights the status glyph
-// because the row is in the selected epic's family — nothing else on the row
-// changes, and no row is ever faded by distance.
+// renderIssue renders one issue row. siblingGlyph keeps the status glyph at
+// full color because the row is in the selected epic's family. Other glyphs
+// recede. Nothing else on the row changes, and no row is faded by distance.
 func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) string {
 	issue := item.Issue
 
-	// The row's glyph and ID color come from the derived semantic state.
+	// Family glyphs stay at full exec color. Everyone else recedes — the old
+	// ±6 faint, on the status character only.
 	symStr := ui.ExecIndicator(int(item.State))
-	if siblingGlyph {
-		symStr = ui.ExecIndicatorHighlight(int(item.State))
+	if !siblingGlyph {
+		symStr = ui.ExecIndicatorDim(int(item.State))
 	}
 	if item.ChildCount > 0 {
 		count := ui.Superscript(item.ChildCount)
-		countStyle := lipgloss.NewStyle().Foreground(ui.ExecColor(int(item.State)))
-		if siblingGlyph {
-			countStyle = countStyle.Bold(true)
+		countColor := ui.ExecColor(int(item.State))
+		if !siblingGlyph {
+			countColor = ui.ExecColorDim(int(item.State))
 		}
+		countStyle := lipgloss.NewStyle().Foreground(countColor)
 		symStr += countStyle.Render(count)
 	}
 	var prioStr string
