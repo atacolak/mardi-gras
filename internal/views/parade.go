@@ -111,6 +111,9 @@ type Parade struct {
 	Selected        map[string]bool  // multi-selected issue IDs
 	MatchHighlights map[string][]int // issueID -> matched char indices in title (fuzzy search)
 	Collapsed       map[string]bool
+	// ClosedCollapsed hides every Closed-section epic (and its children).
+	// Toggle by clicking the header's ╭─ corner — not the c key.
+	ClosedCollapsed bool
 }
 
 func NewParade(issues []data.Issue, width, height int, blockingTypes map[string]bool) Parade {
@@ -244,6 +247,9 @@ func (p *Parade) appendClosedSection(epics []data.Issue) {
 	sort.Slice(epics, func(i, j int) bool { return less(&epics[i], &epics[j]) })
 	sec := closedSection(len(epics))
 	p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
+	if p.ClosedCollapsed {
+		return
+	}
 	for _, epic := range epics {
 		family := append([]data.Issue{epic}, issueValues(data.Descendants(epic.ID, p.issueMap))...)
 		p.appendForestRows(family, sec, data.StateDone)
@@ -466,6 +472,23 @@ func (p *Parade) ToggleNode(issueID string) {
 	p.restoreSelection(selectedID)
 }
 
+// ToggleClosedSection collapses or expands the Closed list. The header stays
+// so the ╭─ hit target remains; items and the footer hide while collapsed.
+func (p *Parade) ToggleClosedSection() {
+	p.ClosedCollapsed = !p.ClosedCollapsed
+	selectedID := ""
+	if p.SelectedIssue != nil {
+		selectedID = p.SelectedIssue.ID
+	}
+	p.rebuildItems()
+	if selectedID != "" {
+		if iss := p.IssueByID(selectedID); iss != nil {
+			p.SelectedIssue = iss
+		}
+		p.PinCursorToSelected()
+	}
+}
+
 func (p *Parade) restoreSelection(selectedID string) {
 	for selectedID != "" {
 		for i, item := range p.Items {
@@ -623,6 +646,21 @@ func (p *Parade) GutterHit(row, x int) (string, bool) {
 	return item.Issue.ID, true
 }
 
+// ClosedHeaderHit is the ╭─ corner of the Closed section header. Clicking it
+// collapses or expands the list; it does not select anything. The title text
+// is not a hit — only the left box edge.
+func (p *Parade) ClosedHeaderHit(row, x int) bool {
+	if row < 0 || row >= p.Height || x < 0 || x >= 3 {
+		return false
+	}
+	index := p.ScrollOffset + row
+	if index < 0 || index >= len(p.Items) {
+		return false
+	}
+	item := p.Items[index]
+	return item.IsHeader && item.Section != nil && item.Section.Title == "Closed"
+}
+
 // HasChildrenAtViewportRow reports whether a visible row is a collapsible
 // parent, so the double-click gesture can ignore leaves.
 func (p *Parade) HasChildrenAtViewportRow(row int) bool {
@@ -759,20 +797,20 @@ func (p *Parade) renderBorderTop(sec *paradeSection) string {
 	coloredTitle := sec.Style.Render(titleText)
 	titleWidth := lipgloss.Width(coloredTitle)
 	prefix := borderStyle.Render(ui.BoxTopLeft + ui.BoxHorizontal + " ")
-	suffix := borderStyle.Render(" " + ui.BoxTopRight)
+	suffix := borderStyle.Render(ui.BoxTopRight)
 	prefixW := lipgloss.Width(prefix)
 	suffixW := lipgloss.Width(suffix)
-	availableForTitle := p.Width - prefixW - suffixW - 1
+	availableForTitle := p.Width - prefixW - suffixW
 	if titleWidth > availableForTitle && availableForTitle > 0 {
 		titleText = truncate(titleText, availableForTitle)
 		coloredTitle = sec.Style.Render(titleText)
 		titleWidth = lipgloss.Width(coloredTitle)
 	}
-	fillLen := p.Width - prefixW - titleWidth - 1 - suffixW
-	if fillLen < 1 {
-		fillLen = 1
+	fillLen := p.Width - prefixW - titleWidth - suffixW
+	if fillLen < 0 {
+		fillLen = 0
 	}
-	fill := borderStyle.Render(" " + strings.Repeat(ui.BoxHorizontal, fillLen))
+	fill := borderStyle.Render(strings.Repeat(ui.BoxHorizontal, fillLen))
 	return prefix + coloredTitle + fill + suffix
 }
 
@@ -1026,7 +1064,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 			titleStyle = ui.DeferredStyle
 		}
 		if isClosed {
-			titleStyle = lipgloss.NewStyle().Foreground(ui.Muted)
+			titleStyle = ui.ClosedTitle
 		}
 		renderedTitle = titleStyle.Render(title)
 	}

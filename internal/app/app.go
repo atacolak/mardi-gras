@@ -2108,6 +2108,10 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
 		if mouse.Button == tea.MouseLeft && !right {
+			if m.parade.ClosedHeaderHit(bodyRow, x) {
+				m.parade.ToggleClosedSection()
+				return m, nil
+			}
 			// Ask 2: the cells left of the status glyph toggle collapse and do
 			// nothing else — no selection, no cursor move, selected or not.
 			if parentID, hit := m.parade.GutterHit(bodyRow, x); hit {
@@ -3704,6 +3708,7 @@ func (m *Model) rebuildParade() {
 		oldSelectedID = m.parade.SelectedIssue.ID
 	}
 	oldCollapsed := maps.Clone(m.parade.Collapsed)
+	oldClosedCollapsed := m.parade.ClosedCollapsed
 
 	paradeW := m.parade.Width
 	bodyH := m.parade.Height
@@ -3735,6 +3740,7 @@ func (m *Model) rebuildParade() {
 	m.parade = views.NewParadeWithData(filteredIssues, groups, unmapped, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
 	m.parade.MatchHighlights = highlights
 	m.parade.Collapsed = oldCollapsed
+	m.parade.ClosedCollapsed = oldClosedCollapsed
 	m.parade.SortMode = m.paradeSortMode
 	m.parade.RebuildItems()
 	found := m.restoreParadeSelection(oldSelectedID)

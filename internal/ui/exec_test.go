@@ -22,12 +22,12 @@ var execStates = []struct {
 	glyph   string
 	palette func() color.Color
 }{
-	{"ready", 0, "●", func() color.Color { return SwatchGold }},
-	{"working", 1, "◐", func() color.Color { return SwatchGreen }},
+	{"ready", 0, "●", func() color.Color { return SwatchCyan }},
+	{"working", 1, "◐", func() color.Color { return SwatchGold }},
 	{"waiting/blocked", 2, "⊘", func() color.Color { return SwatchRose }},
-	{"deferred", 3, "⏸", func() color.Color { return SwatchLavender }},
-	{"operator attention", 4, "○", func() color.Color { return SwatchCyan }},
-	{"done", 5, "✓", func() color.Color { return SwatchSteel }},
+	{"deferred", 3, "⏸", func() color.Color { return SwatchSteel }},
+	{"operator attention", 4, "○", func() color.Color { return SwatchLavender }},
+	{"done", 5, "✓", func() color.Color { return SwatchGreen }},
 }
 
 // TestExecVocabulary checks the six-state vocabulary under both palettes:

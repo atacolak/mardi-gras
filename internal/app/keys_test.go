@@ -1366,6 +1366,52 @@ func cursorIssueID(m Model) string {
 	return item.Issue.ID
 }
 
+func TestMouseClosedHeaderCornerTogglesList(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "open", Title: "Open epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "other", Title: "Other root", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask},
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = model.(Model)
+	if !m.restoreParadeSelection("other") {
+		t.Fatal("precondition: other not found")
+	}
+	m.syncSelection()
+	headerRow := -1
+	for r := 0; r < m.parade.Height; r++ {
+		idx := m.parade.ScrollOffset + r
+		if idx >= 0 && idx < len(m.parade.Items) && m.parade.Items[idx].IsHeader {
+			headerRow = r
+			break
+		}
+	}
+	if headerRow < 0 {
+		t.Fatal("Closed header not visible")
+	}
+	click := tea.MouseClickMsg{X: 0, Y: headerHeight + headerRow, Button: tea.MouseLeft}
+	model, _ = m.Update(click)
+	m = model.(Model)
+	if !m.parade.ClosedCollapsed {
+		t.Fatal("clicking ╭─ must collapse the Closed list")
+	}
+	for _, item := range m.parade.Items {
+		if item.Issue != nil && item.Issue.ID == "shut" {
+			t.Fatal("collapsed Closed list still shows shut")
+		}
+	}
+	if m.parade.SelectedIssue == nil || m.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("Closed collapse stole selection: %v", m.parade.SelectedIssue)
+	}
+	model, _ = m.Update(click)
+	m = model.(Model)
+	if m.parade.ClosedCollapsed {
+		t.Fatal("second ╭─ click must expand the Closed list")
+	}
+}
+
 func TestMouseGutterClickTogglesWithoutSelecting(t *testing.T) {
 	m := setupParentChildMouseModel(t)
 	if !m.restoreParadeSelection("other") {

@@ -641,6 +641,97 @@ func TestParadeClosedEpicSection(t *testing.T) {
 	}
 }
 
+func TestParadeClosedHeaderKeepsTopRightCorner(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
+	}
+	for _, width := range []int{40, 60, 80, 100, 140} {
+		p := NewParade(issues, width, 12, data.DefaultBlockingTypes)
+		found := false
+		for _, line := range strings.Split(p.View(), "\n") {
+			plain := ansi.Strip(line)
+			if !strings.Contains(plain, "Closed") || !strings.Contains(plain, ui.BoxTopLeft) {
+				continue
+			}
+			found = true
+			if got := lipgloss.Width(line); got != width {
+				t.Fatalf("width %d Closed header width = %d, want %d: %q", width, got, width, plain)
+			}
+			if !strings.HasSuffix(plain, ui.BoxTopRight) {
+				t.Fatalf("width %d Closed header = %q, want it to end with %s", width, plain, ui.BoxTopRight)
+			}
+			if !strings.HasPrefix(strings.TrimLeft(plain, " "), ui.BoxTopLeft) {
+				t.Fatalf("width %d Closed header = %q, want it to start with %s", width, plain, ui.BoxTopLeft)
+			}
+		}
+		if !found {
+			t.Fatalf("width %d: Closed header not rendered", width)
+		}
+	}
+}
+
+func TestParadeToggleClosedSectionHidesEpics(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "open", Title: "Open epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
+	}
+	p := NewParade(issues, 80, 20, data.DefaultBlockingTypes)
+	if !containsParadeID(p, "shut") {
+		t.Fatal("precondition: closed epic must be visible")
+	}
+	headerRow := closedHeaderRow(t, &p)
+	if !p.ClosedHeaderHit(headerRow, 0) || !p.ClosedHeaderHit(headerRow, 2) {
+		t.Fatal("╭─ cells must be a Closed header hit")
+	}
+	if p.ClosedHeaderHit(headerRow, 5) {
+		t.Fatal("Closed title text must not be a hit")
+	}
+	p.ToggleClosedSection()
+	if !p.ClosedCollapsed {
+		t.Fatal("ToggleClosedSection must collapse")
+	}
+	if containsParadeID(p, "shut") {
+		t.Fatal("collapsed Closed list must hide the epics")
+	}
+	if !strings.Contains(ansi.Strip(p.View()), "Closed") {
+		t.Fatal("collapsed Closed list must keep the header")
+	}
+	p.ToggleClosedSection()
+	if p.ClosedCollapsed || !containsParadeID(p, "shut") {
+		t.Fatal("second toggle must show the closed epics again")
+	}
+}
+
+func TestParadeClosedTitleDarkerThanDeferred(t *testing.T) {
+	if ui.ClosedTitle.GetForeground() != ui.Dim {
+		t.Fatalf("closed titles must be Dim (darker grey), got %v", ui.ClosedTitle.GetForeground())
+	}
+	if ui.DeferredStyle.GetForeground() != ui.Muted {
+		t.Fatalf("deferred titles must be Muted (lighter grey), got %v", ui.DeferredStyle.GetForeground())
+	}
+}
+
+func containsParadeID(p Parade, id string) bool {
+	for _, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func closedHeaderRow(t *testing.T, p *Parade) int {
+	t.Helper()
+	for r := 0; r < p.Height; r++ {
+		idx := p.ScrollOffset + r
+		if idx >= 0 && idx < len(p.Items) && p.Items[idx].IsHeader {
+			return r
+		}
+	}
+	t.Fatal("Closed header not visible")
+	return -1
+}
+
 func TestParadeSemanticColor(t *testing.T) {
 	old := testIssue("old-ready", data.StatusOpen)
 	old.CreatedAt = time.Now().Add(-90 * 24 * time.Hour)

@@ -180,15 +180,14 @@ func applyDerived() {
 	StateBackoff = StatusStalled
 	StateGate = BrightGold
 	// Semantic execution states: Ata's six labeled swatches, one per state.
-	// StatusStalled, Dim, Orange and Muted keep their own values and their
-	// other consumers — blocked is the rose swatch now, not "the existing
-	// stalled red", and done is steel rather than muted.
-	ExecReady = SwatchGold
-	ExecWorking = SwatchGreen
-	ExecWaiting = SwatchRose
-	ExecDeferred = SwatchLavender
-	ExecOperatorReview = SwatchCyan
-	ExecDone = SwatchSteel
+	// Status color is canonical — every Waiting/Blocked surface uses
+	// ExecWaiting (rose), not the older StatusStalled red.
+	ExecReady = SwatchCyan              // #56B6C2
+	ExecWorking = SwatchGold            // #E5B567
+	ExecWaiting = SwatchRose            // #E06C75
+	ExecDeferred = SwatchSteel          // #6F8FAF
+	ExecOperatorReview = SwatchLavender // #A78BBA
+	ExecDone = SwatchGreen              // #7FB069
 }
 
 func applyDarkPalette() {
