@@ -151,6 +151,19 @@ func (d *Detail) SetSize(width, height int) {
 	}
 }
 
+// SetPreviewSize sizes the viewport to fill a gold preview box. No left-border
+// reservation and no scroll-cue row — those belong to the parent pane only.
+func (d *Detail) SetPreviewSize(width, height int) {
+	d.Width = width
+	d.Height = height
+	d.Viewport.SetWidth(max(width, 1))
+	d.Viewport.SetHeight(max(height, 1))
+	d.mdRenderer = nil
+	if d.Issue != nil {
+		d.Viewport.SetContent(d.renderContent())
+	}
+}
+
 // ReferenceAt returns the loaded issue referenced by a visible detail row.
 func (d *Detail) ReferenceAt(viewportRow int) *data.Issue {
 	if viewportRow < 0 || viewportRow >= d.Viewport.Height() {
@@ -232,22 +245,38 @@ func (d *Detail) View() string {
 }
 
 // renderMarkdown renders markdown text using glamour with mg's brand theme.
+func (d *Detail) markdownWidth(indent int) int {
+	wrap := d.Viewport.Width()
+	if wrap <= 0 {
+		wrap = max(d.Width-2, 1)
+	}
+	w := wrap - 3 - indent
+	if w < 20 {
+		return 20
+	}
+	return w
+}
+
 func (d *Detail) renderMarkdown(text string) string {
+	return d.renderMarkdownIndent(text, 0)
+}
+
+func (d *Detail) renderMarkdownIndent(text string, indent int) string {
 	if text == "" {
 		return ""
 	}
 
-	contentWidth := d.Width - 6
-	if contentWidth < 20 {
-		contentWidth = 20
-	}
-
-	if d.mdRenderer == nil {
-		d.mdRenderer = ui.NewMarkdownRenderer(contentWidth)
+	contentWidth := d.markdownWidth(indent)
+	r := d.mdRenderer
+	if indent != 0 || r == nil {
+		r = ui.NewMarkdownRenderer(contentWidth)
+		if indent == 0 {
+			d.mdRenderer = r
+		}
 	}
 
 	var buf strings.Builder
-	if err := d.mdRenderer.Convert([]byte(text), &buf); err != nil {
+	if err := r.Convert([]byte(text), &buf); err != nil {
 		return wordWrap(text, contentWidth)
 	}
 	return strings.TrimRight(buf.String(), "\n")
@@ -764,7 +793,7 @@ func (d *Detail) appendComments(lines *[]string) {
 
 		// Body (markdown rendered). Mentions are indented with the comment.
 		if c.Body != "" {
-			rendered := d.renderMarkdown(c.Body)
+			rendered := d.renderMarkdownIndent(c.Body, 4)
 			selfID := ""
 			if d.Issue != nil {
 				selfID = d.Issue.ID

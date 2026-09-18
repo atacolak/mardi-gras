@@ -45,6 +45,8 @@ func isBareCtrl(msg tea.KeyPressMsg) bool {
 	return msg.Code == tea.KeyLeftCtrl || msg.Code == tea.KeyRightCtrl
 }
 
+const previewVertGrow = 2
+
 func previewPad(w, h int) int {
 	p := 7
 	if max := w / 8; max < p {
@@ -57,6 +59,14 @@ func previewPad(w, h int) int {
 		return 2
 	}
 	return p
+}
+
+func previewYInset(xInset int) int {
+	y := xInset - previewVertGrow
+	if y < 2 {
+		return 2
+	}
+	return y
 }
 
 func (m Model) handlePreviewTrigger() (tea.Model, tea.Cmd) {
@@ -117,17 +127,36 @@ func (m Model) newPreviewDetail(issue *data.Issue, w, h int) views.Detail {
 	d.IssueMap = m.detail.IssueMap
 	d.BlockingTypes = m.detail.BlockingTypes
 	d.MetadataSchema = m.detail.MetadataSchema
-	d.SetSize(w, h)
+	d.SetPreviewSize(w, h)
 	d.SetIssue(issue)
 	return d
 }
 
+func (m Model) previewGeom(stackIndex int) (x, y, innerW, innerH int) {
+	w, h := m.detail.Width, m.detail.Height
+	x = previewPad(w, h) * (stackIndex + 1)
+	y = previewYInset(x)
+	innerW = w - 2*x - 2
+	innerH = h - 2*y - 2
+	return x, y, innerW, innerH
+}
+
 func (m Model) previewInnerSize(stackIndex int) (w, h int) {
-	pad := previewPad(m.detail.Width, m.detail.Height)
-	inset := pad * (stackIndex + 1)
-	w = m.detail.Width - 2*inset - 2
-	h = m.detail.Height - 2*inset - 2
+	_, _, w, h = m.previewGeom(stackIndex)
 	return w, h
+}
+
+func (m *Model) scrollTopPreview(n int) bool {
+	if len(m.previews) == 0 || n == 0 {
+		return false
+	}
+	d := &m.previews[len(m.previews)-1].detail
+	if n > 0 {
+		d.Viewport.ScrollDown(n)
+	} else {
+		d.Viewport.ScrollUp(-n)
+	}
+	return true
 }
 
 func (m *Model) resizePreviews() {
@@ -161,24 +190,27 @@ func (m Model) hitPreview(dx, dy int) previewHit {
 		return previewHit{}
 	}
 	w, h := m.detail.Width, m.detail.Height
-	pad := previewPad(w, h)
 	for i := len(m.previews) - 1; i >= 0; i-- {
-		inset := pad * (i + 1)
-		boxW := w - 2*inset
-		boxH := h - 2*inset
-		inBox := dx >= inset && dx < inset+boxW && dy >= inset && dy < inset+boxH
+		x, y, innerW, innerH := m.previewGeom(i)
+		boxW, boxH := innerW+2, innerH+2
+		inBox := dx >= x && dx < x+boxW && dy >= y && dy < y+boxH
 		if inBox {
 			return previewHit{
 				kind:     previewHitContent,
 				layer:    i,
 				detail:   &m.previews[i].detail,
-				bodyRow:  dy - inset - 1,
-				contentX: dx - inset - 1,
+				bodyRow:  dy - y - 1,
+				contentX: dx - x - 1,
 			}
 		}
-		prevInset := pad * i
-		inOuter := dx >= prevInset && dx < w-prevInset && dy >= prevInset && dy < h-prevInset
-		if inOuter {
+		if i == 0 {
+			if dx >= 0 && dx < w && dy >= 0 && dy < h {
+				return previewHit{kind: previewHitGap, layer: i}
+			}
+			continue
+		}
+		px, py, pw, ph := m.previewGeom(i - 1)
+		if dx >= px && dx < px+pw+2 && dy >= py && dy < py+ph+2 {
 			return previewHit{kind: previewHitGap, layer: i}
 		}
 	}
@@ -190,21 +222,18 @@ func (m Model) viewDetailWithPreviews() string {
 	if len(m.previews) == 0 {
 		return base
 	}
-	w, h := m.detail.Width, m.detail.Height
-	pad := previewPad(w, h)
 	out := base
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(ui.Gold)
 	for i, layer := range m.previews {
-		inset := pad * (i + 1)
-		innerW, innerH := m.previewInnerSize(i)
+		x, y, innerW, innerH := m.previewGeom(i)
 		if innerW < 20 || innerH < 6 {
 			continue
 		}
-		layer.detail.SetSize(innerW, innerH)
+		layer.detail.SetPreviewSize(innerW, innerH)
 		framed := boxStyle.Width(innerW).Height(innerH).Render(layer.detail.ContentView())
-		out = stampRect(out, inset, inset, framed)
+		out = stampRect(out, x, y, framed)
 	}
 	return out
 }

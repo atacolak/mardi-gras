@@ -93,7 +93,7 @@ func allSections() []helpSection {
 				{key: "E", desc: "Scope to selected epic subtree"},
 				{key: "S", desc: "Cycle sibling sort: attention / priority / chronological"},
 				{key: "click ID", desc: "Open a mentioned bead in the detail pane"},
-				{key: "ctrl on ID", desc: "Preview a mentioned bead (gap click closes; 2 deep)"},
+				{key: "ctrl on ID", desc: "Preview a mentioned bead (wheel/j/k scroll; gap click closes; 2 deep)"},
 				{key: "esc", desc: "Clear epic scope, then focus mode, then return to parade"},
 				{key: "a", desc: "Launch agent (tmux: split pane)"},
 				{key: "A", desc: "Kill active agent on issue"},

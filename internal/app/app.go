@@ -2121,7 +2121,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	bodyRow := y - top
-	if right && bodyRow >= m.detail.Viewport.Height() {
+	if right && bodyRow >= m.detail.Viewport.Height() && len(m.previews) == 0 {
 		return m, nil
 	}
 
@@ -2199,6 +2199,18 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.syncSelection()
+			return m, nil
+		}
+		dx := x - paradeWidth
+		if hit := m.hitPreview(dx, bodyRow); hit.kind == previewHitContent && hit.detail != nil {
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				hit.detail.Viewport.ScrollUp(1)
+			case tea.MouseWheelDown:
+				hit.detail.Viewport.ScrollDown(1)
+			default:
+				return m, nil
+			}
 			return m, nil
 		}
 		switch mouse.Button {
@@ -2322,6 +2334,23 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if isBareCtrl(msg) {
 		return m.handlePreviewTrigger()
+	}
+
+	if len(m.previews) > 0 {
+		switch str {
+		case "j", "down":
+			m.scrollTopPreview(1)
+			return m, nil
+		case "k", "up":
+			m.scrollTopPreview(-1)
+			return m, nil
+		case "pgdown", "ctrl+d":
+			m.scrollTopPreview(10)
+			return m, nil
+		case "pgup", "ctrl+u":
+			m.scrollTopPreview(-10)
+			return m, nil
+		}
 	}
 
 	switch str {

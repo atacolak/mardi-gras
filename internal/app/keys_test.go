@@ -1722,3 +1722,61 @@ func TestEscPopsPreview(t *testing.T) {
 		t.Fatalf("esc should pop preview, left %d", len(m.previews))
 	}
 }
+
+func TestPreviewVerticalGrow(t *testing.T) {
+	m := setupMentionModel(t)
+	x, y, _, _ := m.previewGeom(0)
+	want := x - previewVertGrow
+	if want < 2 {
+		want = 2
+	}
+	if y != want {
+		t.Fatalf("preview y inset = %d, x inset = %d, want %d", y, x, want)
+	}
+}
+
+func TestPreviewWheelScrollsPreview(t *testing.T) {
+	m := setupMentionModel(t)
+	m.issues[1].Description = strings.Repeat("preview line for scroll\n", 80)
+	m.detail.IssueMap = data.BuildIssueMap(m.issues)
+	m.pushPreview(&m.issues[1])
+	if len(m.previews) != 1 {
+		t.Fatal("precondition: preview not open")
+	}
+	if m.previews[0].detail.Viewport.TotalLineCount() <= m.previews[0].detail.Viewport.Height() {
+		t.Fatalf("preview is not scrollable: lines=%d height=%d",
+			m.previews[0].detail.Viewport.TotalLineCount(), m.previews[0].detail.Viewport.Height())
+	}
+	parentOff := m.detail.Viewport.YOffset()
+	prevOff := m.previews[0].detail.Viewport.YOffset()
+	xInset, yInset, _, _ := m.previewGeom(0)
+	x := m.parade.Width + xInset + 2
+	y := headerHeight + yInset + 2
+	model, _ := m.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.detail.Viewport.YOffset() != parentOff {
+		t.Fatalf("parent offset %d → %d, want unchanged", parentOff, m.detail.Viewport.YOffset())
+	}
+	if m.previews[0].detail.Viewport.YOffset() <= prevOff {
+		t.Fatalf("preview offset %d → %d, want a downward scroll", prevOff, m.previews[0].detail.Viewport.YOffset())
+	}
+}
+
+func TestPreviewKeysScrollPreview(t *testing.T) {
+	m := setupMentionModel(t)
+	m.issues[1].Description = strings.Repeat("preview line for scroll\n", 80)
+	m.detail.IssueMap = data.BuildIssueMap(m.issues)
+	m.pushPreview(&m.issues[1])
+	prevOff := m.previews[0].detail.Viewport.YOffset()
+	model, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	m = model.(Model)
+	if m.previews[0].detail.Viewport.YOffset() <= prevOff {
+		t.Fatalf("j did not scroll preview, offset=%d", m.previews[0].detail.Viewport.YOffset())
+	}
+	down := m.previews[0].detail.Viewport.YOffset()
+	model, _ = m.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	m = model.(Model)
+	if m.previews[0].detail.Viewport.YOffset() >= down {
+		t.Fatalf("k did not scroll preview back, offset=%d", m.previews[0].detail.Viewport.YOffset())
+	}
+}
