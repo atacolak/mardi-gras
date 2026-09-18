@@ -2108,26 +2108,9 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch mouse := msg.(type) {
 	case tea.MouseClickMsg:
 		if mouse.Button == tea.MouseLeft && !right {
-			if m.parade.ClosedHeaderHit(bodyRow, x) {
-				m.parade.ToggleClosedSection()
-				return m, nil
-			}
-			// Ask 2: the cells left of the status glyph toggle collapse and do
-			// nothing else — no selection, no cursor move, selected or not.
-			if parentID, hit := m.parade.GutterHit(bodyRow, x); hit {
-				selectedID := ""
-				if m.parade.SelectedIssue != nil {
-					selectedID = m.parade.SelectedIssue.ID
-				}
-				m.parade.ToggleNode(parentID)
-				if selectedID != "" {
-					if iss := m.parade.IssueByID(selectedID); iss != nil {
-						m.parade.SelectedIssue = iss
-					}
-				}
-				m.parade.PinCursorToSelected()
-				return m, nil
-			}
+			// Left-area clicks select, same as the title. Collapse is `>` or
+			// a double-click on a parent — never a single click in the gutter
+			// or on the Closed ╭─ corner.
 			issue := m.parade.IssueAtViewportRow(bodyRow)
 			if issue == nil {
 				return m, nil
@@ -3080,7 +3063,7 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "New issue", Desc: "Create a new beads issue", Key: "N", Action: components.ActionNewIssue},
 		{Name: "Add note", Desc: "Add a note to the selected issue", Key: "", Action: components.ActionAddNote},
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
-		{Name: "Cycle sort: attention / priority", Desc: "Sibling sort inside every branch", Key: "S", Action: components.ActionCycleSort},
+		{Name: "Cycle sort: attention / priority / chronological", Desc: "Sibling sort inside every branch", Key: "S", Action: components.ActionCycleSort},
 		{Name: "Filter", Desc: "Fuzzy filter the parade list", Key: "/", Action: components.ActionFilter},
 		{Name: "Help", Desc: "Show keybinding help", Key: "?", Action: components.ActionHelp},
 		{Name: "Quit", Desc: "Exit Mardi Gras", Key: "q", Action: components.ActionQuit},

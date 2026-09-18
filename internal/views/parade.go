@@ -66,27 +66,35 @@ func (item ParadeItem) isSelectable() bool {
 }
 
 // SortMode selects sibling ordering inside every sibling group, roots included.
-// Recency is not a mode: the Brief forbids newest-first as a default and this
-// wave adds no third mode.
+// Chronological is bead-ID order (the stable proxy for create time).
 type SortMode int
 
 const (
 	SortAttention SortMode = iota // default
 	SortPriority
+	SortChronological
 )
 
 func (m SortMode) Label() string {
-	if m == SortPriority {
+	switch m {
+	case SortPriority:
 		return "priority"
+	case SortChronological:
+		return "chronological"
+	default:
+		return "attention"
 	}
-	return "attention"
 }
 
 func (m SortMode) Next() SortMode {
-	if m == SortAttention {
+	switch m {
+	case SortAttention:
 		return SortPriority
+	case SortPriority:
+		return SortChronological
+	default:
+		return SortAttention
 	}
-	return SortAttention
 }
 
 // Parade is the priority-sorted work tree view.
@@ -227,11 +235,11 @@ func (p *Parade) hasClosedEpicAncestor(issueID string) bool {
 // closedSection is the only section this wave renders. It is not a semantic
 // state bucket, so it carries its own count instead of reading p.Groups.
 func closedSection(count int) *paradeSection {
-	c := ui.ExecColor(int(data.StateDone))
+	c := ui.ExecColor(int(data.StateDeferred))
 	return &paradeSection{
 		Title:          "Closed",
 		Symbol:         ui.ExecSymbol(int(data.StateDone)),
-		Style:          ui.ExecSectionStyle(int(data.StateDone)),
+		Style:          ui.ExecSectionStyle(int(data.StateDeferred)),
 		Color:          c,
 		State:          data.StateDone,
 		Count:          count,
@@ -283,13 +291,18 @@ func (p *Parade) stateOf(iss *data.Issue) data.SemanticState {
 }
 
 // lessFor is the comparator for the active mode: attention rank then priority
-// then ID, or priority then ID.
+// then ID, priority then ID, or chronological (ID only).
 func (p *Parade) lessFor() func(a, b *data.Issue) bool {
 	if p.SortMode == SortPriority {
 		return func(a, b *data.Issue) bool {
 			if a.Priority != b.Priority {
 				return a.Priority < b.Priority
 			}
+			return a.ID < b.ID
+		}
+	}
+	if p.SortMode == SortChronological {
+		return func(a, b *data.Issue) bool {
 			return a.ID < b.ID
 		}
 	}
@@ -1064,7 +1077,11 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 			titleStyle = ui.DeferredStyle
 		}
 		if isClosed {
-			titleStyle = ui.ClosedTitle
+			if isClosedEpic(issue) {
+				titleStyle = ui.ClosedTitle
+			} else {
+				titleStyle = ui.DoneTitle
+			}
 		}
 		renderedTitle = titleStyle.Render(title)
 	}

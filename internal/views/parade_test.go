@@ -709,6 +709,29 @@ func TestParadeClosedTitleDarkerThanDeferred(t *testing.T) {
 	if ui.DeferredStyle.GetForeground() != ui.Muted {
 		t.Fatalf("deferred titles must be Muted (lighter grey), got %v", ui.DeferredStyle.GetForeground())
 	}
+	if ui.DoneTitle.GetForeground() != ui.TitleDone {
+		t.Fatalf("done titles must be TitleDone (between deferred and closed), got %v", ui.DoneTitle.GetForeground())
+	}
+}
+
+func TestParadeClosedSectionUsesDeferredColor(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "shut", Title: "Closed epic", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeEpic},
+	}
+	p := NewParade(issues, 80, 12, data.DefaultBlockingTypes)
+	var header *paradeSection
+	for _, item := range p.Items {
+		if item.IsHeader {
+			header = item.Section
+			break
+		}
+	}
+	if header == nil {
+		t.Fatal("Closed header missing")
+	}
+	if header.Color != ui.ExecColor(int(data.StateDeferred)) {
+		t.Fatalf("Closed border color = %v, want deferred", header.Color)
+	}
 }
 
 func containsParadeID(p Parade, id string) bool {
@@ -877,6 +900,19 @@ func TestParadeSortModes(t *testing.T) {
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("priority order = %v, want %v (equal P falls back to ID)", got, want)
 	}
+
+	p.SortMode = SortChronological
+	p.RebuildItems()
+	want = []string{"epic", "epic.attn", "epic.blocked", "epic.defer", "epic.done", "epic.ready", "epic.work"}
+	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
+		t.Fatalf("chronological order = %v, want %v (bead ID)", got, want)
+	}
+	if SortAttention.Next() != SortPriority || SortPriority.Next() != SortChronological || SortChronological.Next() != SortAttention {
+		t.Fatal("S must cycle attention → priority → chronological → attention")
+	}
+	if SortChronological.Label() != "chronological" {
+		t.Fatalf("label = %q, want chronological", SortChronological.Label())
+	}
 }
 
 func TestParadeSortNeverConsultsRecency(t *testing.T) {
@@ -884,7 +920,7 @@ func TestParadeSortNeverConsultsRecency(t *testing.T) {
 		CreatedAt: time.Now().Add(-90 * 24 * time.Hour), UpdatedAt: time.Now().Add(-90 * 24 * time.Hour)}
 	fresh := data.Issue{ID: "a-fresh", Title: "Fresh", Status: data.StatusOpen, Priority: 2,
 		CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	for _, mode := range []SortMode{SortAttention, SortPriority} {
+	for _, mode := range []SortMode{SortAttention, SortPriority, SortChronological} {
 		p := NewParade([]data.Issue{stale, fresh}, 100, 20, data.DefaultBlockingTypes)
 		p.SortMode = mode
 		p.RebuildItems()

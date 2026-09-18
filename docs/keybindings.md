@@ -38,8 +38,7 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `/`          | Enter filter mode                         |
 | `f`          | Toggle focus mode (my work + top priority)|
 | `E`          | Scope the parade to the selected issue's epic subtree |
-| `S`          | Cycle sibling sort: attention (default) / priority |
-| `click ╭─`   | Collapse or expand the Closed list (not `c`) |
+| `S`          | Cycle sibling sort: attention (default) / priority / chronological (bead ID) |
 | `a`          | Launch agent (tmux: new pane; orchestrator: sling) |
 | `A`          | Stop the active agent on the issue         |
 

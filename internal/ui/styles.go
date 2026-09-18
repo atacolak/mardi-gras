@@ -87,6 +87,7 @@ var (
 	OverdueBadge  lipgloss.Style
 	DueSoonBadge  lipgloss.Style
 	DeferredStyle lipgloss.Style
+	DoneTitle     lipgloss.Style
 	ClosedTitle   lipgloss.Style
 	CommentBadge  lipgloss.Style
 
@@ -320,9 +321,13 @@ func rebuildStyles() {
 	DueSoonBadge = lipgloss.NewStyle().
 		Foreground(PrioP1) // orange
 
-	// Deferred titles are the lighter grey; closed titles use Dim (darker).
+	// Deferred titles are the lighter grey; closed-epic titles use Dim
+	// (darker). Done beads in the forest sit between them.
 	DeferredStyle = lipgloss.NewStyle().
 		Foreground(Muted)
+
+	DoneTitle = lipgloss.NewStyle().
+		Foreground(TitleDone)
 
 	ClosedTitle = lipgloss.NewStyle().
 		Foreground(Dim)

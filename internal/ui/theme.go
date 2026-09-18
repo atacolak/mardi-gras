@@ -62,12 +62,14 @@ var (
 	DimGreen  color.Color
 
 	// Neutrals (White = strongest text ink → Darkest = deepest surface)
-	White   color.Color
-	Light   color.Color
-	Muted   color.Color
-	Dim     color.Color
-	Dark    color.Color
-	Darkest color.Color
+	White color.Color
+	Light color.Color
+	Muted color.Color
+	Dim   color.Color
+	// TitleDone sits between Muted (deferred titles) and Dim (closed-epic titles).
+	TitleDone color.Color
+	Dark      color.Color
+	Darkest   color.Color
 
 	// Semantic: parade status
 	StatusRolling color.Color
@@ -207,6 +209,7 @@ func applyDarkPalette() {
 	Light = lipgloss.Color("#CCCCCC")
 	Muted = lipgloss.Color("#888888")
 	Dim = lipgloss.Color("#555555")
+	TitleDone = lipgloss.Color("#6E6E6E")
 	Dark = lipgloss.Color("#333333")
 	Darkest = lipgloss.Color("#1A1A1A")
 
@@ -264,6 +267,7 @@ func applyLightPalette() {
 	Light = lipgloss.Color("#3D3D3D")
 	Muted = lipgloss.Color("#6B6B6B")
 	Dim = lipgloss.Color("#9A9A9A")
+	TitleDone = lipgloss.Color("#838383")
 	Dark = lipgloss.Color("#C8C8C8")
 	Darkest = lipgloss.Color("#EAEAEA")
 
