@@ -2,12 +2,12 @@
 
 ## This fork
 
-This is the `mg` we actually run: [`atacolak/mardi-gras`](https://github.com/atacolak/mardi-gras) on `feat/operator-observability`. Upstream Mardi Gras is a Beads parade. This fork is an operator work cockpit — same `br` / `.beads` data, rebuilt around how the work actually sits: parent-child trees, six semantic execution states, and a mouse that can reach the beads.
+This is the `mg` we actually run: [`atacolak/mardi-gras`](https://github.com/atacolak/mardi-gras) on `main`. Upstream Mardi Gras is a Beads parade. This fork is an operator work cockpit — same `br` / `.beads` data, rebuilt around how the work actually sits: parent-child trees, six semantic execution states, and a mouse that can reach the beads.
 
 The difference is easiest to see. Upstream still dumps the board into carnival buckets (Rolling / Lined Up / Past the Stand) with a faded, hard-to-scan list. Here the tree stays a tree: children live under their epic, blocked and deferred rows stay with their parent, closed epics tuck into a Closed section, and the selected family's status glyphs light up. The purple divider is drag-resizable. Bead IDs in the body and in DEPENDENCIES are clickable. Ctrl (or Ctrl-click) opens a gold preview you can scroll; a second Ctrl nests another preview on top, and the wheel stays on the overlay you pointed at.
 
 ```bash
-git clone -b feat/operator-observability https://github.com/atacolak/mardi-gras.git
+git clone https://github.com/atacolak/mardi-gras.git
 cd mardi-gras
 make build      # → ./mg
 ```
@@ -34,7 +34,7 @@ The live cockpit, a preview, and a nested preview:
 
 **Parade chrome we actually want.** No disclosure triangles. Click the left gutter to collapse a parent without selecting it; double-click a parent to collapse/expand and select it. `S` cycles sibling sort (attention, priority, chronological). The selected epic family's glyphs highlight — glyph only, no positional fade. Priority badges right-align to the divider, with nested rows inset by the same indent. The purple middle divider is click-drag resizable for the session. Exec colors follow a six-swatch palette. The old parade next-blocker hint is gone. Done titles are shaded; the Closed box is steel. An epic with children shows that count as a superscript on its status glyph (`◐²`) — the same direct-child total as the detail `Progress:` line.
 
-**A mouse that reaches the beads.** Click a row to select it and focus the pane under the pointer. Wheel scrolls that pane. Bead IDs in markdown bodies are clickable; DEPENDENCIES IDs are gold-underlined and clickable too (closed beads link if they're loaded). Ctrl or Ctrl-click opens a scrollable gold preview (stack of two). Wheel on a preview scrolls that preview; leftover ticks at its edge pass to the preview that opened it, then the parent bead. Wheel in the gap around the overlays scrolls the parent. The header necklace rings when a bead changes.
+**A mouse that reaches the beads.** Click a row to select it and focus the pane under the pointer. Wheel scrolls that pane. Bead IDs in markdown bodies are clickable, including one sitting against a sentence period (`mard-nob.`); DEPENDENCIES IDs are gold-underlined and clickable too (closed beads link if they're loaded). Ctrl or Ctrl-click opens a scrollable gold preview (stack of two). Wheel on a preview scrolls that preview; leftover ticks at its edge pass to the preview that opened it, then the parent bead. Click the first preview's visible body to dismiss the nested one; click the parent body to close the stack. Wheel in the gap around the overlays scrolls the parent. The header necklace rings when a bead changes.
 
 **Cockpit plumbing.** Collapse state survives rebuilds. An actors pane shows who is live and what they own. The footer reports the real Beads CLI (`br`). Hover-scroll and pane focus are first-class.
 
@@ -109,7 +109,7 @@ go install github.com/matt-wright86/mardi-gras/cmd/mg@latest
 **From source**
 
 ```bash
-git clone -b feat/operator-observability https://github.com/atacolak/mardi-gras.git
+git clone https://github.com/atacolak/mardi-gras.git
 cd mardi-gras
 make build      # → ./mg
 ```
