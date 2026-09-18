@@ -4192,6 +4192,8 @@ func (m Model) fetchMoleculeDAG(issueID string) tea.Cmd {
 }
 
 // altView wraps a string as a tea.View with AltScreen enabled.
+// All-motion (not cell-motion) is required so hover tracking can feed the
+// Ctrl preview stack without a button held down.
 func altView(s string) tea.View {
 	v := tea.NewView(s)
 	v.AltScreen = true
