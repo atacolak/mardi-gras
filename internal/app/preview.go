@@ -198,7 +198,7 @@ func (m *Model) resizePreviews() {
 func (m Model) issueAtPointer() *data.Issue {
 	_, _, paradeW := m.bodyBounds()
 	dx := m.lastMouseX - paradeW
-	dy := m.lastMouseY - m.chromeHeight()
+	dy := m.lastMouseY - headerHeight
 	if hit := m.hitPreview(dx, dy); hit.kind == previewHitContent && hit.detail != nil {
 		return hit.detail.ReferenceAtXY(hit.bodyRow, hit.contentX)
 	}

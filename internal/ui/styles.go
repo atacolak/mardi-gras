@@ -18,13 +18,6 @@ var (
 	HeaderStyle  lipgloss.Style
 	HeaderCounts lipgloss.Style
 
-	// Current section: shared project digest, not work-state ink.
-	CurrentLabel     lipgloss.Style
-	CurrentFacts     lipgloss.Style
-	CurrentNarrative lipgloss.Style
-	CurrentFresh     lipgloss.Style
-	CurrentStale     lipgloss.Style
-
 	// Bead string decorations
 	BeadStylePurple lipgloss.Style
 	BeadStyleGold   lipgloss.Style
@@ -208,14 +201,6 @@ func rebuildStyles() {
 
 	HeaderCounts = lipgloss.NewStyle().
 		Foreground(Light)
-
-	// Current is a summary strip, not an Exec* section. Dim gold + italic
-	// note so it cannot be read as a parade row or a sixth state.
-	CurrentLabel = lipgloss.NewStyle().Bold(true).Foreground(DimGold)
-	CurrentFacts = lipgloss.NewStyle().Foreground(Muted)
-	CurrentNarrative = lipgloss.NewStyle().Italic(true).Foreground(Dim)
-	CurrentFresh = lipgloss.NewStyle().Foreground(Muted)
-	CurrentStale = lipgloss.NewStyle().Foreground(TitleDone)
 
 	// Bead string decorations
 	BeadStylePurple = lipgloss.NewStyle().Foreground(Purple)
