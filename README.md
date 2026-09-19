@@ -44,7 +44,7 @@ The live cockpit, a preview, and a nested preview:
 
 **`br` is first-class.** This fork prefers `br list --json` (schema 17, `br` 0.5.x) and grafts graph edges back from `.beads/issues.jsonl` so parent-child and blockers still work. `bd` still runs if that is what you have. Upstream `mg` is `bd`-shaped; we do not treat `bd` as the operator path.
 
-**Cockpit plumbing, with honest WIP.** Collapse state survives rebuilds. Hover-scroll and pane focus are first-class. The footer reports the real Beads CLI (`br`). The actors pane (`o`) is still WIP — a read-only sketch of who is live and what they own. Do not build process around it yet. Gas City invariants are on the way out; we are going to remove them soon rather than keep a second orchestrator personality in the cockpit.
+**Cockpit plumbing, with honest WIP.** Collapse state survives rebuilds. Hover-scroll and pane focus are first-class. The footer reports the real Beads CLI (`br`). The actors pane (`o`) is still WIP — a read-only sketch of who is live and what they own. Do not build process around it yet. Gas City invariants are on the way out; we are going to remove them soon rather than keep a second orchestrator personality in the cockpit. When midi/worlds publishes a project digest, a compact **CURRENT** strip sits under the necklace: shared facts plus freshness, and an italic `note` if a smol narrative is attached. Mardi Gras does not invent that summary.
 
 The original Mardi Gras README continues below for install options, the sixty-second tour, and upstream context.
 

@@ -15,6 +15,7 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/agent"
 	"github.com/matt-wright86/mardi-gras/internal/components"
 	"github.com/matt-wright86/mardi-gras/internal/data"
+	"github.com/matt-wright86/mardi-gras/internal/digest"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
 	"github.com/matt-wright86/mardi-gras/internal/ui"
 	"github.com/matt-wright86/mardi-gras/internal/views"
@@ -75,6 +76,7 @@ type Model struct {
 	parade        views.Parade
 	detail        views.Detail
 	header        components.Header
+	current       components.Current
 	activPane     Pane
 	width         int
 	height        int
@@ -396,6 +398,8 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		m.startPoll(),
 		agentPoll,
+		m.fetchDigest(),
+		digestTickCmd(),
 	}
 	if !m.noAnimations {
 		cmds = append(cmds, m.spinner.Tick)
@@ -1485,6 +1489,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toast = toast
 			return m, cmd
 		}
+		return m, nil
+
+	case digestTickMsg:
+		return m, tea.Batch(m.fetchDigest(), digestTickCmd())
+
+	case digestMsg:
+		m.applyDigest(msg.digest, msg.err)
+		m.layout()
 		return m, nil
 
 	case actorsTickMsg:
@@ -3725,10 +3737,53 @@ func (m *Model) refreshHeader(groups map[data.SemanticState][]data.Issue) {
 	}
 }
 
+// chromeHeight is the necklace plus the compact Current strip when a shared
+// project digest is published. Zero extra rows when the producer has not.
+func (m Model) chromeHeight() int {
+	return headerHeight + m.current.Height()
+}
+
+const digestPollInterval = 30 * time.Second
+
+type digestTickMsg struct{}
+type digestMsg struct {
+	digest *digest.Digest
+	err    error
+}
+
+func digestTickCmd() tea.Cmd {
+	return tea.Tick(digestPollInterval, func(time.Time) tea.Msg {
+		return digestTickMsg{}
+	})
+}
+
+func (m Model) fetchDigest() tea.Cmd {
+	projectDir := m.projectDir
+	projectID := m.projectID()
+	return func() tea.Msg {
+		d, err := digest.Load(projectDir, projectID)
+		return digestMsg{digest: d, err: err}
+	}
+}
+
+func (m Model) projectID() string {
+	if m.projectDir == "" {
+		return ""
+	}
+	return filepath.Base(m.projectDir)
+}
+
+func (m *Model) applyDigest(d *digest.Digest, err error) {
+	m.current.Digest = d
+	m.current.Err = err
+	m.current.Now = time.Now()
+	m.current.Width = m.width
+}
+
 // bodyBounds is the shared terminal geometry used by layout and mouse routing.
 func (m Model) bodyBounds() (top, height, paradeWidth int) {
-	top = headerHeight
-	height = m.height - headerHeight - footerHeight
+	top = m.chromeHeight()
+	height = m.height - m.chromeHeight() - footerHeight
 	if height < 1 {
 		height = 1
 	}
@@ -3755,6 +3810,7 @@ func (m Model) bodyBounds() (top, height, paradeWidth int) {
 // issue maps or resetting viewports. Used while the divider is following the
 // pointer so a fast drag does not restamp the whole cockpit every motion.
 func (m *Model) layoutPanes() {
+	m.current.Width = m.width
 	_, bodyH, paradeW := m.bodyBounds()
 	detailW := m.width - paradeW
 	m.parade.SetSize(paradeW, bodyH)
@@ -4394,13 +4450,12 @@ func (m Model) View() tea.View {
 		divider = m.toast.View(m.width)
 	}
 
-	screen := lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		body,
-		divider,
-		bottomBar,
-	)
+	parts := []string{header}
+	if m.current.Height() > 0 {
+		parts = append(parts, m.current.View())
+	}
+	parts = append(parts, body, divider, bottomBar)
+	screen := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	// Confetti overlay
 	if m.confetti.Active() {
