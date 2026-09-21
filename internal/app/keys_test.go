@@ -1721,6 +1721,90 @@ func TestCtrlClickOpensPreview(t *testing.T) {
 	}
 }
 
+func TestCtrlClickParadeOpensPreview(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("epic") {
+		t.Fatal("precondition: epic missing")
+	}
+	m.syncSelection()
+	row := paradeViewportRowOf(t, m, "other")
+	model, _ := m.Update(tea.MouseClickMsg{X: 20, Y: headerHeight + row, Button: tea.MouseLeft, Mod: tea.ModCtrl})
+	got := model.(Model)
+	if len(got.previews) != 1 || got.previews[0].issue == nil || got.previews[0].issue.ID != "other" {
+		t.Fatalf("ctrl+click parade previews = %#v, want other", got.previews)
+	}
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "epic" {
+		t.Fatalf("ctrl+click must not change selection, got %v", got.parade.SelectedIssue)
+	}
+}
+
+func TestBareCtrlOnParadeOpensPreview(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("epic") {
+		t.Fatal("precondition: epic missing")
+	}
+	m.syncSelection()
+	row := paradeViewportRowOf(t, m, "other")
+	m.lastMouseX = 20
+	m.lastMouseY = headerHeight + row
+	model, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyLeftCtrl})
+	got := model.(Model)
+	if len(got.previews) != 1 || got.previews[0].issue == nil || got.previews[0].issue.ID != "other" {
+		t.Fatalf("bare ctrl on parade previews = %#v, want other", got.previews)
+	}
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "epic" {
+		t.Fatalf("bare ctrl must not change selection, got %v", got.parade.SelectedIssue)
+	}
+}
+
+func TestCtrlClickParadeGutterDoesNotPreview(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("other") {
+		t.Fatal("precondition: other missing")
+	}
+	m.syncSelection()
+	gutter := tea.MouseClickMsg{
+		X: 0, Y: headerHeight + paradeViewportRowOf(t, m, "epic"),
+		Button: tea.MouseLeft, Mod: tea.ModCtrl,
+	}
+	model, _ := m.Update(gutter)
+	got := model.(Model)
+	if len(got.previews) != 0 {
+		t.Fatalf("ctrl+gutter opened a preview: %#v", got.previews)
+	}
+	if !got.parade.Collapsed["epic"] {
+		t.Fatal("ctrl+gutter must still collapse the parent")
+	}
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("ctrl+gutter selection = %v, want other", got.parade.SelectedIssue)
+	}
+}
+
+func TestParadeClickClearsPreview(t *testing.T) {
+	m := setupParentChildMouseModel(t)
+	if !m.restoreParadeSelection("epic") {
+		t.Fatal("precondition: epic missing")
+	}
+	m.syncSelection()
+	other := m.parade.IssueByID("other")
+	if other == nil {
+		t.Fatal("precondition: other missing")
+	}
+	m.pushPreview(other)
+	if len(m.previews) != 1 {
+		t.Fatal("precondition: preview not open")
+	}
+	row := paradeViewportRowOf(t, m, "other")
+	model, _ := m.Update(tea.MouseClickMsg{X: 20, Y: headerHeight + row, Button: tea.MouseLeft})
+	got := model.(Model)
+	if len(got.previews) != 0 {
+		t.Fatalf("plain parade click left %d previews, want 0", len(got.previews))
+	}
+	if got.parade.SelectedIssue == nil || got.parade.SelectedIssue.ID != "other" {
+		t.Fatalf("plain click selection = %v, want other", got.parade.SelectedIssue)
+	}
+}
+
 func TestPreviewClickOnOuterClosesNested(t *testing.T) {
 	m := setupMentionModel(t)
 	m.pushPreview(&m.issues[1])

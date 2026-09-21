@@ -2155,6 +2155,10 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if issue == nil {
 				return m, nil
 			}
+			if mouseMod&tea.ModCtrl != 0 {
+				m.pushPreview(issue)
+				return m, nil
+			}
 			m.activPane = PaneParade
 			m.detail.Focused = false
 			m.clearPreviews()

@@ -196,18 +196,26 @@ func (m *Model) resizePreviews() {
 }
 
 func (m Model) issueAtPointer() *data.Issue {
-	_, _, paradeW := m.bodyBounds()
+	top, _, paradeW := m.bodyBounds()
 	dx := m.lastMouseX - paradeW
-	dy := m.lastMouseY - headerHeight
+	dy := m.lastMouseY - top
 	if hit := m.hitPreview(dx, dy); hit.kind == previewHitContent && hit.detail != nil {
 		return hit.detail.ReferenceAtXY(hit.bodyRow, hit.contentX)
 	}
 	if dx < 0 {
-		return nil
+		if dy < 0 {
+			return nil
+		}
+		if m.parade.ClosedHeaderHit(dy, m.lastMouseX) {
+			return nil
+		}
+		if _, hit := m.parade.GutterHit(dy, m.lastMouseX); hit {
+			return nil
+		}
+		return m.parade.IssueAtViewportRow(dy)
 	}
-	bodyRow := dy
 	contentX := dx - m.detail.ContentInsetX()
-	return m.detail.ReferenceAtXY(bodyRow, contentX)
+	return m.detail.ReferenceAtXY(dy, contentX)
 }
 
 func (m Model) hitPreview(dx, dy int) previewHit {
