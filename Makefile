@@ -3,14 +3,18 @@ BUILD_DIR := .
 GO := go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
+PREFIX ?= $(HOME)/.local
 
-.PHONY: build run run-sample test clean dev dev-gt dev-gc screenshot screenshots-gc screenshot-light demo-gif tidy fmt lint gc-client
+.PHONY: build install run run-sample test clean dev dev-gt dev-gc screenshot screenshots-gc screenshot-light demo-gif tidy fmt lint gc-client
 
 # GCDIR is the generated Gas City client package.
 GCDIR := internal/gastown/gcclient
 
 build:
 	$(GO) build $(LDFLAGS) -o $(BINARY) ./cmd/mg
+
+install: build
+	install -m 755 $(BINARY) $(PREFIX)/bin/$(BINARY)
 
 run: build
 	./$(BINARY)
