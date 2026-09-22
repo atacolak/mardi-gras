@@ -581,7 +581,7 @@ Issue
   Note: comments are NOT a field on Issue. They are fetched separately
   (Driver.Comments -> gastown.Comment) and held on views.Detail.
 Status:        open | in_progress | blocked | deferred | review | closed
-IssueType:     task | bug | feature | chore | epic | spike | story | milestone
+IssueType:     task | bug | feature | chore | epic | docs | question | spike | story | milestone
 Priority:      0 (critical) .. 4 (backlog)
 SemanticState: Ready | Working | WaitingBlocked | Deferred | OperatorReview | Done
 
@@ -703,7 +703,7 @@ type Source struct {
 }
 ```
 
-`Source.Label()` returns a display string for the footer: `"bd list"` in CLI mode, otherwise the base name of the JSONL path.
+`Source.Label()` is the CLI/JSONL display name. The footer does not paint the idle source chip (`br list (cli) · 0s ago`); it still paints a degraded or fallback source.
 
 ### Source health and JSONL fallback (source_health.go)
 

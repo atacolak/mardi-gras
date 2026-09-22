@@ -47,6 +47,10 @@ const (
 	ActionClaimNextReady
 	ActionCodexResume
 	ActionCycleSort
+	ActionCycleBeadSort
+	ActionCollapseAllEpics
+	ActionScopeEpic
+	ActionEditIssue
 )
 
 // PaletteCommand is a single entry in the command palette.

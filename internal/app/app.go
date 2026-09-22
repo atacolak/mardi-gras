@@ -125,7 +125,10 @@ type Model struct {
 	// Epic subtree scope: when set, the parade shows only this epic and its
 	// parent-child descendants. Empty means unscoped. A root that is no longer
 	// in the loaded set empties the parade rather than widening it.
+	// scopePinned is set by --scope / MG_SCOPE so a sibling-lead window
+	// cannot widen with esc.
 	scopeRootID string
+	scopePinned bool
 
 	// Issue creation form
 	creating   bool
@@ -250,8 +253,10 @@ type Model struct {
 	// Layout preset (cycle with command palette)
 	layoutPreset LayoutPreset
 
-	// paradeSortMode survives rebuildParade; the fresh Parade copies it.
-	paradeSortMode views.SortMode
+	// paradeEpicSortMode / paradeBeadSortMode survive rebuildParade.
+	// S cycles epics; s cycles beads. Both persist in .beads/mg.json.
+	paradeEpicSortMode views.SortMode
+	paradeBeadSortMode views.SortMode
 
 	// paradeWidthOverride is the live drag column (0 = not following the pointer).
 	// paradeWidthRatio is the session split, so a zoom/resize keeps 70/30 as 70/30
@@ -308,6 +313,9 @@ type Model struct {
 type Filters struct {
 	ExcludeTypes  map[string]bool
 	ExcludeLabels map[string]bool
+	// ScopeRootID, when set, pins the parade to that epic subtree at launch
+	// (mg --scope / MG_SCOPE). Empty means unscoped.
+	ScopeRootID string
 }
 
 // New creates a new app model from loaded issues.
@@ -349,37 +357,43 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 	gtEnv := gastown.Detect()
 	metaSchema := data.LoadMetadataSchema(projectDir)
 
+	epicSort, beadSort := loadBoardPrefs(projectDir)
+
 	return Model{
-		issues:         issues,
-		groups:         groups,
-		unmapped:       unmapped,
-		activPane:      PaneParade,
-		watchPath:      watchPath,
-		pathExplicit:   pathExplicit,
-		lastFileMod:    lastFileMod,
-		blockingTypes:  blockingTypes,
-		excludeTypes:   f.ExcludeTypes,
-		excludeLabels:  f.ExcludeLabels,
-		filterInput:    ti,
-		agentAvail:     agent.Available(),
-		agentRuntime:   agent.DetectRuntime(),
-		projectDir:     projectDir,
-		inTmux:         agent.InTmux() && agent.TmuxAvailable(),
-		activeAgents:   make(map[string]string),
-		gtEnv:          gtEnv,
-		driver:         gastown.SelectDriver(),
-		gtPollInFlight: gtEnv.Available || gastown.GCEnabled(), // Init() launches the first poll; gate subsequent ones
-		actorsAvail:    actors.Available(),
-		changedIDs:     make(map[string]bool),
-		prevIssueMap:   prevMap,
-		sourceMode:     source.Mode,
-		cliBinary:      source.CLIBinary,
-		metadataSchema: metaSchema,
-		startedAt:      time.Now(),
-		spinner:        newLoadingSpinner(),
-		oscGuard:       guard,
-		noAnimations:   noAnimations,
-		codexSessions:  make(map[string]*codexSession),
+		issues:             issues,
+		groups:             groups,
+		unmapped:           unmapped,
+		activPane:          PaneParade,
+		watchPath:          watchPath,
+		pathExplicit:       pathExplicit,
+		lastFileMod:        lastFileMod,
+		blockingTypes:      blockingTypes,
+		excludeTypes:       f.ExcludeTypes,
+		excludeLabels:      f.ExcludeLabels,
+		scopeRootID:        f.ScopeRootID,
+		scopePinned:        f.ScopeRootID != "",
+		filterInput:        ti,
+		agentAvail:         agent.Available(),
+		agentRuntime:       agent.DetectRuntime(),
+		projectDir:         projectDir,
+		paradeEpicSortMode: epicSort,
+		paradeBeadSortMode: beadSort,
+		inTmux:             agent.InTmux() && agent.TmuxAvailable(),
+		activeAgents:       make(map[string]string),
+		gtEnv:              gtEnv,
+		driver:             gastown.SelectDriver(),
+		gtPollInFlight:     gtEnv.Available || gastown.GCEnabled(), // Init() launches the first poll; gate subsequent ones
+		actorsAvail:        actors.Available(),
+		changedIDs:         make(map[string]bool),
+		prevIssueMap:       prevMap,
+		sourceMode:         source.Mode,
+		cliBinary:          source.CLIBinary,
+		metadataSchema:     metaSchema,
+		startedAt:          time.Now(),
+		spinner:            newLoadingSpinner(),
+		oscGuard:           guard,
+		noAnimations:       noAnimations,
+		codexSessions:      make(map[string]*codexSession),
 	}
 }
 
@@ -2429,7 +2443,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Scope exits first: esc out of a scope is one press, and it must not
 		// also drop focus mode or the detail pane as a side effect. The
 		// unscoped esc behaviour still follows below on the next press.
-		if m.scopeRootID != "" {
+		if m.scopeRootID != "" && !m.scopePinned {
 			m.scopeRootID = ""
 			m.rebuildParade()
 			return m, nil
@@ -2458,12 +2472,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case "S":
-		m.paradeSortMode = m.paradeSortMode.Next()
-		m.parade.SortMode = m.paradeSortMode
-		m.rebuildParade()
-		toast, cmd := components.ShowToast("Sort: "+m.paradeSortMode.Label(), components.ToastInfo, toastDuration)
-		m.toast = toast
-		return m, cmd
+		return m.cycleEpicSort()
 	case "ctrl+g":
 		if !m.orchestratorAvailable() {
 			return m, nil
@@ -2661,36 +2670,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "s":
-		if !m.orchestratorAvailable() {
-			return m, nil
-		}
-		// Multi-select: collect IDs for formula picking
-		if selected := m.parade.SelectedIssues(); len(selected) > 0 {
-			ids := make([]string, len(selected))
-			for i, iss := range selected {
-				ids[i] = iss.ID
-			}
-			m.parade.ClearSelection()
-			m.formulaMulti = ids
-			m.formulaTarget = ""
-			driver := m.driver
-			return m, func() tea.Msg {
-				formulas, err := driver.Formulas(context.Background())
-				return formulaListMsg{formulas: formulas, err: err}
-			}
-		}
-		// Single issue
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
-		}
-		m.formulaTarget = issue.ID
-		m.formulaMulti = nil
-		driver := m.driver
-		return m, func() tea.Msg {
-			formulas, err := driver.Formulas(context.Background())
-			return formulaListMsg{formulas: formulas, err: err}
-		}
+		return m.cycleBeadSort()
 
 	case "n":
 		issue := m.parade.SelectedIssue
@@ -2715,29 +2695,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.createForm = m.newCreateForm()
 		return m, m.createForm.Init()
 
-	case "e": // Edit selected issue
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
-		}
-		m.editing = true
-		m.editForm = components.NewEditForm(m.width, m.height, issue)
-		return m, m.editForm.Init()
+	case "e": // Collapse / expand every epic in the parade
+		return m.toggleAllEpics()
 
 	case "E": // Scope the parade to the selected issue's epic subtree
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
-		}
-		epic := data.EpicAncestor(issue, data.BuildIssueMap(m.issues))
-		if epic == nil {
-			// No epic anywhere above this issue: a scope here would either
-			// hide nothing useful or invent ancestry. Stay put, silently.
-			return m, nil
-		}
-		m.scopeRootID = epic.ID
-		m.rebuildParade()
-		return m, nil
+		return m.scopeToSelectedEpic(), nil
 
 	case "r": // Reply (codex transcript) OR Comment (remark) on parade
 		// When the codex transcript overlay is visible, r opens the reply
@@ -3183,7 +3145,11 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "New issue", Desc: "Create a new beads issue", Key: "N", Action: components.ActionNewIssue},
 		{Name: "Add note", Desc: "Add a note to the selected issue", Key: "", Action: components.ActionAddNote},
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
-		{Name: "Cycle sort: attention / priority / chronological", Desc: "Sibling sort inside every branch", Key: "S", Action: components.ActionCycleSort},
+		{Name: "Cycle epic sort", Desc: "attention / priority / chronological for epics", Key: "S", Action: components.ActionCycleSort},
+		{Name: "Cycle bead sort", Desc: "attention / priority / chronological for beads", Key: "s", Action: components.ActionCycleBeadSort},
+		{Name: "Collapse / expand all epics", Desc: "Fold or unfold every epic that has children", Key: "e", Action: components.ActionCollapseAllEpics},
+		{Name: "Scope to selected epic", Desc: "Show only the selected issue's epic subtree", Key: "E", Action: components.ActionScopeEpic},
+		{Name: "Edit selected issue", Desc: "Edit title and priority", Key: "", Action: components.ActionEditIssue},
 		{Name: "Filter", Desc: "Fuzzy filter the parade list", Key: "/", Action: components.ActionFilter},
 		{Name: "Help", Desc: "Show keybinding help", Key: "?", Action: components.ActionHelp},
 		{Name: "Quit", Desc: "Exit Mardi Gras", Key: "q", Action: components.ActionQuit},
@@ -3213,7 +3179,7 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 	if m.orchestratorAvailable() {
 		cmds = append(cmds,
 			components.PaletteCommand{Name: "Toggle Gas Town", Desc: "Show/hide Gas Town panel", Key: "^g", Action: components.ActionToggleGasTown},
-			components.PaletteCommand{Name: "Sling with formula", Desc: "Pick formula and sling to polecat", Key: "s", Action: components.ActionSlingFormula},
+			components.PaletteCommand{Name: "Sling with formula", Desc: "Pick formula and sling to polecat", Key: "", Action: components.ActionSlingFormula},
 			components.PaletteCommand{Name: "Nudge agent", Desc: "Nudge agent with message", Key: "n", Action: components.ActionNudgeAgent},
 			components.PaletteCommand{Name: "Create & assign to crew", Desc: "Create issue and hook to crew member", Key: "", Action: components.ActionAssign},
 			components.PaletteCommand{Name: "Create convoy", Desc: "Create convoy from selected issues", Key: "C", Action: components.ActionCreateConvoy},
@@ -3276,12 +3242,15 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		m.toast = toast
 		return m, cmd
 	case components.ActionCycleSort:
-		m.paradeSortMode = m.paradeSortMode.Next()
-		m.parade.SortMode = m.paradeSortMode
-		m.rebuildParade()
-		toast, cmd := components.ShowToast("Sort: "+m.paradeSortMode.Label(), components.ToastInfo, toastDuration)
-		m.toast = toast
-		return m, cmd
+		return m.cycleEpicSort()
+	case components.ActionCycleBeadSort:
+		return m.cycleBeadSort()
+	case components.ActionCollapseAllEpics:
+		return m.toggleAllEpics()
+	case components.ActionScopeEpic:
+		return m.scopeToSelectedEpic(), nil
+	case components.ActionEditIssue:
+		return m.startEdit()
 	case components.ActionToggleNode:
 		if m.activPane == PaneParade && m.parade.SelectedIssue != nil {
 			m.parade.ToggleNode(m.parade.SelectedIssue.ID)
@@ -3297,7 +3266,7 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 	case components.ActionKillAgent:
 		return m.handleKey(tea.KeyPressMsg{Code: 'A', Text: "A"})
 	case components.ActionSlingFormula:
-		return m.handleKey(tea.KeyPressMsg{Code: 's', Text: "s"})
+		return m.startFormulaSling()
 	case components.ActionNudgeAgent:
 		return m.handleKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	case components.ActionAssign:
@@ -3817,6 +3786,98 @@ func (m *Model) layout() {
 // When the previously-selected issue ID is absent from the new issue set,
 // rebuildParade falls back to the nearest selectable item and sets
 // m.selectionLost/m.lostIssueID so the caller can fire an informational toast.
+
+func (m Model) cycleEpicSort() (tea.Model, tea.Cmd) {
+	m.paradeEpicSortMode = m.paradeEpicSortMode.Next()
+	m.parade.EpicSortMode = m.paradeEpicSortMode
+	m.rebuildParade()
+	saveBoardPrefs(m.projectDir, m.paradeEpicSortMode, m.paradeBeadSortMode)
+	toast, cmd := components.ShowToast("Epic sort: "+m.paradeEpicSortMode.Label(), components.ToastInfo, toastDuration)
+	m.toast = toast
+	return m, cmd
+}
+
+func (m Model) cycleBeadSort() (tea.Model, tea.Cmd) {
+	m.paradeBeadSortMode = m.paradeBeadSortMode.Next()
+	m.parade.BeadSortMode = m.paradeBeadSortMode
+	m.rebuildParade()
+	saveBoardPrefs(m.projectDir, m.paradeEpicSortMode, m.paradeBeadSortMode)
+	toast, cmd := components.ShowToast("Bead sort: "+m.paradeBeadSortMode.Label(), components.ToastInfo, toastDuration)
+	m.toast = toast
+	return m, cmd
+}
+
+func (m Model) toggleAllEpics() (tea.Model, tea.Cmd) {
+	collapsed := m.parade.ToggleAllEpics()
+	m.syncSelection()
+	label := "Epics expanded"
+	if collapsed {
+		label = "Epics collapsed"
+	}
+	toast, cmd := components.ShowToast(label, components.ToastInfo, toastDuration)
+	m.toast = toast
+	return m, cmd
+}
+
+// scopeToSelectedEpic narrows the parade to the selected issue's epic
+// ancestor. E (and the palette) set a session scope; esc can widen it.
+// Launch --scope / MG_SCOPE stays pinned.
+func (m Model) scopeToSelectedEpic() Model {
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return m
+	}
+	epic := data.EpicAncestor(issue, data.BuildIssueMap(m.issues))
+	if epic == nil {
+		return m
+	}
+	m.scopeRootID = epic.ID
+	m.scopePinned = false
+	m.rebuildParade()
+	return m
+}
+
+func (m Model) startEdit() (tea.Model, tea.Cmd) {
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return m, nil
+	}
+	m.editing = true
+	m.editForm = components.NewEditForm(m.width, m.height, issue)
+	return m, m.editForm.Init()
+}
+
+func (m Model) startFormulaSling() (tea.Model, tea.Cmd) {
+	if !m.orchestratorAvailable() {
+		return m, nil
+	}
+	if selected := m.parade.SelectedIssues(); len(selected) > 0 {
+		ids := make([]string, len(selected))
+		for i, iss := range selected {
+			ids[i] = iss.ID
+		}
+		m.parade.ClearSelection()
+		m.formulaMulti = ids
+		m.formulaTarget = ""
+		driver := m.driver
+		return m, func() tea.Msg {
+			formulas, err := driver.Formulas(context.Background())
+			return formulaListMsg{formulas: formulas, err: err}
+		}
+	}
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return m, nil
+	}
+	m.formulaTarget = issue.ID
+	m.formulaMulti = nil
+	driver := m.driver
+	return m, func() tea.Msg {
+		formulas, err := driver.Formulas(context.Background())
+		return formulaListMsg{formulas: formulas, err: err}
+	}
+}
+
 func (m *Model) rebuildParade() {
 	oldSelectedID := ""
 	oldCursor := m.parade.Cursor
@@ -3857,7 +3918,8 @@ func (m *Model) rebuildParade() {
 	m.parade.MatchHighlights = highlights
 	m.parade.Collapsed = oldCollapsed
 	m.parade.ClosedCollapsed = oldClosedCollapsed
-	m.parade.SortMode = m.paradeSortMode
+	m.parade.EpicSortMode = m.paradeEpicSortMode
+	m.parade.BeadSortMode = m.paradeBeadSortMode
 	m.parade.RebuildItems()
 	found := m.restoreParadeSelection(oldSelectedID)
 	if !found && oldSelectedID != "" {
@@ -4379,6 +4441,7 @@ func (m Model) View() tea.View {
 		bottomBar = inputBarStyle.Render(line)
 	default:
 		footer := components.NewFooter(m.width, m.activPane == PaneDetail, m.orchestratorAvailable(), m.actorsAvail)
+		footer.SetSortLabels(m.paradeEpicSortMode.Label(), m.paradeBeadSortMode.Label())
 		footer.Focus = m.focusMode
 		footer.ScopeRootID = m.scopeRootID
 		footer.SourcePath = m.watchPath

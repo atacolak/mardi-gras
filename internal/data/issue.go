@@ -32,6 +32,8 @@ const (
 	TypeFeature   IssueType = "feature"
 	TypeChore     IssueType = "chore"
 	TypeEpic      IssueType = "epic"
+	TypeDocs      IssueType = "docs"
+	TypeQuestion  IssueType = "question"
 	TypeSpike     IssueType = "spike"
 	TypeStory     IssueType = "story"
 	TypeMilestone IssueType = "milestone"

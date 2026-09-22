@@ -440,33 +440,60 @@ func TestSetPriorityReturnsCmd(t *testing.T) {
 // 21. 's' key with Gas Town spawns formula list fetch
 // ---------------------------------------------------------------------------
 
-func TestKeySGasTownFetchesFormulas(t *testing.T) {
-	got := setupModel(t)
+func TestStartFormulaSlingFetchesFormulas(t *testing.T) {
+	got := formulaSlingModel()
 	got.gtEnv.Available = true
 
-	model, cmd := got.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-	got = model.(Model)
+	model, cmd := got.startFormulaSling()
+	got = asModel(t, model)
 
 	if cmd == nil {
-		t.Fatal("expected non-nil cmd from pressing s with Gas Town available")
+		t.Fatal("expected non-nil cmd from formula sling with Gas Town available")
 	}
-	// The formulaTarget should be set to the selected issue ID
 	if got.formulaTarget == "" {
-		t.Fatal("expected formulaTarget to be set after pressing s")
+		t.Fatal("expected formulaTarget to be set after formula sling")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 22. 's' key without Gas Town is a no-op
+// 22. Formula sling without Gas Town is a no-op; s still sorts beads
 // ---------------------------------------------------------------------------
 
-func TestKeySNoGasTownNoop(t *testing.T) {
-	got := setupModel(t)
+func TestStartFormulaSlingNoGasTownNoop(t *testing.T) {
+	got := formulaSlingModel()
 	got.gtEnv.Available = false
 
-	_, cmd := got.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	_, cmd := got.startFormulaSling()
 	if cmd != nil {
-		t.Fatal("expected nil cmd from pressing s without Gas Town")
+		t.Fatal("expected nil cmd from formula sling without Gas Town")
+	}
+}
+
+func formulaSlingModel() Model {
+	issues := []data.Issue{testIssue("open-1", data.StatusOpen)}
+	p := views.NewParade(issues, 80, 16, data.DefaultBlockingTypes)
+	p.SelectedIssue = &issues[0]
+	m := Model{
+		issues:        issues,
+		parade:        p,
+		blockingTypes: data.DefaultBlockingTypes,
+		driver:        gastown.NewGTDriver(),
+		startedAt:     time.Now().Add(-time.Second),
+	}
+	m.gtEnv.Available = true
+	return m
+}
+
+func asModel(t *testing.T, model tea.Model) Model {
+	t.Helper()
+	switch m := model.(type) {
+	case Model:
+		return m
+	case *Model:
+		return *m
+	default:
+		t.Fatalf("unexpected model type %T", model)
+		return Model{}
 	}
 }
 
@@ -744,14 +771,103 @@ func TestKeyGreaterTogglesSelectedTreeNode(t *testing.T) {
 	}
 }
 
-func TestKeyEScopesToEpicSubtree(t *testing.T) {
+func TestKeyeCollapsesAllEpics(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	got = model.(Model)
 
+	if got.scopeRootID != "" {
+		t.Fatalf("e must not scope, got %q", got.scopeRootID)
+	}
+	if got.editing {
+		t.Fatal("e must not open the edit form")
+	}
+	if !got.parade.Collapsed["epic"] {
+		t.Fatal("expected epic collapsed after e")
+	}
+	visible := visibleParadeIDs(got)
+	if visible["epic.1"] || visible["epic.1.1"] {
+		t.Fatalf("expected epic children hidden after e, got %v", visible)
+	}
+	if !visible["epic"] || !visible["unrelated"] {
+		t.Fatalf("expected epic and unrelated root to stay visible, got %v", visible)
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	got = model.(Model)
+	if got.parade.Collapsed["epic"] {
+		t.Fatal("expected a second e to expand the collapsed epics")
+	}
+	visible = visibleParadeIDs(got)
+	if !visible["epic.1"] || !visible["epic.1.1"] {
+		t.Fatalf("expected epic children visible after a second e, got %v", visible)
+	}
+}
+
+func TestLaunchScopePinsParade(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic", Title: "Epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic.1", Title: "Child", Status: data.StatusOpen, Priority: 0,
+			Dependencies: []data.Dependency{{IssueID: "epic.1", DependsOnID: "epic", Type: "parent-child"}}},
+		{ID: "unrelated", Title: "Other", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask},
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes, Filters{ScopeRootID: "epic"})
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	got := model.(Model)
+	if got.scopeRootID != "epic" || !got.scopePinned {
+		t.Fatalf("launch scope = %q pinned=%v", got.scopeRootID, got.scopePinned)
+	}
+	visible := visibleParadeIDs(got)
+	if !visible["epic"] || !visible["epic.1"] {
+		t.Fatalf("expected scoped epic+child, got %v", visible)
+	}
+	if visible["unrelated"] {
+		t.Fatal("launch --scope must hide unrelated roots")
+	}
+
+	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	got = model.(Model)
 	if got.scopeRootID != "epic" {
-		t.Fatalf("expected scopeRootID %q after E, got %q", "epic", got.scopeRootID)
+		t.Fatalf("esc must not clear a pinned launch scope, got %q", got.scopeRootID)
+	}
+	if visibleParadeIDs(got)["unrelated"] {
+		t.Fatal("esc must not widen a pinned launch scope")
+	}
+}
+
+func TestKeyEScopesToSelectedEpic(t *testing.T) {
+	got := setupEpicScopeModel(t)
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
+	got = model.(Model)
+	if got.editing {
+		t.Fatal("E must not open edit")
+	}
+	if got.parade.Collapsed["epic"] {
+		t.Fatal("E must not collapse all")
+	}
+	if got.scopeRootID != "epic" {
+		t.Fatalf("E must scope to the selected epic, got %q", got.scopeRootID)
+	}
+	if got.scopePinned {
+		t.Fatal("E must not pin a session scope")
+	}
+	visible := visibleParadeIDs(got)
+	if visible["unrelated"] {
+		t.Fatal("E scope must hide unrelated roots")
+	}
+	if !visible["epic"] || !visible["epic.1"] {
+		t.Fatalf("E scope must keep the epic subtree, got %v", visible)
+	}
+}
+
+func TestScopeToSelectedEpicSubtree(t *testing.T) {
+	got := setupEpicScopeModel(t)
+	got = got.scopeToSelectedEpic()
+
+	if got.scopeRootID != "epic" {
+		t.Fatalf("expected scopeRootID %q after scope helper, got %q", "epic", got.scopeRootID)
 	}
 	visible := visibleParadeIDs(got)
 	if !visible["epic"] {
@@ -768,13 +884,12 @@ func TestKeyEScopesToEpicSubtree(t *testing.T) {
 func TestKeyEscClearsEpicScope(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if visibleParadeIDs(got)["unrelated"] {
-		t.Fatal("precondition: unrelated issue should be scoped out after E")
+		t.Fatal("precondition: unrelated issue should be scoped out after scope")
 	}
 
-	model, _ = got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model, _ := got.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	got = model.(Model)
 
 	if got.scopeRootID != "" {
@@ -785,12 +900,11 @@ func TestKeyEscClearsEpicScope(t *testing.T) {
 	}
 }
 
-func TestKeyEScopeRequiresEpicAncestor(t *testing.T) {
+func TestScopeRequiresEpicAncestor(t *testing.T) {
 	got := setupModel(t) // plain tasks: no epic anywhere in the graph
 	before := visibleParadeIDs(got)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 
 	if got.scopeRootID != "" {
 		t.Fatalf("expected no scope for an issue with no epic ancestor, got %q", got.scopeRootID)
@@ -803,6 +917,25 @@ func TestKeyEScopeRequiresEpicAncestor(t *testing.T) {
 		if !after[id] {
 			t.Fatalf("expected issue %s to stay visible, got %v", id, after)
 		}
+	}
+}
+
+func TestKeyeNoEpicsIsNoop(t *testing.T) {
+	got := setupModel(t)
+	before := visibleParadeIDs(got)
+
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	got = model.(Model)
+
+	if got.editing {
+		t.Fatal("e must not open the edit form")
+	}
+	if got.scopeRootID != "" {
+		t.Fatalf("e must not invent a scope, got %q", got.scopeRootID)
+	}
+	after := visibleParadeIDs(got)
+	if len(after) != len(before) {
+		t.Fatalf("expected the visible set unchanged, before=%v after=%v", before, after)
 	}
 }
 
@@ -819,8 +952,7 @@ func TestKeyEscStillClearsScopeBeforeTreeFocus(t *testing.T) {
 
 	model, _ = got.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
 	got = model.(Model)
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if got.scopeRootID != "epic" || !got.focusMode {
 		t.Fatalf("precondition: expected scope %q and focusMode true, got %q/%v",
 			"epic", got.scopeRootID, got.focusMode)
@@ -850,13 +982,12 @@ func TestKeyEscStillClearsScopeBeforeTreeFocus(t *testing.T) {
 func TestKeyEScopeStaleRootEmptiesParade(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if got.scopeRootID != "epic" {
 		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
 	}
 
-	model, _ = got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
+	model, _ := got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
 	got = model.(Model)
 
 	if n := got.parade.VisibleIssues(); n != 0 {
@@ -889,13 +1020,12 @@ func headerIssueIDs(m Model) map[string]bool {
 func TestScopeSurvivesResize(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if got.scopeRootID != "epic" {
 		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
 	}
 
-	model, _ = got.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	model, _ := got.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	got = model.(Model)
 
 	visible := visibleParadeIDs(got)
@@ -925,9 +1055,8 @@ func TestScopeSurvivesResize(t *testing.T) {
 func TestStaleScopeStaysEmptyAcrossResize(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
-	model, _ = got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
+	got = got.scopeToSelectedEpic()
+	model, _ := got.Update(data.FileChangedMsg{Issues: []data.Issue{testIssue("unrelated", data.StatusOpen)}})
 	got = model.(Model)
 	if n := got.parade.VisibleIssues(); n != 0 {
 		t.Fatalf("precondition: expected an empty parade for a stale scope root, got %d visible issue(s)", n)
@@ -970,8 +1099,7 @@ func TestKeyEScopeReloadsWhenRootReturns(t *testing.T) {
 
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if got.scopeRootID != "epic" {
 		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
 	}
@@ -996,7 +1124,7 @@ func TestKeyEScopeReloadsWhenRootReturns(t *testing.T) {
 	}
 
 	// A plain refresh — the board reloads, same root — stays narrowed.
-	model, _ = got.Update(data.FileChangedMsg{Issues: full})
+	model, _ := got.Update(data.FileChangedMsg{Issues: full})
 	got = model.(Model)
 	assertScoped("plain refresh")
 
@@ -1022,8 +1150,7 @@ func TestCollapseSurvivesEpicScopeRebuild(t *testing.T) {
 		t.Fatal("precondition: expected epic.1 to be collapsed")
 	}
 
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if got.scopeRootID != "epic" {
 		t.Fatalf("expected epic scope, got %q", got.scopeRootID)
 	}
@@ -1044,13 +1171,12 @@ func TestCollapseSurvivesEpicScopeRebuild(t *testing.T) {
 func TestKeyEscWithCommittedFilterClearsScopeFirst(t *testing.T) {
 	got := setupEpicScopeModel(t)
 
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'E', Text: "E"})
-	got = model.(Model)
+	got = got.scopeToSelectedEpic()
 	if got.scopeRootID != "epic" {
 		t.Fatalf("precondition: expected scope set to epic, got %q", got.scopeRootID)
 	}
 
-	model, _ = got.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model, _ := got.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	got = model.(Model)
 	for _, r := range "unrelated" {
 		model, _ = got.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
@@ -1327,42 +1453,81 @@ func TestPreviewRightGapIsTighter(t *testing.T) {
 }
 
 func TestSortKeyCyclesParadeSortMode(t *testing.T) {
-	m := setupMouseModel(t)
-	if m.parade.SortMode != views.SortAttention {
-		t.Fatalf("startup sort mode = %v, want SortAttention", m.parade.SortMode)
+	issues := []data.Issue{testIssue("open-1", data.StatusOpen)}
+	p := views.NewParade(issues, 80, 16, data.DefaultBlockingTypes)
+	m := Model{
+		issues:        issues,
+		parade:        p,
+		blockingTypes: data.DefaultBlockingTypes,
+		driver:        gastown.NewGTDriver(),
+		width:         100,
+		height:        20,
+		startedAt:     time.Now().Add(-time.Second),
+	}
+	if m.parade.EpicSortMode != views.SortAttention || m.parade.BeadSortMode != views.SortAttention {
+		t.Fatalf("startup sort = epic %v bead %v, want attention", m.parade.EpicSortMode, m.parade.BeadSortMode)
 	}
 
 	model, _ := m.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
 	m = model.(Model)
-	if m.parade.SortMode != views.SortPriority {
-		t.Fatalf("after S sort mode = %v, want SortPriority", m.parade.SortMode)
+	if m.parade.EpicSortMode != views.SortPriority {
+		t.Fatalf("after S epic sort = %v, want SortPriority", m.parade.EpicSortMode)
+	}
+	if m.parade.BeadSortMode != views.SortAttention {
+		t.Fatal("S must not change bead sort")
 	}
 
 	m.rebuildParade()
-	if m.parade.SortMode != views.SortPriority {
-		t.Fatal("sort mode must survive a parade rebuild")
+	if m.parade.EpicSortMode != views.SortPriority {
+		t.Fatal("epic sort must survive a parade rebuild")
+	}
+
+	model, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	m = model.(Model)
+	if m.parade.BeadSortMode != views.SortPriority {
+		t.Fatalf("after s bead sort = %v, want SortPriority", m.parade.BeadSortMode)
+	}
+	if m.parade.EpicSortMode != views.SortPriority {
+		t.Fatal("s must not change epic sort")
 	}
 
 	model, _ = m.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
 	m = model.(Model)
-	if m.parade.SortMode != views.SortChronological {
-		t.Fatalf("second S sort mode = %v, want SortChronological", m.parade.SortMode)
+	if m.parade.EpicSortMode != views.SortChronological {
+		t.Fatalf("second S epic sort = %v, want SortChronological", m.parade.EpicSortMode)
 	}
 
 	model, _ = m.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
 	m = model.(Model)
-	if m.parade.SortMode != views.SortAttention {
-		t.Fatalf("third S sort mode = %v, want SortAttention", m.parade.SortMode)
+	if m.parade.EpicSortMode != views.SortAttention {
+		t.Fatalf("third S epic sort = %v, want SortAttention", m.parade.EpicSortMode)
 	}
 
-	var found bool
+	var foundEpic, foundBead bool
 	for _, cmd := range m.buildPaletteCommands() {
 		if cmd.Action == components.ActionCycleSort {
-			found = true
+			foundEpic = true
+		}
+		if cmd.Action == components.ActionCycleBeadSort {
+			foundBead = true
 		}
 	}
-	if !found {
-		t.Fatal("command palette must offer the sort toggle")
+	if !foundEpic || !foundBead {
+		t.Fatal("command palette must offer both sort toggles")
+	}
+}
+
+func TestBoardPrefsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	saveBoardPrefs(dir, views.SortChronological, views.SortPriority)
+	epic, bead := loadBoardPrefs(dir)
+	if epic != views.SortChronological || bead != views.SortPriority {
+		t.Fatalf("load = %v/%v, want chronological/priority", epic, bead)
+	}
+
+	epic, bead = loadBoardPrefs(dir)
+	if epic != views.SortChronological || bead != views.SortPriority {
+		t.Fatalf("reload = %v/%v, want chronological/priority", epic, bead)
 	}
 }
 

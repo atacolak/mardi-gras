@@ -32,6 +32,8 @@ var typeOptions = []selectOption{
 	{Label: "Feature", Value: "feature"},
 	{Label: "Chore", Value: "chore"},
 	{Label: "Epic", Value: "epic"},
+	{Label: "Question", Value: "question"},
+	{Label: "Docs", Value: "docs"},
 	{Label: "Spike", Value: "spike"},
 	{Label: "Story", Value: "story"},
 	{Label: "Milestone", Value: "milestone"},

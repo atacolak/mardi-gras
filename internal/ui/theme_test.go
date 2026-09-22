@@ -31,6 +31,18 @@ func TestPriorityColor(t *testing.T) {
 	}
 }
 
+func TestResearchTypesShareReadyColor(t *testing.T) {
+	if ColorQuestion != ExecReady || ColorDocs != ExecReady || ColorSpike != ExecReady {
+		t.Fatalf("research-adjacent types must share ExecReady, got question=%v docs=%v spike=%v ready=%v",
+			ColorQuestion, ColorDocs, ColorSpike, ExecReady)
+	}
+	for _, tp := range []string{"question", "docs", "spike"} {
+		if got := IssueTypeColor(tp); got != ExecReady {
+			t.Errorf("IssueTypeColor(%q) = %v, want ExecReady %v", tp, got, ExecReady)
+		}
+	}
+}
+
 func TestIssueTypeColor(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -42,6 +54,8 @@ func TestIssueTypeColor(t *testing.T) {
 		{"task", "task", ColorTask},
 		{"chore", "chore", ColorChore},
 		{"epic", "epic", ColorEpic},
+		{"docs", "docs", ColorDocs},
+		{"question", "question", ColorQuestion},
 		{"spike", "spike", ColorSpike},
 		{"story", "story", ColorStory},
 		{"milestone", "milestone", ColorMilestone},

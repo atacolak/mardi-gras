@@ -42,7 +42,7 @@ Press `/` and the bottom bar becomes a query input.
 Supported query forms:
 
 - Free text: `deploy auth` — a fuzzy, case-insensitive **subsequence** match over ID + title + description + assignee + owner + notes + labels, joined into one haystack per issue. Results are ranked by match quality.
-- Type token: `type:bug`, `type:feature`, `type:task`, `type:chore`, `type:epic`, `type:spike`, `type:story`, `type:milestone`
+- Type token: `type:bug`, `type:feature`, `type:task`, `type:chore`, `type:epic`, `type:docs`, `type:question`, `type:spike`, `type:story`, `type:milestone`
 - Label token: `label:gt:agent` (case-insensitive, exact match on one of the issue's labels)
 - Priority shorthand: `p0` to `p4`
 - Priority token: `priority:0` to `priority:4`, or `priority:critical|high|medium|low|backlog`

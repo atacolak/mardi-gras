@@ -41,6 +41,7 @@ func main() {
 	cmdTimeout := flag.Int("cmd-timeout", 0, "Command timeout in seconds (scales all external command timeouts; default 30)")
 	agentRuntime := flag.String("agent", "", "Preferred agent runtime: claude, cursor, or codex (default: first on PATH — claude, then cursor, then codex)")
 	themeFlag := flag.String("theme", "", "Color theme: auto, dark, or light (default: MG_THEME env or auto)")
+	scopeFlag := flag.String("scope", "", "Show only this epic and its parent-child descendants (MG_SCOPE)")
 	flag.Parse()
 
 	// MG_NO_ANIMATIONS=1 env var as alternative to --no-animations flag
@@ -118,10 +119,17 @@ func main() {
 		}
 	}
 
-	filters := app.Filters{ExcludeTypes: excludeTypes, ExcludeLabels: excludeLabels}
+	scope := strings.TrimSpace(*scopeFlag)
+	if scope == "" {
+		scope = strings.TrimSpace(os.Getenv("MG_SCOPE"))
+	}
+	filters := app.Filters{ExcludeTypes: excludeTypes, ExcludeLabels: excludeLabels, ScopeRootID: scope}
 
 	if *statusMode {
 		visible := data.ExcludeByLabel(data.ExcludeByType(issues, excludeTypes), excludeLabels)
+		if scope != "" {
+			visible = data.ScopeToSubtree(visible, scope)
+		}
 		// Issues DeriveState cannot classify are not counted as any state —
 		// rendering them is an open product question, so they are omitted
 		// rather than folded into a bucket they have not earned.

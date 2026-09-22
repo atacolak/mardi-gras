@@ -603,6 +603,84 @@ func TestParadeCollapse(t *testing.T) {
 	}
 }
 
+func TestParadeCollapseAllEpics(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic-a", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic-a.1", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("epic-a.1", "epic-a")},
+		{ID: "epic-b", Status: data.StatusInProgress, Priority: 1, IssueType: data.TypeEpic},
+		{ID: "epic-b.1", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("epic-b.1", "epic-b")},
+		{ID: "task", Status: data.StatusOpen, Priority: 2, IssueType: data.TypeTask},
+		{ID: "task.1", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("task.1", "task")},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+	for i, item := range p.Items {
+		if item.Issue != nil && item.Issue.ID == "epic-a.1" {
+			p.Cursor = i
+			p.SelectedIssue = item.Issue
+			break
+		}
+	}
+	p.CollapseAllEpics()
+	got := paradeIssueIDs(p)
+	wantSet := map[string]bool{"epic-a": true, "epic-b": true, "task": true, "task.1": true}
+	if len(got) != len(wantSet) {
+		t.Fatalf("after CollapseAllEpics = %v, want %d rows %v", got, len(wantSet), wantSet)
+	}
+	for _, id := range got {
+		if !wantSet[id] {
+			t.Fatalf("after CollapseAllEpics unexpected row %q in %v", id, got)
+		}
+	}
+	hidden := map[string]bool{"epic-a.1": true, "epic-b.1": true}
+	for _, id := range got {
+		if hidden[id] {
+			t.Fatalf("epic child %q still visible after CollapseAllEpics: %v", id, got)
+		}
+	}
+	if !p.Collapsed["epic-a"] || !p.Collapsed["epic-b"] {
+		t.Fatalf("expected both epics collapsed, got %v", p.Collapsed)
+	}
+	if p.Collapsed["task"] {
+		t.Fatal("CollapseAllEpics must not fold a non-epic parent")
+	}
+	if p.SelectedIssue == nil || p.SelectedIssue.ID != "epic-a" {
+		t.Fatalf("caret = %v, want visible ancestor epic-a", p.SelectedIssue)
+	}
+}
+
+func TestParadeToggleAllEpicsExpands(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "epic-a", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
+		{ID: "epic-a.1", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("epic-a.1", "epic-a")},
+		{ID: "task", Status: data.StatusOpen, Priority: 2, IssueType: data.TypeTask},
+		{ID: "task.1", Status: data.StatusOpen, Priority: 0, Dependencies: paradeParentEdge("task.1", "task")},
+	}
+	p := NewParade(issues, 100, 30, data.DefaultBlockingTypes)
+	if !p.ToggleAllEpics() {
+		t.Fatal("first toggle should collapse")
+	}
+	if !p.Collapsed["epic-a"] {
+		t.Fatal("expected epic-a collapsed")
+	}
+	if p.Collapsed["task"] {
+		t.Fatal("toggle must not fold a non-epic parent")
+	}
+	if p.ToggleAllEpics() {
+		t.Fatal("second toggle should expand")
+	}
+	if p.Collapsed["epic-a"] {
+		t.Fatal("expected epic-a expanded after second toggle")
+	}
+	got := paradeIssueIDs(p)
+	want := map[string]bool{"epic-a": true, "epic-a.1": true, "task": true, "task.1": true}
+	for _, id := range got {
+		delete(want, id)
+	}
+	if len(want) != 0 {
+		t.Fatalf("after expand missing %v from %v", want, got)
+	}
+}
+
 func TestParadeClosedEpicSection(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "open", Title: "Open epic", Status: data.StatusOpen, Priority: 0, IssueType: data.TypeEpic},
@@ -919,26 +997,26 @@ func paradeSortFixture() []data.Issue {
 
 func TestParadeSortModes(t *testing.T) {
 	p := NewParade(paradeSortFixture(), 100, 30, data.DefaultBlockingTypes)
-	if p.SortMode != SortAttention {
-		t.Fatalf("default sort mode = %v, want SortAttention", p.SortMode)
+	if p.EpicSortMode != SortAttention || p.BeadSortMode != SortAttention {
+		t.Fatalf("default sort = epic %v bead %v, want attention", p.EpicSortMode, p.BeadSortMode)
 	}
 	want := []string{"epic", "epic.attn", "epic.blocked", "epic.work", "epic.ready", "epic.defer", "epic.done"}
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("attention order = %v, want %v", got, want)
 	}
 
-	p.SortMode = SortPriority
+	p.BeadSortMode = SortPriority
 	p.RebuildItems()
 	want = []string{"epic", "epic.attn", "epic.blocked", "epic.defer", "epic.done", "epic.ready", "epic.work"}
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
 		t.Fatalf("priority order = %v, want %v (equal P falls back to ID)", got, want)
 	}
 
-	p.SortMode = SortChronological
+	p.BeadSortMode = SortChronological
 	p.RebuildItems()
 	want = []string{"epic", "epic.attn", "epic.blocked", "epic.defer", "epic.done", "epic.ready", "epic.work"}
 	if got := paradeIssueIDs(p); !reflect.DeepEqual(got, want) {
-		t.Fatalf("chronological order = %v, want %v (bead ID)", got, want)
+		t.Fatalf("chronological order = %v, want %v (zero created_at → natural ID)", got, want)
 	}
 	if SortAttention.Next() != SortPriority || SortPriority.Next() != SortChronological || SortChronological.Next() != SortAttention {
 		t.Fatal("S must cycle attention → priority → chronological → attention")
@@ -953,14 +1031,117 @@ func TestParadeSortNeverConsultsRecency(t *testing.T) {
 		CreatedAt: time.Now().Add(-90 * 24 * time.Hour), UpdatedAt: time.Now().Add(-90 * 24 * time.Hour)}
 	fresh := data.Issue{ID: "a-fresh", Title: "Fresh", Status: data.StatusOpen, Priority: 2,
 		CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	for _, mode := range []SortMode{SortAttention, SortPriority, SortChronological} {
+	for _, mode := range []SortMode{SortAttention, SortPriority} {
 		p := NewParade([]data.Issue{stale, fresh}, 100, 20, data.DefaultBlockingTypes)
-		p.SortMode = mode
+		p.BeadSortMode = mode
 		p.RebuildItems()
 		if got, want := paradeIssueIDs(p), []string{"a-fresh", "b-stale"}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s order = %v, want %v (ID tiebreak, never recency)", mode.Label(), got, want)
 		}
 	}
+}
+
+func TestParadeSortChronologicalUsesCreatedAt(t *testing.T) {
+	older := data.Issue{ID: "z-old", Title: "Old", Status: data.StatusOpen, Priority: 2,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	newer := data.Issue{ID: "a-new", Title: "New", Status: data.StatusOpen, Priority: 2,
+		CreatedAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)}
+	p := NewParade([]data.Issue{newer, older}, 100, 20, data.DefaultBlockingTypes)
+	p.BeadSortMode = SortChronological
+	p.RebuildItems()
+	if got, want := paradeIssueIDs(p), []string{"z-old", "a-new"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("chronological = %v, want %v (created_at, not ID)", got, want)
+	}
+}
+
+func TestParadeSortChronologicalNaturalIDOnChildren(t *testing.T) {
+	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	issues := []data.Issue{
+		{ID: "omp-ayn", Title: "Epic", Status: data.StatusInProgress, Priority: 1, IssueType: data.TypeEpic, CreatedAt: now},
+		{ID: "omp-ayn.102", Title: "later", Status: data.StatusClosed, Priority: 1, CreatedAt: now,
+			Dependencies: paradeParentEdge("omp-ayn.102", "omp-ayn")},
+		{ID: "omp-ayn.10", Title: "tenth", Status: data.StatusClosed, Priority: 1, CreatedAt: now,
+			Dependencies: paradeParentEdge("omp-ayn.10", "omp-ayn")},
+		{ID: "omp-ayn.2", Title: "second", Status: data.StatusOpen, Priority: 1, CreatedAt: now,
+			Dependencies: paradeParentEdge("omp-ayn.2", "omp-ayn")},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	p.BeadSortMode = SortChronological
+	p.RebuildItems()
+	if got, want := paradeIssueIDs(p), []string{"omp-ayn", "omp-ayn.2", "omp-ayn.10", "omp-ayn.102"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("child chronological = %v, want %v (natural ID under the epic)", got, want)
+	}
+}
+
+func TestParadeEpicAndBeadSortIndependent(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	issues := []data.Issue{
+		{ID: "z-epic", Title: "Older epic", Status: data.StatusOpen, Priority: 2, IssueType: data.TypeEpic, CreatedAt: t0},
+		{ID: "a-epic", Title: "Newer epic", Status: data.StatusOpen, Priority: 2, IssueType: data.TypeEpic, CreatedAt: t1},
+		{ID: "z-epic.work", Title: "Working child", Status: data.StatusInProgress, Priority: 2, CreatedAt: t1,
+			Dependencies: paradeParentEdge("z-epic.work", "z-epic")},
+		{ID: "z-epic.ready", Title: "Ready child", Status: data.StatusOpen, Priority: 2, CreatedAt: t0,
+			Dependencies: paradeParentEdge("z-epic.ready", "z-epic")},
+	}
+	p := NewParade(issues, 100, 20, data.DefaultBlockingTypes)
+	p.EpicSortMode = SortChronological
+	p.BeadSortMode = SortAttention
+	p.RebuildItems()
+	if got, want := paradeIssueIDs(p), []string{"z-epic", "z-epic.work", "z-epic.ready", "a-epic"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("independent sorts = %v, want %v (epics by created_at, beads by attention)", got, want)
+	}
+}
+
+func TestCompareBeadIDNaturalOrder(t *testing.T) {
+	if compareBeadID("omp-x.2", "omp-x.10") >= 0 {
+		t.Fatal("omp-x.2 must precede omp-x.10")
+	}
+	if compareBeadID("omp-x.10", "omp-x.102") >= 0 {
+		t.Fatal("omp-x.10 must precede omp-x.102")
+	}
+	if compareBeadID("a", "a") != 0 {
+		t.Fatal("equal IDs")
+	}
+}
+
+func TestParadeSettledEpicTitleDimsAndUndims(t *testing.T) {
+	epic := data.Issue{ID: "e", Title: "Campaign", Status: data.StatusInProgress, Priority: 1, IssueType: data.TypeEpic}
+	child := data.Issue{ID: "e.1", Title: "Kid", Status: data.StatusClosed, Priority: 1,
+		Dependencies: paradeParentEdge("e.1", "e")}
+	p := NewParade([]data.Issue{epic, child}, 100, 20, data.DefaultBlockingTypes)
+	if got := p.titleStyle(&epic); got.GetForeground() != ui.TitleSettled {
+		t.Fatalf("n/n epic title = %v, want TitleSettled", got.GetForeground())
+	}
+	if !gotBold(p.titleStyle(&epic)) {
+		t.Fatal("n/n epic must stay bold")
+	}
+
+	child.Status = data.StatusOpen
+	p = NewParade([]data.Issue{epic, child}, 100, 20, data.DefaultBlockingTypes)
+	if got := p.titleStyle(&epic); got.GetForeground() != ui.White {
+		t.Fatalf("reopened child must restore live epic ink, got %v", got.GetForeground())
+	}
+}
+
+func TestParadeBeadTitleQuieterThanEpic(t *testing.T) {
+	epic := data.Issue{ID: "e", Title: "Epic", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeEpic}
+	bead := data.Issue{ID: "t", Title: "Task", Status: data.StatusOpen, Priority: 1, IssueType: data.TypeTask}
+	p := NewParade([]data.Issue{epic, bead}, 100, 20, data.DefaultBlockingTypes)
+	es, bs := p.titleStyle(&epic), p.titleStyle(&bead)
+	if !gotBold(es) {
+		t.Fatal("epic title must be bold")
+	}
+	if gotBold(bs) {
+		t.Fatal("bead title must not be bold")
+	}
+	if bs.GetForeground() != ui.TitleBead {
+		t.Fatalf("bead title = %v, want TitleBead", bs.GetForeground())
+	}
+}
+
+func gotBold(s lipgloss.Style) bool {
+	return s.GetBold()
 }
 
 func TestParadeFamilyGlyphHighlight(t *testing.T) {

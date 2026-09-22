@@ -32,11 +32,11 @@ The live cockpit, a preview, and a nested preview:
 
 **A parent-child forest.** The parade follows parent-child edges, not dotted-ID paint. Nested rows show compact relative IDs (`.7` under `mard-nob`) when the prefix is redundant. `E` scopes the view to an owned epic subtree. Blocked and deferred children render under their parent. Closed epics (and their families) live in a Closed section, collapsed by default; click the header `╭─` to open it.
 
-**Sibling sort is a first-class mode, not a hidden key.** `S` cycles three orderings that apply inside every sibling group, roots included:
+**Sibling sort is two independent knobs.** `S` cycles epics; `s` cycles beads. Each project stores the pair in `.beads/mg.json` so a reopen resumes it.
 
 - **attention** (default) — Operator Attention, blocked, working, ready, deferred, done; then priority; then id
 - **priority** — P0 first, then id
-- **chronological** — bead-id order, the stable proxy for create time
+- **chronological** — created_at (older first), then natural bead-id so .2 precedes .10
 
 **Parade chrome we actually want.** No disclosure triangles. Click the left gutter to collapse a parent without selecting it; double-click a parent to collapse/expand and select it. The selected epic family's glyphs stay full color; the rest recede — glyph only, no underline, no positional row fade. Priority badges right-align to the divider, with nested rows inset by the same indent. The purple middle divider is click-drag resizable and remembers the split as a percentage, so a 70/30 zoom-in stays 70/30 when you zoom out. Exec colors follow a six-swatch palette. The old parade next-blocker hint is gone. Done titles are shaded; the Closed box is steel. An epic with children shows that count as a superscript on its status glyph (`◐²`) — the same direct-child total as the detail `Progress:` line. The header is the bead necklace alone; when work changes it spins for ~600ms (16 frames × 40ms).
 
@@ -136,7 +136,8 @@ mg
 | `j` / `k` | Move along the route |
 | `enter` | Open the detail pane for the selected issue |
 | `o` | Actor pane (WIP, read-only sketch — do not depend on it yet) |
-| `S` | Cycle sibling sort: attention → priority → chronological |
+| `S` | Cycle epic sort: attention → priority → chronological |
+| `s` | Cycle bead sort: attention → priority → chronological |
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
 | `f` | Focus mode: your work and the top priorities, nothing else |
 | `E` | Scope to selected epic subtree |

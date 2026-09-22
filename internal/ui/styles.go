@@ -86,12 +86,15 @@ var (
 	DepNonBlocking lipgloss.Style
 
 	// Due date badges
-	OverdueBadge  lipgloss.Style
-	DueSoonBadge  lipgloss.Style
-	DeferredStyle lipgloss.Style
-	DoneTitle     lipgloss.Style
-	ClosedTitle   lipgloss.Style
-	CommentBadge  lipgloss.Style
+	OverdueBadge     lipgloss.Style
+	DueSoonBadge     lipgloss.Style
+	DeferredStyle    lipgloss.Style
+	EpicTitle        lipgloss.Style
+	BeadTitle        lipgloss.Style
+	SettledEpicTitle lipgloss.Style
+	DoneTitle        lipgloss.Style
+	ClosedTitle      lipgloss.Style
+	CommentBadge     lipgloss.Style
 
 	// Rich dependency styles
 	DepRelated    lipgloss.Style
@@ -325,8 +328,22 @@ func rebuildStyles() {
 
 	// Deferred titles are the lighter grey; closed-epic titles use Dim
 	// (darker). Done beads in the forest sit between them.
+	// Live epics are bold; live beads are the same face one step quieter
+	// (terminals cannot shrink a font, so this is weight + a hair of ink).
+	// An n/n epic uses SettledEpicTitle and snaps back when a child reopens.
 	DeferredStyle = lipgloss.NewStyle().
 		Foreground(Muted)
+
+	EpicTitle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(White)
+
+	BeadTitle = lipgloss.NewStyle().
+		Foreground(TitleBead)
+
+	SettledEpicTitle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(TitleSettled)
 
 	DoneTitle = lipgloss.NewStyle().
 		Foreground(TitleDone)

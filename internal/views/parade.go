@@ -68,8 +68,9 @@ func (item ParadeItem) isSelectable() bool {
 	return !item.IsHeader && !item.IsFooter
 }
 
-// SortMode selects sibling ordering inside every sibling group, roots included.
-// Chronological is bead-ID order (the stable proxy for create time).
+// SortMode is one comparator: attention, priority, or chronological.
+// Chronological is created_at (older first), then natural bead-ID order.
+// S cycles EpicSortMode (epics); s cycles BeadSortMode (everything else).
 type SortMode int
 
 const (
@@ -100,9 +101,21 @@ func (m SortMode) Next() SortMode {
 	}
 }
 
+func ParseSortMode(s string) SortMode {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "priority":
+		return SortPriority
+	case "chronological":
+		return SortChronological
+	default:
+		return SortAttention
+	}
+}
+
 // Parade is the priority-sorted work tree view.
 type Parade struct {
-	SortMode        SortMode
+	EpicSortMode    SortMode
+	BeadSortMode    SortMode
 	Items           []ParadeItem
 	Cursor          int
 	Width           int
@@ -254,7 +267,7 @@ func (p *Parade) appendClosedSection(epics []data.Issue) {
 	if len(epics) == 0 {
 		return
 	}
-	less := p.lessFor()
+	less := p.lessFor(p.EpicSortMode)
 	sort.Slice(epics, func(i, j int) bool { return less(&epics[i], &epics[j]) })
 	sec := closedSection(len(epics))
 	p.Items = append(p.Items, ParadeItem{IsHeader: true, Section: sec})
@@ -293,21 +306,37 @@ func (p *Parade) stateOf(iss *data.Issue) data.SemanticState {
 	return state
 }
 
-// lessFor is the comparator for the active mode: attention rank then priority
-// then ID, priority then ID, or chronological (ID only).
-func (p *Parade) lessFor() func(a, b *data.Issue) bool {
-	if p.SortMode == SortPriority {
+// lessSiblings uses EpicSortMode among epics and BeadSortMode among beads.
+// Mixed sibling groups keep epics above beads so S and s stay independent.
+func (p *Parade) lessSiblings() func(a, b *data.Issue) bool {
+	lessEpic := p.lessFor(p.EpicSortMode)
+	lessBead := p.lessFor(p.BeadSortMode)
+	return func(a, b *data.Issue) bool {
+		aEpic := a.IssueType == data.TypeEpic
+		bEpic := b.IssueType == data.TypeEpic
+		if aEpic != bEpic {
+			return aEpic
+		}
+		if aEpic {
+			return lessEpic(a, b)
+		}
+		return lessBead(a, b)
+	}
+}
+
+// lessFor is the comparator for one mode: attention rank then priority
+// then ID, priority then ID, or chronological (created_at, then natural ID).
+func (p *Parade) lessFor(mode SortMode) func(a, b *data.Issue) bool {
+	if mode == SortPriority {
 		return func(a, b *data.Issue) bool {
 			if a.Priority != b.Priority {
 				return a.Priority < b.Priority
 			}
-			return a.ID < b.ID
+			return compareBeadID(a.ID, b.ID) < 0
 		}
 	}
-	if p.SortMode == SortChronological {
-		return func(a, b *data.Issue) bool {
-			return a.ID < b.ID
-		}
+	if mode == SortChronological {
+		return lessChronological
 	}
 	return func(a, b *data.Issue) bool {
 		ra, rb := data.AttentionRank(p.stateOf(a)), data.AttentionRank(p.stateOf(b))
@@ -317,8 +346,103 @@ func (p *Parade) lessFor() func(a, b *data.Issue) bool {
 		if a.Priority != b.Priority {
 			return a.Priority < b.Priority
 		}
-		return a.ID < b.ID
+		return compareBeadID(a.ID, b.ID) < 0
 	}
+}
+
+func lessChronological(a, b *data.Issue) bool {
+	if !a.CreatedAt.IsZero() && !b.CreatedAt.IsZero() && !a.CreatedAt.Equal(b.CreatedAt) {
+		return a.CreatedAt.Before(b.CreatedAt)
+	}
+	return compareBeadID(a.ID, b.ID) < 0
+}
+
+// compareBeadID is a natural order on bead IDs so omp-x.2 precedes omp-x.10.
+func compareBeadID(a, b string) int {
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		if isDigit(a[i]) && isDigit(b[j]) {
+			ni, av, alen := readNum(a, i)
+			nj, bv, blen := readNum(b, j)
+			if av != bv {
+				if av < bv {
+					return -1
+				}
+				return 1
+			}
+			if alen != blen {
+				if alen < blen {
+					return -1
+				}
+				return 1
+			}
+			i, j = ni, nj
+			continue
+		}
+		if a[i] != b[j] {
+			if a[i] < b[j] {
+				return -1
+			}
+			return 1
+		}
+		i++
+		j++
+	}
+	switch {
+	case i == len(a) && j == len(b):
+		return 0
+	case i == len(a):
+		return -1
+	default:
+		return 1
+	}
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func readNum(s string, i int) (next int, val uint64, digits int) {
+	for i < len(s) && isDigit(s[i]) {
+		val = val*10 + uint64(s[i]-'0')
+		digits++
+		i++
+	}
+	return i, val, digits
+}
+
+func epicChildrenComplete(parentID string, issues []data.Issue) bool {
+	if parentID == "" {
+		return false
+	}
+	done, total := 0, 0
+	for i := range issues {
+		if issues[i].ParentRelationshipID() != parentID {
+			continue
+		}
+		total++
+		if issues[i].Status == data.StatusClosed {
+			done++
+		}
+	}
+	return total > 0 && done == total
+}
+
+func (p *Parade) titleStyle(issue *data.Issue) lipgloss.Style {
+	if issue.IsDeferred() {
+		return ui.DeferredStyle
+	}
+	if issue.Status == data.StatusClosed {
+		if isClosedEpic(issue) {
+			return ui.ClosedTitle
+		}
+		return ui.DoneTitle
+	}
+	if issue.IssueType == data.TypeEpic {
+		if epicChildrenComplete(issue.ID, p.AllIssues) {
+			return ui.SettledEpicTitle
+		}
+		return ui.EpicTitle
+	}
+	return ui.BeadTitle
 }
 
 func orderForest(issues []data.Issue, less func(a, b *data.Issue) bool) (ordered []*data.Issue, depth map[string]int, hasChildren map[string]bool) {
@@ -388,7 +512,7 @@ func (p *Parade) appendForest(issues []data.Issue) {
 }
 
 func (p *Parade) appendForestRows(issues []data.Issue, sec *paradeSection, fallback data.SemanticState) {
-	ordered, depths, children := orderForest(issues, p.lessFor())
+	ordered, depths, children := orderForest(issues, p.lessSiblings())
 	for _, issue := range ordered {
 		if p.hasCollapsedAncestor(issue.ID) {
 			continue
@@ -489,6 +613,64 @@ func (p *Parade) ToggleNode(issueID string) {
 		p.Collapsed = make(map[string]bool)
 	}
 	p.Collapsed[issueID] = !p.isCollapsed(issueID)
+	p.rebuildItems()
+	p.restoreSelection(selectedID)
+}
+
+// CollapseAllEpics folds every epic that has children. Non-epic parents stay
+// as they are. The caret walks up to the nearest still-visible ancestor.
+func (p *Parade) CollapseAllEpics() {
+	p.setAllEpicsCollapsed(true)
+}
+
+// ExpandAllEpics unfolds every epic. Non-epic parents stay as they are.
+func (p *Parade) ExpandAllEpics() {
+	p.setAllEpicsCollapsed(false)
+}
+
+// ToggleAllEpics collapses every epic with children when any of them is
+// expanded, and expands them all when they are already folded.
+func (p *Parade) ToggleAllEpics() (collapsed bool) {
+	if p.anyEpicExpanded() {
+		p.CollapseAllEpics()
+		return true
+	}
+	p.ExpandAllEpics()
+	return false
+}
+
+func (p *Parade) anyEpicExpanded() bool {
+	for _, iss := range p.AllIssues {
+		if iss.IssueType != data.TypeEpic {
+			continue
+		}
+		if len(data.ChildrenOf(iss.ID, p.AllIssues)) == 0 {
+			continue
+		}
+		if !p.isCollapsed(iss.ID) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Parade) setAllEpicsCollapsed(collapsed bool) {
+	selectedID := ""
+	if p.SelectedIssue != nil {
+		selectedID = p.SelectedIssue.ID
+	}
+	if p.Collapsed == nil {
+		p.Collapsed = make(map[string]bool)
+	}
+	for _, iss := range p.AllIssues {
+		if iss.IssueType != data.TypeEpic {
+			continue
+		}
+		if len(data.ChildrenOf(iss.ID, p.AllIssues)) == 0 {
+			continue
+		}
+		p.Collapsed[iss.ID] = collapsed
+	}
 	p.rebuildItems()
 	p.restoreSelection(selectedID)
 }
@@ -1099,18 +1281,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected, siblingGlyph bool) strin
 	if indices, ok := p.MatchHighlights[issue.ID]; ok && len(indices) > 0 {
 		renderedTitle = ui.HighlightMatches(title, indices, maxTitle)
 	} else {
-		titleStyle := lipgloss.NewStyle()
-		if issue.IsDeferred() {
-			titleStyle = ui.DeferredStyle
-		}
-		if isClosed {
-			if isClosedEpic(issue) {
-				titleStyle = ui.ClosedTitle
-			} else {
-				titleStyle = ui.DoneTitle
-			}
-		}
-		renderedTitle = titleStyle.Render(title)
+		renderedTitle = p.titleStyle(issue).Render(title)
 	}
 	renderedID := item.RenderedID
 

@@ -595,7 +595,7 @@ func TestContractAllStatusValues(t *testing.T) {
 }
 
 func TestContractAllIssueTypes(t *testing.T) {
-	types := []string{"task", "bug", "feature", "chore", "epic", "spike", "story", "milestone"}
+	types := []string{"task", "bug", "feature", "chore", "epic", "docs", "question", "spike", "story", "milestone"}
 	for _, tp := range types {
 		t.Run(tp, func(t *testing.T) {
 			jsonStr := `[{"id":"t-1","title":"test","status":"open",` +

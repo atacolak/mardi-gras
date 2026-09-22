@@ -51,6 +51,13 @@ file. If omitted,
 .B mg
 auto\-detects from the current directory upward.
 .TP
+.BI \-\-scope " epic-id"
+Show only this epic and its parent-child descendants.
+Intended for sibling-lead windows that should stay on one delegated epic.
+Can also be set via
+.BR MG_SCOPE .
+A launch scope is pinned: esc does not widen it.
+.TP
 .BI \-\-block\-types " types"
 Comma\-separated dependency types to treat as blockers (default:
 .BR blocks ).

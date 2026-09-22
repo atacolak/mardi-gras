@@ -38,7 +38,8 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `/`          | Enter filter mode                         |
 | `f`          | Toggle focus mode (my work + top priority)|
 | `E`          | Scope the parade to the selected issue's epic subtree |
-| `S`          | Cycle sibling sort: attention (default) / priority / chronological (bead ID) |
+| `S`          | Cycle epic sort: attention (default) / priority / chronological (created_at, then natural ID) |
+| `s`          | Cycle bead sort: attention (default) / priority / chronological (created_at, then natural ID) |
 | `click ID`   | Open a mentioned bead in the detail pane |
 | `ctrl` on ID or row | Preview a mentioned bead or a parade row (pointer on the link or left-hand bead, then Ctrl). Wheel or `j`/`k` scrolls. Gap click closes. Two deep. |
 | `a`          | Launch agent (tmux: new pane; orchestrator: sling) |
@@ -78,7 +79,7 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `y`           | Assign selected issue                    |
 | `t`           | Add label to selected issue              |
 | `l`           | Add dependency link                      |
-| `s`           | Pick a formula and sling the issue **(orch)** |
+| `:`           | Palette: pick a formula and sling **(orch)** |
 | `n`           | Nudge the agent working the issue **(orch)** |
 | `C`           | Create a convoy from the selection **(orch)** |
 
@@ -94,7 +95,7 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `1/2/3`       | Bulk set status on selected         |
 | `!/@/#/$`     | Bulk set priority on selected       |
 | `a`           | Sling all selected issues           |
-| `s`           | Pick formula and sling all selected |
+| `:`           | Palette: sling selected with a formula |
 | `C`           | Create a convoy from all selected   |
 
 ## Detail Pane

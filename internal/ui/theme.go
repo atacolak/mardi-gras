@@ -66,10 +66,14 @@ var (
 	Light color.Color
 	Muted color.Color
 	Dim   color.Color
+	// TitleBead is one step down from White: live task titles.
+	// TitleSettled is an n/n epic: dimmer than live, brighter than Done.
 	// TitleDone sits between Muted (deferred titles) and Dim (closed-epic titles).
-	TitleDone color.Color
-	Dark      color.Color
-	Darkest   color.Color
+	TitleBead    color.Color
+	TitleSettled color.Color
+	TitleDone    color.Color
+	Dark         color.Color
+	Darkest      color.Color
 
 	// Semantic: parade status
 	StatusRolling color.Color
@@ -93,6 +97,8 @@ var (
 	ColorTask      color.Color
 	ColorChore     color.Color
 	ColorEpic      color.Color
+	ColorDocs      color.Color
+	ColorQuestion  color.Color
 	ColorSpike     color.Color
 	ColorStory     color.Color
 	ColorMilestone color.Color
@@ -190,6 +196,11 @@ func applyDerived() {
 	ExecDeferred = SwatchSteel          // #6F8FAF
 	ExecOperatorReview = SwatchLavender // #A78BBA
 	ExecDone = SwatchGreen              // #7FB069
+	// Research-adjacent types paint as Ready: br's question (and docs),
+	// plus the older bd spike name.
+	ColorDocs = ExecReady
+	ColorQuestion = ExecReady
+	ColorSpike = ExecReady
 }
 
 func applyDarkPalette() {
@@ -209,6 +220,8 @@ func applyDarkPalette() {
 	Light = lipgloss.Color("#CCCCCC")
 	Muted = lipgloss.Color("#888888")
 	Dim = lipgloss.Color("#555555")
+	TitleBead = lipgloss.Color("#E0E0E0")
+	TitleSettled = lipgloss.Color("#A8A8A8")
 	TitleDone = lipgloss.Color("#6E6E6E")
 	Dark = lipgloss.Color("#333333")
 	Darkest = lipgloss.Color("#1A1A1A")
@@ -267,6 +280,8 @@ func applyLightPalette() {
 	Light = lipgloss.Color("#3D3D3D")
 	Muted = lipgloss.Color("#6B6B6B")
 	Dim = lipgloss.Color("#9A9A9A")
+	TitleBead = lipgloss.Color("#2E2E2E")
+	TitleSettled = lipgloss.Color("#5A5A5A")
 	TitleDone = lipgloss.Color("#838383")
 	Dark = lipgloss.Color("#C8C8C8")
 	Darkest = lipgloss.Color("#EAEAEA")
@@ -413,6 +428,10 @@ func IssueTypeColor(t string) color.Color {
 		return ColorChore
 	case "epic":
 		return ColorEpic
+	case "docs":
+		return ColorDocs
+	case "question":
+		return ColorQuestion
 	case "spike":
 		return ColorSpike
 	case "story":

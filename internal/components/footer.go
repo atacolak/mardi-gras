@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -46,6 +45,8 @@ var ParadeBindings = []FooterBinding{
 	{Key: "?", Desc: "help"},
 	{Key: ":", Desc: "palette"},
 	{Key: "/", Desc: "filter"},
+	{Key: "S", Desc: "epics"},
+	{Key: "s", Desc: "beads"},
 	{Key: "j/k", Desc: "navigate"},
 	{Key: "1/2/3", Desc: "status"},
 	{Key: "b", Desc: "branch"},
@@ -58,6 +59,8 @@ var ParadeBindings = []FooterBinding{
 var DetailBindings = []FooterBinding{
 	{Key: "?", Desc: "help"},
 	{Key: "/", Desc: "filter"},
+	{Key: "S", Desc: "epics"},
+	{Key: "s", Desc: "beads"},
 	{Key: "j/k", Desc: "scroll"},
 	{Key: "tab", Desc: "switch pane"},
 	{Key: "esc", Desc: "back"},
@@ -76,43 +79,16 @@ func (f Footer) View() string {
 		parts = append(parts, key+" "+desc)
 	}
 
-	// Build source info (left side)
+	// Left side is SCOPE / FOCUS only. The idle source chip
+	// ("br list (cli) · 0s ago") is hidden; a degraded or fallback
+	// source still paints so a dead CLI is visible.
 	sourceInfo := ""
-	if f.SourceMode == data.SourceCLI || f.SourcePath != "" {
-		name := "bd list"
-		mode := "(cli)"
-		if f.SourceMode == data.SourceCLI && f.SourceLabel != "" {
-			name = f.SourceLabel
-		}
-		if f.SourceMode != data.SourceCLI {
-			name = filepath.Base(f.SourcePath)
-			mode = "(legacy)"
-			if f.PathExplicit {
-				mode = "(--path)"
-			}
-		}
+	if f.SourceHealth != nil && f.SourceHealth.IsDegraded() {
 		age := "?"
 		if !f.LastRefresh.IsZero() {
 			age = data.RelativeAge(time.Since(f.LastRefresh))
 		}
-		contextInfo := ""
-		if f.BeadsContext != nil && f.BeadsContext.Database != "" {
-			contextInfo = f.BeadsContext.Database
-			if f.BeadsContext.Backend != "" {
-				contextInfo += "/" + f.BeadsContext.Backend
-			}
-			if f.BeadsContext.BdVersion != "" {
-				contextInfo += " v" + f.BeadsContext.BdVersion
-			}
-			contextInfo = " · " + contextInfo
-		}
-
-		// Override rendering when source is in a degraded or fallback state.
-		if f.SourceHealth != nil && f.SourceHealth.IsDegraded() {
-			sourceInfo = f.renderHealthState(age)
-		} else {
-			sourceInfo = ui.FooterSource.Render(fmt.Sprintf("%s %s · %s%s", name, mode, age, contextInfo))
-		}
+		sourceInfo = f.renderHealthState(age)
 	}
 
 	// Persistent mode badges: without them the only signal is a transient toast
@@ -204,23 +180,47 @@ func (f Footer) renderHealthState(age string) string {
 // hide entirely when their CLI is absent, so the footer must not advertise keys
 // that do nothing.
 func NewFooter(width int, detailFocused, hasGasTown, hasActors bool) Footer {
-	bindings := ParadeBindings
+	bindings := append([]FooterBinding(nil), ParadeBindings...)
 	if detailFocused {
-		bindings = DetailBindings
+		bindings = append([]FooterBinding(nil), DetailBindings...)
 	}
 	if hasActors {
-		bindings = insertBefore(bindings, "j/k", FooterBinding{Key: "o", Desc: "actors"})
+		bindings = insertBefore(bindings, "S", FooterBinding{Key: "o", Desc: "actors"})
 	}
 	if hasGasTown {
 		gtBindings := []FooterBinding{
 			{Key: "^g", Desc: "gas town"},
 			{Key: "p", Desc: "problems"},
-			{Key: "s", Desc: "sling"},
 			{Key: "n", Desc: "nudge"},
 		}
 		bindings = insertBefore(bindings, "q", gtBindings...)
 	}
 	return Footer{Width: width, Bindings: bindings}
+}
+
+// SetSortLabels writes the live S/s modes onto the footer chips when the
+// row is wide enough that the extra words will not push `o actors` off
+// an 80-column bar. Narrow terminals keep the short "epics" / "beads" labels.
+func (f *Footer) SetSortLabels(epic, bead string) {
+	if f.Width < 110 {
+		return
+	}
+	if epic == "" {
+		epic = "attention"
+	}
+	if bead == "" {
+		bead = "attention"
+	}
+	for i, b := range f.Bindings {
+		switch b.Key {
+		case "S":
+			f.Bindings[i].Desc = "epics " + epic
+		case "s":
+			if b.Desc == "beads" || strings.HasPrefix(b.Desc, "beads ") {
+				f.Bindings[i].Desc = "beads " + bead
+			}
+		}
+	}
 }
 
 // insertBefore inserts extra bindings before the binding with the given key.
@@ -249,7 +249,6 @@ func BulkFooter(width, count int, hasGasTown bool) string {
 	if hasGasTown {
 		bindings = append(bindings,
 			FooterBinding{Key: "a", Desc: "sling"},
-			FooterBinding{Key: "s", Desc: "sling+formula"},
 		)
 	}
 	bindings = append(bindings, FooterBinding{Key: "X", Desc: "clear"})
