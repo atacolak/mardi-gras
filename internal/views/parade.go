@@ -435,14 +435,31 @@ func (p *Parade) hasCollapsedAncestor(issueID string) bool {
 	return false
 }
 
+// paradeIDMaxChars is the left-pane ID budget. Typical mard IDs
+// (`mard-tpj`, `mard-tpj.16`) fit; longer names are cut so the title stays
+// visible. The row stays keyed by the real issue ID.
+const paradeIDMaxChars = 11
+
+// compactParadeID keeps a parade label at most paradeIDMaxChars cells.
+// Overflow is concatenated with a one-cell ellipsis.
+func compactParadeID(id string) string {
+	runes := []rune(id)
+	if len(runes) <= paradeIDMaxChars {
+		return id
+	}
+	return string(runes[:paradeIDMaxChars-1]) + "…"
+}
+
 // relativeDisplayID is the one place a row's label is chosen: a root row
 // always shows its full ID, and a nested row defers to data.RelativeDisplayID's
-// edge-checked judgment.
+// edge-checked judgment. Either way the painted label is then capped so a
+// long bead or epic name cannot eat the title.
 func relativeDisplayID(iss *data.Issue, depth int) string {
-	if depth <= 0 {
-		return iss.ID
+	id := iss.ID
+	if depth > 0 {
+		id = data.RelativeDisplayID(iss)
 	}
-	return data.RelativeDisplayID(iss)
+	return compactParadeID(id)
 }
 
 // MoveUp moves the cursor up, skipping headers and footers.

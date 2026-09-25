@@ -1258,3 +1258,59 @@ func TestParadeNonEpicHasNoChildSuperscript(t *testing.T) {
 		t.Fatalf("non-epic row rendered a child superscript:\n%s", out)
 	}
 }
+
+func TestCompactParadeIDCapsAtEleven(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"mard-tpj", "mard-tpj"},
+		{"mard-tpj.1", "mard-tpj.1"},
+		{"mard-tpj.16", "mard-tpj.16"},
+		{"edge-child", "edge-child"},
+		{"omp-actor-bridge-ayn", "omp-actor-…"},
+		{"omp-actor-bridge-ayn.107", "omp-actor-…"},
+	}
+	for _, tc := range tests {
+		if got := compactParadeID(tc.id); got != tc.want {
+			t.Errorf("compactParadeID(%q) = %q, want %q", tc.id, got, tc.want)
+		}
+		if n := len([]rune(compactParadeID(tc.id))); n > paradeIDMaxChars {
+			t.Errorf("compactParadeID(%q) is %d runes, want ≤ %d", tc.id, n, paradeIDMaxChars)
+		}
+	}
+}
+
+func TestParadeLongIDLeavesTitleVisible(t *testing.T) {
+	longID := "omp-actor-bridge-ayn"
+	issue := data.Issue{
+		ID: longID, Title: "Ship the visible title", Status: data.StatusOpen,
+		Priority: data.PriorityMedium, IssueType: data.TypeEpic,
+	}
+	p := NewParade([]data.Issue{issue}, 48, 10, data.DefaultBlockingTypes)
+
+	var item *ParadeItem
+	for i := range p.Items {
+		if p.Items[i].Issue != nil && p.Items[i].Issue.ID == longID {
+			item = &p.Items[i]
+			break
+		}
+	}
+	if item == nil {
+		t.Fatal("long-id epic missing from parade")
+	}
+	if got := ansi.Strip(item.RenderedID); got != "omp-actor-…" {
+		t.Fatalf("RenderedID = %q, want %q", got, "omp-actor-…")
+	}
+	if item.Issue.ID != longID {
+		t.Fatalf("row key = %q, want the full ID", item.Issue.ID)
+	}
+
+	row := ansi.Strip(p.renderIssue(*item, false, false))
+	if strings.Contains(row, longID) {
+		t.Fatalf("row still paints the full long ID:\n%s", row)
+	}
+	if !strings.Contains(row, "Ship the visible title") {
+		t.Fatalf("row hid the title behind the long ID:\n%s", row)
+	}
+}
