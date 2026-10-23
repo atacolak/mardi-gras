@@ -246,10 +246,11 @@ func (m Model) replyMetaLine(c gastown.Comment, selected, unread bool, innerW in
 func (m Model) nameAndWhen(c gastown.Comment, selected, unread bool, indent string) string {
 	name := m.authorLabel(c.Author, selected, unread)
 	clock := lipgloss.NewStyle().Foreground(ui.Muted).Render(commentClock(c.Time))
-	date := lipgloss.NewStyle().Foreground(ui.Dim).Render(commentDate(c.Time))
 	out := indent + name + nameTimeGap + clock
-	if date != "" {
-		out += " " + date
+	if selected {
+		if date := commentDate(c.Time); date != "" {
+			out += " " + lipgloss.NewStyle().Foreground(ui.Dim).Render(date)
+		}
 	}
 	return out
 }
