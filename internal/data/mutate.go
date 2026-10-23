@@ -106,14 +106,14 @@ func UpdateTitle(issueID, title string) error {
 	return execWithTimeout(timeoutShort, "bd", "update", issueID, "--title="+title)
 }
 
-// AddComment runs `br comments add --author ata <id> -- <body>`.
-// mg is the operator surface; compose/reply is always authored ata.
+// AddComment runs `br comments add <id> -- <body>`.
+// Author is whoever br already is — actor, env, or user. mg does not stamp a name.
 func AddComment(issueID, body string) error {
 	if err := ValidateIssueID(issueID); err != nil {
 		return err
 	}
 	body = sanitizeText(body, maxTextLen)
-	_, err := runWithTimeout(timeoutShort, "br", "comments", "add", "--author", "ata", issueID, "--", body)
+	_, err := runWithTimeout(timeoutShort, "br", "comments", "add", issueID, "--", body)
 	return wrapExitError("br comments add", err)
 }
 

@@ -243,7 +243,7 @@ func TestAddCommentArgs(t *testing.T) {
 		t.Fatalf("AddComment() error = %v", err)
 	}
 	args := (*calls)[0]
-	want := []string{"br", "comments", "add", "--author", "ata", "mg-42", "--", "Fixed the auth bug"}
+	want := []string{"br", "comments", "add", "mg-42", "--", "Fixed the auth bug"}
 	if len(args) != len(want) {
 		t.Errorf("args = %v, want %v", args, want)
 	} else {
@@ -256,24 +256,18 @@ func TestAddCommentArgs(t *testing.T) {
 	}
 }
 
-func TestAddCommentUsesBrAuthorAta(t *testing.T) {
+func TestAddCommentDoesNotStampAuthor(t *testing.T) {
 	calls, restore := mockRunCapture([]byte("ok\n"), nil)
 	defer restore()
-	if err := AddComment("mg-42", "operator note"); err != nil {
+	if err := AddComment("mg-42", "a note"); err != nil {
 		t.Fatalf("AddComment() error = %v", err)
 	}
-	args := (*calls)[0]
-	want := []string{"br", "comments", "add", "--author", "ata", "mg-42", "--", "operator note"}
-	if len(args) != len(want) {
-		t.Fatalf("args = %v, want %v", args, want)
-	}
-	for i := range want {
-		if args[i] != want[i] {
-			t.Fatalf("args = %v, want %v", args, want)
+	for _, a := range (*calls)[0] {
+		if a == "--author" || a == "ata" {
+			t.Fatalf("mg must not pass --author, got %v", (*calls)[0])
 		}
 	}
 }
-
 
 func TestAddCommentExecError(t *testing.T) {
 	defer mockRun(nil, errors.New("bd not found"))()

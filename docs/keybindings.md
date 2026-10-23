@@ -74,7 +74,8 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `B`           | Create + checkout git branch             |
 | `N`           | Create new issue                         |
 | `e`           | Edit selected issue (title, priority)    |
-| `c`           | Comment on the selected bead (author ata) |
+| `c`           | Comment on the selected bead             |
+
 | `r`           | Reply to the selected comment thread (or Codex reply when that overlay is open) |
 | `y`           | Assign selected issue                    |
 | `t`           | Add label to selected issue              |

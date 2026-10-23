@@ -233,9 +233,8 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 
 func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
 	name := m.authorLabel(c.Author, selected, unread)
-	role := lipgloss.NewStyle().Foreground(ui.Dim).Render(" " + authorRole(c.Author))
 	when := lipgloss.NewStyle().Foreground(ui.Dim).Render(compactCommentTime(c.Time))
-	left := " " + name + role
+	left := " " + name
 	fill := innerW - lipgloss.Width(left) - lipgloss.Width(when) - 1
 	if fill < 1 {
 		fill = 1
@@ -700,37 +699,25 @@ func cutWidth(s string, width int) int {
 	return len(s)
 }
 
-func authorRole(name string) string {
-	if strings.EqualFold(name, "ata") {
-		return "operator"
-	}
-	return "actor"
-}
-
 func authorColor(name string, selected bool) color.Color {
-	var base color.Color
-	if strings.EqualFold(name, "ata") {
-		base = lipgloss.Color("#C4A35A")
-	} else {
-		palette := []color.Color{
-			lipgloss.Color("#6B7C8A"),
-			lipgloss.Color("#7A6B82"),
-			lipgloss.Color("#6B8275"),
-			lipgloss.Color("#826B6B"),
-			lipgloss.Color("#6B7582"),
-			lipgloss.Color("#7A8270"),
-			lipgloss.Color("#6E7380"),
-			lipgloss.Color("#7A7068"),
-		}
-		h := 0
-		for _, r := range strings.ToLower(name) {
-			h = 31*h + int(r)
-		}
-		if h < 0 {
-			h = -h
-		}
-		base = palette[h%len(palette)]
+	palette := []color.Color{
+		lipgloss.Color("#6B7C8A"),
+		lipgloss.Color("#7A6B82"),
+		lipgloss.Color("#6B8275"),
+		lipgloss.Color("#826B6B"),
+		lipgloss.Color("#6B7582"),
+		lipgloss.Color("#7A8270"),
+		lipgloss.Color("#6E7380"),
+		lipgloss.Color("#7A7068"),
 	}
+	h := 0
+	for _, r := range strings.ToLower(name) {
+		h = 31*h + int(r)
+	}
+	if h < 0 {
+		h = -h
+	}
+	base := palette[h%len(palette)]
 	if selected {
 		return brightenColor(base)
 	}

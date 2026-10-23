@@ -24,7 +24,8 @@ The live cockpit, a preview, and a nested preview:
 
 ### Comments dock
 
-A gold overlay on the detail pane, not a second database. Selecting a bead loads the thread. `c` writes a comment as ata, `r` replies (`re:<id>` in the store, hidden in the dock), `C` folds the bar. Collapsed rows are author + preview + reply count; open a row and the body stays put with replies indented under it. Unread is a curly underline on the name, not a hover-circle. hera pokes the owner when ata comments or replies; wrap does not rewrite the body.
+A gold overlay on the detail pane, not a second database. Selecting a bead loads the thread. `c` comments, `r` replies (`re:<id>` in the store, hidden in the dock), `C` folds the bar. Collapsed rows are author + preview + reply count; open a row and the body stays put with replies indented under it. Unread is a curly underline on the name, not a hover-circle. Author is whoever `br` already is.
+
 
 <img src="docs/screenshots/comments-dock.png" alt="Comments dock with a selected reply thread" />
 
@@ -142,7 +143,8 @@ mg
 | --- | --- |
 | `j` / `k` | Move along the route |
 | `enter` | Open the detail pane for the selected issue |
-| `c` | Comment on the selected bead (author ata) |
+| `c` | Comment on the selected bead |
+
 | `r` | Reply to the selected comment thread |
 | `C` | Fold / unfold the comments dock |
 | `o` | Actor pane (WIP, read-only sketch — do not depend on it yet) |
@@ -173,7 +175,8 @@ The detail pane renders an issue's description, design notes, and acceptance cri
 Writes go through the `bd` CLI, so anything mg changes is exactly what an agent would see.
 
 - `1` `2` `3` set status; `!` `@` `#` `$` set priority.
-- `N` creates an issue, `e` edits it, `c` comments (ata), `r` replies to a thread, `y` assigns it, `t` labels it, `l` links a dependency.
+- `N` creates an issue, `e` edits it, `c` comments, `r` replies to a thread, `y` assigns it, `t` labels it, `l` links a dependency.
+
 
 - `b` copies a branch name for the issue; `B` creates and checks out that branch.
 - `space` builds a multi-selection; the status and priority keys then apply to all of it.

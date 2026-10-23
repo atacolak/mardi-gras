@@ -15,8 +15,11 @@ import (
 
 func testDockModel(t *testing.T) Model {
 	t.Helper()
+	seenStoreDir = t.TempDir()
+	t.Cleanup(func() { seenStoreDir = "" })
 	issue := data.Issue{ID: "j7k.9", Title: "S4-prep", Status: data.StatusClosed, Priority: 1, IssueType: data.TypeTask}
-	m := New([]data.Issue{issue}, data.Source{Mode: data.SourceJSONL}, data.DefaultBlockingTypes)
+	m := New([]data.Issue{issue}, data.Source{Mode: data.SourceJSONL, ProjectDir: t.TempDir()}, data.DefaultBlockingTypes)
+	m.seenCommentIDs = map[string]map[string]bool{}
 	m.ready = true
 	m.width, m.height = 80, 24
 	m.layout()
