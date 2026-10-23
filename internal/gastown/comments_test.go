@@ -35,6 +35,29 @@ func TestCommentParsing(t *testing.T) {
 	}
 }
 
+func TestCommentIDAcceptsIntegerJSON(t *testing.T) {
+	// br 0.5.11 emits integer comment ids (`63`). A string-only field
+	// rejects that payload, so the dock would stay empty on a live board.
+	raw := `[{"id":63,"author":"sf","text":"Dispatch flip_usb","created_at":"2026-10-23T04:46:51Z"}]`
+	var comments []Comment
+	if err := json.Unmarshal([]byte(raw), &comments); err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(comments))
+	}
+	if comments[0].ID != "63" {
+		t.Errorf("ID = %q, want %q", comments[0].ID, "63")
+	}
+	if comments[0].Author != "sf" {
+		t.Errorf("Author = %q, want sf", comments[0].Author)
+	}
+	if comments[0].Body != "Dispatch flip_usb" {
+		t.Errorf("Body = %q, want Dispatch flip_usb", comments[0].Body)
+	}
+}
+
+
 func TestCommentParsingEmpty(t *testing.T) {
 	raw := `[]`
 	var comments []Comment
@@ -79,11 +102,24 @@ func TestFetchCommentsArgs(t *testing.T) {
 	defer restore()
 	_, _ = FetchComments("mg-42")
 	args := (*calls)[0]
-	// Should be: bd comments mg-42 --json
-	if len(args) != 4 || args[0] != "bd" || args[1] != "comments" || args[2] != "mg-42" || args[3] != "--json" {
+	if len(args) != 4 || args[0] != "br" || args[1] != "comments" || args[2] != "mg-42" || args[3] != "--json" {
 		t.Errorf("args = %v", args)
 	}
 }
+
+func TestFetchCommentsUsesBr(t *testing.T) {
+	calls, restore := mockRunCapture([]byte(`[]`), nil)
+	defer restore()
+	_, _ = FetchComments("j7k.9")
+	if len(*calls) != 1 {
+		t.Fatalf("made %d calls, want 1", len(*calls))
+	}
+	args := (*calls)[0]
+	if len(args) != 4 || args[0] != "br" || args[1] != "comments" || args[2] != "j7k.9" || args[3] != "--json" {
+		t.Errorf("args = %v, want [br comments j7k.9 --json]", args)
+	}
+}
+
 
 func TestCommentParsingIgnoresBodyKey(t *testing.T) {
 	// A "body" key is not what bd emits; it must not populate Body. This pins

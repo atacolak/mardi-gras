@@ -805,8 +805,8 @@ func TestGCDriverConvoyCreateFromEpicEmpty(t *testing.T) {
 
 // TestBothDriversFetchCommentsFromBeads pins that comments are Beads data, not
 // orchestrator data. GCDriver used to return ErrUnsupported here, which cost
-// Gas City users the whole comments panel for issues whose comments bd still
-// held and mg could still read. Both drivers must issue the same `bd` call.
+// Gas City users the whole comments panel for issues whose comments br still
+// held and mg could still read. Both drivers must issue the same `br` call.
 func TestBothDriversFetchCommentsFromBeads(t *testing.T) {
 	const payload = `[{"id":"c1","author":"ada","text":"first","created_at":"2026-08-29T00:00:00Z"}]`
 
@@ -832,8 +832,8 @@ func TestBothDriversFetchCommentsFromBeads(t *testing.T) {
 				t.Fatalf("made %d subprocess calls, want 1", len(*calls))
 			}
 			got := (*calls)[0]
-			if got[0] != "bd" || got[1] != "comments" {
-				t.Errorf("invoked %v, want a `bd comments` call", got)
+			if got[0] != "br" || got[1] != "comments" {
+				t.Errorf("invoked %v, want a `br comments` call", got)
 			}
 		})
 	}
