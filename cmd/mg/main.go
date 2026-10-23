@@ -41,6 +41,7 @@ func main() {
 	cmdTimeout := flag.Int("cmd-timeout", 0, "Command timeout in seconds (scales all external command timeouts; default 30)")
 	agentRuntime := flag.String("agent", "", "Preferred agent runtime: claude, cursor, or codex (default: first on PATH — claude, then cursor, then codex)")
 	themeFlag := flag.String("theme", "", "Color theme: auto, dark, or light (default: MG_THEME env or auto)")
+	authorFlag := flag.String("author", "", "Comment author, saved for later runs (default: operator)")
 	flag.Parse()
 
 	// MG_NO_ANIMATIONS=1 env var as alternative to --no-animations flag
@@ -68,6 +69,13 @@ func main() {
 	if *cmdTimeout > 0 {
 		gastown.SetCmdTimeout(*cmdTimeout)
 		data.SetCmdTimeout(*cmdTimeout)
+	}
+
+	if *authorFlag != "" {
+		if err := data.SaveCommentAuthor(*authorFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "mg: save author: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	if *showVersion {

@@ -151,6 +151,21 @@ func (d *Detail) SetSize(width, height int) {
 	}
 }
 
+// SetViewportBottomInset shrinks the scrollable body so an overlay (the
+// comments dock) does not cover the last lines. Height and width of the pane
+// stay put; only the viewport shortens. A no-op when the height is unchanged
+// so drag frames do not reset scroll.
+func (d *Detail) SetViewportBottomInset(inset int) {
+	if inset < 0 {
+		inset = 0
+	}
+	vis := max(d.Height-1-inset, 1)
+	if d.Viewport.Height() == vis {
+		return
+	}
+	d.Viewport.SetHeight(vis)
+}
+
 // SetPreviewSize sizes the viewport to fill a gold preview box. No left-border
 // reservation and no scroll-cue row — those belong to the parent pane only.
 func (d *Detail) SetPreviewSize(width, height int) {

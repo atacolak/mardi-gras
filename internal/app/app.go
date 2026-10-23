@@ -2160,9 +2160,11 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				want := m.detail.Height - bodyRow
 				m.commentsDockOverride = want
 				m.commentsDockRatio = float64(clampDockHeight(want, m.detail.Height)) / float64(m.detail.Height)
+				m.applyDockInset()
 			}
 			return m, nil
 		}
+
 		if !m.draggingDivider {
 			top, _, paradeWidth := m.bodyBounds()
 			if mouse.X >= paradeWidth && m.layoutPreset != LayoutWide {
@@ -2213,13 +2215,16 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		dx, drow := x-paradeWidth, y-top
 		if m.commentsDockFoldHit(dx, drow) {
 			m.commentsDockOpen = !m.commentsDockOpen
+			m.applyDockInset()
 			return m, nil
 		}
 		if m.commentsDockHeaderHit(drow) {
 			m.draggingCommentsDock = true
 			m.commentsDockOpen = true
+			m.applyDockInset()
 			return m, nil
 		}
+
 		if m.commentsDockContains(drow) {
 			if m.commentsDockHitAt(drow) == dockHitCompose {
 				issue := m.parade.SelectedIssue
@@ -2909,6 +2914,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "C":
 		m.commentsDockOpen = !m.commentsDockOpen
+		m.applyDockInset()
 		return m, nil
 
 	case "ctrl+k":
@@ -3934,6 +3940,11 @@ func (m *Model) layoutPanes() {
 	m.problems.SetSize(detailW, bodyH)
 	m.doctor.SetSize(detailW, bodyH)
 	m.codexTranscript.SetSize(detailW, bodyH)
+	m.applyDockInset()
+}
+
+func (m *Model) applyDockInset() {
+	m.detail.SetViewportBottomInset(m.commentsDockHeight())
 }
 
 // layout recalculates dimensions for all sub-components.

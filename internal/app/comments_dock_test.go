@@ -27,6 +27,19 @@ func testDockModel(t *testing.T) Model {
 	return m
 }
 
+func TestDockInsetLeavesBodyScrollable(t *testing.T) {
+	m := testDockModel(t)
+	m.applyDockInset()
+	dock := m.commentsDockHeight()
+	vis := m.detail.Viewport.Height()
+	if vis+dock > m.detail.Height {
+		t.Fatalf("viewport %d + dock %d exceeds pane %d", vis, dock, m.detail.Height)
+	}
+	if vis >= m.detail.Height-1 {
+		t.Fatal("open dock must shrink the body viewport so covered lines can scroll up")
+	}
+}
+
 func TestCommentsDockCoversWithoutChangingViewport(t *testing.T) {
 	m := testDockModel(t)
 	before := m.detail.Viewport.Height()

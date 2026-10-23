@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -237,14 +238,16 @@ func TestCreateIssueExecError(t *testing.T) {
 
 func TestAddCommentArgs(t *testing.T) {
 	t.Setenv("MG_AUTHOR", "")
+	commentAuthorPath = filepath.Join(t.TempDir(), "author")
+	t.Cleanup(func() { commentAuthorPath = "" })
 	calls, restore := mockRunCapture([]byte("ok\n"), nil)
 	defer restore()
 	err := AddComment("mg-42", "Fixed the auth bug")
 	if err != nil {
 		t.Fatalf("AddComment() error = %v", err)
 	}
+	want := []string{"br", "comments", "add", "--author", "operator", "mg-42", "--", "Fixed the auth bug"}
 	args := (*calls)[0]
-	want := []string{"br", "comments", "add", "mg-42", "--", "Fixed the auth bug"}
 	if len(args) != len(want) {
 		t.Errorf("args = %v, want %v", args, want)
 	} else {
@@ -257,28 +260,14 @@ func TestAddCommentArgs(t *testing.T) {
 	}
 }
 
-func TestAddCommentDoesNotStampAuthor(t *testing.T) {
-	t.Setenv("MG_AUTHOR", "")
-	calls, restore := mockRunCapture([]byte("ok\n"), nil)
-	defer restore()
-	if err := AddComment("mg-42", "a note"); err != nil {
-		t.Fatalf("AddComment() error = %v", err)
-	}
-	for _, a := range (*calls)[0] {
-		if a == "--author" {
-			t.Fatalf("empty MG_AUTHOR must not pass --author, got %v", (*calls)[0])
-		}
-	}
-}
-
 func TestAddCommentPassesMGAuthor(t *testing.T) {
-	t.Setenv("MG_AUTHOR", "operator")
+	t.Setenv("MG_AUTHOR", "operator-x")
 	calls, restore := mockRunCapture([]byte("ok\n"), nil)
 	defer restore()
 	if err := AddComment("mg-42", "a note"); err != nil {
 		t.Fatalf("AddComment() error = %v", err)
 	}
-	want := []string{"br", "comments", "add", "--author", "operator", "mg-42", "--", "a note"}
+	want := []string{"br", "comments", "add", "--author", "operator-x", "mg-42", "--", "a note"}
 	args := (*calls)[0]
 	if len(args) != len(want) {
 		t.Fatalf("args = %v, want %v", args, want)
@@ -287,6 +276,18 @@ func TestAddCommentPassesMGAuthor(t *testing.T) {
 		if args[i] != want[i] {
 			t.Fatalf("args = %v, want %v", args, want)
 		}
+	}
+}
+
+func TestSaveCommentAuthorPersists(t *testing.T) {
+	t.Setenv("MG_AUTHOR", "")
+	commentAuthorPath = filepath.Join(t.TempDir(), "author")
+	t.Cleanup(func() { commentAuthorPath = "" })
+	if err := SaveCommentAuthor("ata"); err != nil {
+		t.Fatal(err)
+	}
+	if CommentAuthor() != "ata" {
+		t.Fatalf("got %q", CommentAuthor())
 	}
 }
 
