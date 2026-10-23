@@ -22,6 +22,13 @@ The live cockpit, a preview, and a nested preview:
 
 <img src="docs/screenshots/fork-after-nested-preview.png" alt="Nested bead preview" />
 
+### Comments dock
+
+A gold overlay on the detail pane, not a second database. Selecting a bead loads the thread. `c` writes a comment as ata, `r` replies (`re:<id>` in the store, hidden in the dock), `C` folds the bar. Collapsed rows are author + preview + reply count; open a row and the body stays put with replies indented under it. Unread is a curly underline on the name, not a hover-circle. hera pokes the owner when ata comments or replies; wrap does not rewrite the body.
+
+<img src="docs/screenshots/comments-dock.png" alt="Comments dock with a selected reply thread" />
+
+
 ### Before (upstream)
 
 <img src="docs/screenshots/fork-before-upstream.png" alt="Upstream Mardi Gras" />
@@ -135,6 +142,9 @@ mg
 | --- | --- |
 | `j` / `k` | Move along the route |
 | `enter` | Open the detail pane for the selected issue |
+| `c` | Comment on the selected bead (author ata) |
+| `r` | Reply to the selected comment thread |
+| `C` | Fold / unfold the comments dock |
 | `o` | Actor pane (WIP, read-only sketch — do not depend on it yet) |
 | `S` | Cycle sibling sort: attention → priority → chronological |
 | `/` | Filter: free text, plus `type:bug`, `priority:high`, `label:backend` |
@@ -163,7 +173,8 @@ The detail pane renders an issue's description, design notes, and acceptance cri
 Writes go through the `bd` CLI, so anything mg changes is exactly what an agent would see.
 
 - `1` `2` `3` set status; `!` `@` `#` `$` set priority.
-- `N` creates an issue, `e` edits it, `r` adds a comment, `y` assigns it, `t` labels it, `l` links a dependency.
+- `N` creates an issue, `e` edits it, `c` comments (ata), `r` replies to a thread, `y` assigns it, `t` labels it, `l` links a dependency.
+
 - `b` copies a branch name for the issue; `B` creates and checks out that branch.
 - `space` builds a multi-selection; the status and priority keys then apply to all of it.
 - `3` on a single issue closes it and claims the next ready issue in one step.
@@ -181,7 +192,8 @@ See the [agent integration guide](docs/agents.md) for runtime detection, tmux di
 
 ### Orchestrate
 
-When an orchestrator is present, mg becomes a control surface for it. `ctrl+g` opens the panel: agent roster with live states, convoys, mail, cost dashboard, velocity, activity feed, and a problems view (`p`) that flags stalled agents, backoff loops, and zombie sessions. `a` slings the issue to an agent instead of opening a local one, `s` picks a formula first, `n` nudges the agent already on it, and `C` builds a convoy from an epic or a multi-selection.
+When an orchestrator is present, mg becomes a control surface for it. `ctrl+g` opens the panel: agent roster with live states, convoys, mail, cost dashboard, velocity, activity feed, and a problems view (`p`) that flags stalled agents, backoff loops, and zombie sessions. `a` slings the issue to an agent instead of opening a local one, `s` picks a formula first, `n` nudges the agent already on it. Convoy create lives in the command palette.
+
 
 Two backends are supported:
 

@@ -188,3 +188,12 @@ func TestKeyCTogglesCommentsDock(t *testing.T) {
 		t.Fatal("C again should unfold")
 	}
 }
+
+func TestAfterSelectFetchesComments(t *testing.T) {
+	m := setupModel(t)
+	m.detail.CommentsIssueID = ""
+	m.detail.Comments = nil
+	if cmd := m.afterSelect(); cmd == nil {
+		t.Fatal("selecting a bead must fetch comments without a body click")
+	}
+}

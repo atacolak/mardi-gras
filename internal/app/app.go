@@ -1288,11 +1288,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.draggingDivider = false
-		// Drop the absolute drag column so the stored ratio re-applies.
 		m.paradeWidthOverride = 0
 		m.layout()
 		m.ready = true
-		return m, nil
+		return m, m.afterSelect()
 
 	case data.FileChangedMsg:
 		m.sourceHealth = m.sourceHealth.RecordSuccess()
@@ -2276,25 +2275,20 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail.Focused = false
 			m.clearPreviews()
 			m.restoreParadeSelection(issue.ID)
-			m.syncSelection()
-
 			now := time.Now()
 			double := !m.lastClickAt.IsZero() &&
 				now.Sub(m.lastClickAt) <= doubleClickWindow &&
 				m.lastClickRow == bodyRow && m.lastClickX == x
 			if double && m.parade.HasChildrenAtViewportRow(bodyRow) {
-				// Zeroed so a third click starts a fresh pair rather than
-				// toggling again. The row stays visible either way, so
-				// ToggleNode's by-ID restore keeps it selected (ask 3).
 				m.lastClickAt = time.Time{}
 				m.parade.ToggleNode(issue.ID)
-				m.syncSelection()
-				return m, nil
+				return m, m.afterSelect()
 			}
 			m.lastClickAt = now
 			m.lastClickRow = bodyRow
 			m.lastClickX = x
-			return m, nil
+			return m, m.afterSelect()
+
 		}
 		if right && (mouse.Button == tea.MouseLeft || mouse.Button == tea.MouseRight) {
 			ctrl := mouseMod&tea.ModCtrl != 0
@@ -2356,8 +2350,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			default:
 				return m, nil
 			}
-			m.syncSelection()
-			return m, nil
+			return m, m.afterSelect()
 		}
 		down := mouse.Button == tea.MouseWheelDown
 		up := mouse.Button == tea.MouseWheelUp
@@ -2928,33 +2921,29 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.palette.Init()
 	}
 
-	// Navigation keys depend on active pane
 	if m.activPane == PaneParade {
 		logAction("parade nav: %s", str)
 		switch str {
 		case "j", "down":
 			m.parade.MoveDown()
-			m.syncSelection()
 		case "k", "up":
 			m.parade.MoveUp()
-			m.syncSelection()
-		case "J": // Shift+J: select + move down
+		case "J":
 			m.parade.ToggleSelect()
 			m.parade.MoveDown()
-			m.syncSelection()
-		case "K": // Shift+K: select + move up
+		case "K":
 			m.parade.ToggleSelect()
 			m.parade.MoveUp()
-			m.syncSelection()
 		case ">":
 			if m.parade.SelectedIssue != nil {
 				m.parade.ToggleNode(m.parade.SelectedIssue.ID)
-				m.syncSelection()
 			}
-		case "space", "x": // Toggle multi-select
+		case "space", "x":
 			m.parade.ToggleSelect()
-		case "X": // Clear all selections
+			return m, nil
+		case "X":
 			m.parade.ClearSelection()
+			return m, nil
 		case "g":
 			m.parade.Cursor = 0
 			m.parade.ScrollOffset = 0
@@ -2964,7 +2953,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			m.syncSelection()
 		case "G":
 			for i := len(m.parade.Items) - 1; i >= 0; i-- {
 				if !m.parade.Items[i].IsHeader {
@@ -2972,15 +2960,17 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			m.syncSelection()
 		case "enter":
 			m.activPane = PaneDetail
 			m.detail.Focused = true
 			if cmds := m.detailFetchBatch(); len(cmds) > 0 {
 				return m, tea.Batch(cmds...)
 			}
+			return m, nil
+		default:
+			return m, nil
 		}
-		return m, nil
+		return m, m.afterSelect()
 	}
 
 	// Detail pane navigation (or Gas Town panel when active)
@@ -3800,7 +3790,6 @@ func (m *Model) diffIssues(newIssues []data.Issue) int {
 func (m *Model) syncSelection() {
 	if m.parade.SelectedIssue != nil {
 		m.detail.SetIssue(m.parade.SelectedIssue)
-		// Capture agent output if an agent pane is active for this issue
 		id := m.parade.SelectedIssue.ID
 		if m.inTmux {
 			if _, active := m.activeAgents[id]; active {
@@ -3816,6 +3805,18 @@ func (m *Model) syncSelection() {
 	m.detail.SetIssue(nil)
 	m.detail.AgentOutput = nil
 	m.detail.AgentOutputID = ""
+}
+
+// afterSelect restamps detail and fetches comments for the selected bead.
+// Parade clicks and j/k used to skip this, so the dock painted empty until
+// the operator clicked the body (which focused detail and happened to refetch).
+func (m *Model) afterSelect() tea.Cmd {
+	m.syncSelection()
+	cmds := m.detailFetchBatch()
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 // maybeFetchMolecule returns a Cmd to fetch molecule data if the selected issue
