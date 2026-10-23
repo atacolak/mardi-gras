@@ -2,8 +2,11 @@ package app
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/matt-wright86/mardi-gras/internal/gastown"
@@ -11,10 +14,20 @@ import (
 )
 
 const (
-	commentsDockMinExpanded  = 6
+	commentsDockMinExpanded  = 8
 	commentsDockMinBody      = 4
-	defaultCommentsDockRatio = 0.38
+	defaultCommentsDockRatio = 0.42
+	replyPrefix              = "re:"
+
+	dockHitHeader  = -1
+	dockHitCompose = -2
+	dockHitBlank   = -3
 )
+
+type commentThread struct {
+	root    gastown.Comment
+	replies []gastown.Comment
+}
 
 func (m Model) commentsDockHeight() int {
 	h := m.detail.Height
@@ -72,107 +85,485 @@ func (m Model) stampCommentsDock(base string) string {
 }
 
 func (m Model) renderCommentsDock(width, height int) string {
-	issue := m.detail.Issue
-	n := 0
-	if m.detail.CommentsIssueID == issue.ID {
-		n = len(m.detail.Comments)
+	return strings.Join(m.paintCommentsDock(width, height).lines, "\n")
+}
+
+type dockPaint struct {
+	lines []string
+	hits  []int
+}
+
+func (m Model) paintCommentsDock(width, height int) dockPaint {
+	if width < 8 {
+		width = 8
 	}
-	title := fmt.Sprintf(" %s  COMMENTS", ui.SymCommentNerd)
-	if n > 0 {
-		title = fmt.Sprintf(" %s  COMMENTS  %d comments", ui.SymCommentNerd, n)
+	if height < 1 {
+		height = 1
+	}
+	threads := m.commentThreads()
+	n := 0
+	for _, th := range threads {
+		n += 1 + len(th.replies)
+	}
+	unread := m.unreadThreadCount(threads)
+	cursor := m.clampedCommentCursor(len(threads))
+
+	header := m.dockHeaderLine(n, unread, width)
+	if !m.commentsDockOpen || height == 1 {
+		return dockPaint{lines: []string{header}, hits: []int{dockHitHeader}}
+	}
+
+	innerW := width - 1
+	if innerW < 8 {
+		innerW = 8
+	}
+
+	var blocks []dockPaint
+	for i, th := range threads {
+		blocks = append(blocks, m.paintThread(th, i, i == cursor, innerW))
+	}
+
+	compose := goldBar(padDockLine(" "+ui.Cursor+" add a comment…", innerW), innerW)
+	compose = lipgloss.NewStyle().Foreground(ui.Dim).Render(compose)
+
+	topBar := goldBar(lipgloss.NewStyle().Foreground(ui.Gold).Render(strings.Repeat(ui.BoxHorizontal, innerW)), innerW)
+	bodyH := height - 3 // top + header + compose
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	body := windowCommentBlocks(blocks, cursor, m.commentsDockScroll, bodyH, innerW)
+
+	lines := make([]string, 0, height)
+	hits := make([]int, 0, height)
+	lines = append(lines, topBar)
+	hits = append(hits, dockHitHeader)
+	lines = append(lines, header)
+	hits = append(hits, dockHitHeader)
+	lines = append(lines, body.lines...)
+	hits = append(hits, body.hits...)
+	for len(lines) < height-1 {
+		lines = append(lines, goldBar(strings.Repeat(" ", innerW), innerW))
+		hits = append(hits, dockHitBlank)
+	}
+	if len(lines) > height-1 {
+		lines = lines[:height-1]
+		hits = hits[:height-1]
+	}
+	lines = append(lines, compose)
+	hits = append(hits, dockHitCompose)
+	return dockPaint{lines: lines, hits: hits}
+}
+
+func (m Model) dockHeaderLine(n, unread, width int) string {
+	title := fmt.Sprintf(" %s  %d comments", ui.SymCommentNerd, n)
+	if unread > 0 {
+		title = fmt.Sprintf(" %s  %d comments  ·  %d unread", ui.SymCommentNerd, n, unread)
 	}
 	fold := ui.SymDockFold
-	if !m.commentsDockOpen {
+	if m.commentsDockOpen {
 		fold = ui.SymDockUnfold
 	}
-	foldLabel := " " + fold + " fold "
-	titleW := lipgloss.Width(title)
-	foldW := lipgloss.Width(foldLabel)
-	fill := width - titleW - foldW
+	foldLabel := " " + fold + " "
+	fill := width - 1 - lipgloss.Width(title) - lipgloss.Width(foldLabel)
 	if fill < 1 {
 		fill = 1
 	}
-	headerPlain := title + strings.Repeat(" ", fill) + foldLabel
-	if lipgloss.Width(headerPlain) > width {
-		headerPlain = ansi.Truncate(headerPlain, width, "")
+	inner := title + strings.Repeat(" ", fill) + foldLabel
+	if lipgloss.Width(inner) > width-1 {
+		inner = ansi.Truncate(inner, width-1, "")
 	}
-	header := lipgloss.NewStyle().
+	styled := lipgloss.NewStyle().
 		Foreground(ui.Gold).
 		Background(lipgloss.Color("#1a1a22")).
-		Width(width).
-		Render(headerPlain)
+		Render(inner)
+	if pad := (width - 1) - lipgloss.Width(styled); pad > 0 {
+		styled += lipgloss.NewStyle().Background(lipgloss.Color("#1a1a22")).Render(strings.Repeat(" ", pad))
+	}
+	return goldBar(styled, width-1)
+}
 
-	if !m.commentsDockOpen || height <= 1 {
-		return header
+func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int) dockPaint {
+	rootBody := formatCommentBody(displayBody(th.root))
+	unread := m.detail.Issue != nil && !m.commentIsSeen(m.detail.Issue.ID, th.root.ID)
+	var raw []string
+	var hits []int
+
+	if selected {
+		raw = append(raw, m.threadMetaLine(th.root, true, unread, innerW))
+		hits = append(hits, idx)
+		for _, line := range wrapCommentLines(rootBody, innerW-2) {
+			raw = append(raw, " "+line)
+			hits = append(hits, idx)
+		}
+		for _, rep := range th.replies {
+			_, body := splitReply(rep)
+			repUnread := m.detail.Issue != nil && !m.commentIsSeen(m.detail.Issue.ID, rep.ID)
+			raw = append(raw, m.replyMetaLine(rep, selected, repUnread, innerW))
+			hits = append(hits, idx)
+			for _, line := range wrapCommentLines(formatCommentBody(body), innerW-6) {
+				raw = append(raw, "    "+line)
+				hits = append(hits, idx)
+			}
+		}
+	} else {
+		preview := strings.ReplaceAll(rootBody, "\n", " ")
+		name := m.authorLabel(th.root.Author, false, unread)
+		suffix := ""
+		if n := len(th.replies); n > 0 {
+			suffix = fmt.Sprintf("  %d", n)
+		}
+		line := " " + name + "  " + lipgloss.NewStyle().Foreground(ui.Muted).Render(preview)
+		if lipgloss.Width(line)+lipgloss.Width(suffix) > innerW {
+			line = ansi.Truncate(line, innerW-lipgloss.Width(suffix), "…")
+		}
+		raw = append(raw, line+lipgloss.NewStyle().Foreground(ui.Dim).Render(suffix))
+		hits = append(hits, idx)
 	}
 
-	var body strings.Builder
-	inner := height - 1
-	if m.commentsErr != nil {
-		body.WriteString(lipgloss.NewStyle().Foreground(ui.StatusStalled).Width(width).Render("  comments failed: " + m.commentsErr.Error()))
-		inner--
-	} else if n == 0 {
-		empty := lipgloss.NewStyle().Foreground(ui.Muted).Align(lipgloss.Center).Width(width).Render(ui.SymCommentNerd + "  No comments on this bead yet.")
-		hint := lipgloss.NewStyle().Foreground(ui.Dim).Align(lipgloss.Center).Width(width).Render("Add notes, findings, questions, or updates about this task.")
-		body.WriteString(empty + "\n" + hint)
-		inner -= 2
-	} else {
-		for _, c := range m.detail.Comments {
-			seen := m.commentIsSeen(issue.ID, c.ID)
-			mark := " "
-			if !seen {
-				mark = ui.SymUnseen
+	out := dockPaint{lines: make([]string, 0, len(raw)), hits: hits}
+	for i, ln := range raw {
+		padded := padDockLine(ln, innerW)
+		if selected && hits[i] == idx {
+			padded = ui.DockSelectedRow(padded, innerW)
+		}
+		out.lines = append(out.lines, goldBar(padded, innerW))
+	}
+	return out
+}
+
+func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
+	name := m.authorLabel(c.Author, selected, unread)
+	role := lipgloss.NewStyle().Foreground(ui.Dim).Render(" " + authorRole(c.Author))
+	when := lipgloss.NewStyle().Foreground(ui.Dim).Render(compactCommentTime(c.Time))
+	left := " " + name + role
+	fill := innerW - lipgloss.Width(left) - lipgloss.Width(when) - 1
+	if fill < 1 {
+		fill = 1
+	}
+	return left + strings.Repeat(" ", fill) + when
+}
+
+func (m Model) replyMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
+	name := m.authorLabel(c.Author, selected, unread)
+	when := lipgloss.NewStyle().Foreground(ui.Dim).Render(compactCommentTime(c.Time))
+	left := "    " + name
+	fill := innerW - lipgloss.Width(left) - lipgloss.Width(when) - 1
+	if fill < 1 {
+		fill = 1
+	}
+	return left + strings.Repeat(" ", fill) + when
+}
+
+func (m Model) authorLabel(name string, selected, unread bool) string {
+	if name == "" {
+		name = "?"
+	}
+	ink := authorColor(name, selected)
+	s := lipgloss.NewStyle().Foreground(ink).Render(name)
+	if unread {
+		s = wavyUnderline(s)
+	}
+	return s
+}
+
+func (m Model) commentThreads() []commentThread {
+	comments := m.dockComments()
+	byID := map[string]gastown.Comment{}
+	for _, c := range comments {
+		byID[c.ID] = c
+	}
+	children := map[string][]gastown.Comment{}
+	var roots []gastown.Comment
+	for _, c := range comments {
+		parent, _ := splitReply(c)
+		if parent != "" && parent != c.ID {
+			if _, ok := byID[parent]; ok {
+				children[parent] = append(children[parent], c)
+				continue
 			}
-			author := c.Author
-			if author == "" {
-				author = "?"
-			}
-			line := fmt.Sprintf("%s %s  %s", mark, author, strings.ReplaceAll(c.Body, "\n", " "))
-			if lipgloss.Width(line) > width-1 {
-				line = ansi.Truncate(line, width-1, "…")
-			}
-			style := lipgloss.NewStyle().Foreground(ui.Light).Width(width)
-			if !seen {
-				style = style.Foreground(ui.Gold)
-			}
-			body.WriteString(style.Render(" "+line) + "\n")
-			inner--
-			if inner <= 1 {
+		}
+		roots = append(roots, c)
+	}
+	out := make([]commentThread, 0, len(roots))
+	for _, root := range roots {
+		out = append(out, commentThread{root: root, replies: children[root.ID]})
+	}
+	return out
+}
+
+func (m Model) unreadThreadCount(threads []commentThread) int {
+	if m.detail.Issue == nil {
+		return 0
+	}
+	n := 0
+	for _, th := range threads {
+		if !m.commentIsSeen(m.detail.Issue.ID, th.root.ID) {
+			n++
+			continue
+		}
+		for _, r := range th.replies {
+			if !m.commentIsSeen(m.detail.Issue.ID, r.ID) {
+				n++
 				break
 			}
 		}
 	}
-	compose := lipgloss.NewStyle().Foreground(ui.Dim).Width(width).Render("  > add a comment…          press c to comment")
-	if inner > 0 {
-		if body.Len() > 0 && !strings.HasSuffix(body.String(), "\n") {
-			body.WriteByte('\n')
+	return n
+}
+
+func windowCommentBlocks(blocks []dockPaint, cursor, scroll, bodyH, innerW int) dockPaint {
+	if bodyH < 1 {
+		return dockPaint{}
+	}
+	if len(blocks) == 0 {
+		empty := lipgloss.NewStyle().Foreground(ui.Muted).Render("  no comments yet")
+		return dockPaint{lines: []string{goldBar(padDockLine(empty, innerW), innerW)}, hits: []int{dockHitBlank}}
+	}
+	var allLines []string
+	var allHits []int
+	starts := make([]int, len(blocks))
+	for i, b := range blocks {
+		starts[i] = len(allLines)
+		allLines = append(allLines, b.lines...)
+		allHits = append(allHits, b.hits...)
+	}
+	total := len(allLines)
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= len(blocks) {
+		cursor = len(blocks) - 1
+	}
+	curStart := starts[cursor]
+	curEnd := curStart + len(blocks[cursor].lines)
+	off := 0
+	if scroll > 0 {
+		off = starts[min(scroll, len(blocks)-1)]
+	}
+	if curEnd-curStart >= bodyH {
+		off = curStart
+	} else {
+		if curStart < off {
+			off = curStart
 		}
-		body.WriteString(compose)
-		inner--
-	}
-	out := header + "\n" + body.String()
-	lines := strings.Split(out, "\n")
-	for len(lines) < height {
-		lines = append(lines, strings.Repeat(" ", width))
-	}
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for i, ln := range lines {
-		if lipgloss.Width(ln) < width {
-			lines[i] = ln + strings.Repeat(" ", width-lipgloss.Width(ln))
+		if curEnd > off+bodyH {
+			off = curEnd - bodyH
 		}
 	}
-	box := lipgloss.NewStyle().
-		Foreground(ui.Gold).
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(ui.Gold).
-		Width(width).
-		MaxHeight(height)
-	// Border would grow the box past the overlay slot. Paint without an extra
-	// outer border; the gold header is the bar.
-	_ = box
-	return strings.Join(lines, "\n")
+	if off < 0 {
+		off = 0
+	}
+	if total > bodyH && off > total-bodyH {
+		off = total - bodyH
+	}
+	end := off + bodyH
+	if end > total {
+		end = total
+	}
+	return dockPaint{lines: allLines[off:end], hits: allHits[off:end]}
+}
+
+func goldBar(inner string, innerW int) string {
+	if lipgloss.Width(inner) > innerW {
+		inner = ansi.Truncate(inner, innerW, "")
+	}
+	if pad := innerW - lipgloss.Width(inner); pad > 0 {
+		inner += strings.Repeat(" ", pad)
+	}
+	bar := lipgloss.NewStyle().Foreground(ui.Gold).Render(ui.BoxVertical)
+	return bar + inner
+}
+
+func padDockLine(s string, width int) string {
+	if lipgloss.Width(s) > width {
+		s = ansi.Truncate(s, width, "…")
+	}
+	if pad := width - lipgloss.Width(s); pad > 0 {
+		s += strings.Repeat(" ", pad)
+	}
+	return s
+}
+
+func (m Model) dockComments() []gastown.Comment {
+	if m.detail.Issue == nil {
+		return nil
+	}
+	if m.detail.CommentsIssueID == m.detail.Issue.ID {
+		return m.detail.Comments
+	}
+	// Keep the last paint if a refetch wiped the id; showing 0 is the vanish bug.
+	if m.detail.CommentsIssueID == "" && len(m.detail.Comments) > 0 {
+		return m.detail.Comments
+	}
+	return nil
+}
+
+func (m Model) clampedCommentCursor(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	c := m.commentsDockCursor
+	if c < 0 {
+		return 0
+	}
+	if c >= n {
+		return n - 1
+	}
+	return c
+}
+
+func (m *Model) moveCommentCursor(delta int) {
+	n := len(m.commentThreads())
+	if n == 0 {
+		return
+	}
+	m.commentsDockCursor = m.clampedCommentCursor(n) + delta
+	if m.commentsDockCursor < 0 {
+		m.commentsDockCursor = 0
+	}
+	if m.commentsDockCursor >= n {
+		m.commentsDockCursor = n - 1
+	}
+	if m.commentsDockScroll > m.commentsDockCursor {
+		m.commentsDockScroll = m.commentsDockCursor
+	}
+	m.markSeenAtCursor()
+}
+
+func (m *Model) markSeenAtCursor() {
+	threads := m.commentThreads()
+	if m.detail.Issue == nil {
+		return
+	}
+	i := m.clampedCommentCursor(len(threads))
+	if i < 0 || i >= len(threads) {
+		return
+	}
+	m.markCommentSeen(m.detail.Issue.ID, threads[i].root.ID)
+	for _, r := range threads[i].replies {
+		m.markCommentSeen(m.detail.Issue.ID, r.ID)
+	}
+}
+
+func threadIndexFor(threads []commentThread, id string) (int, bool) {
+	if id == "" {
+		return 0, false
+	}
+	for i, th := range threads {
+		if th.root.ID == id {
+			return i, true
+		}
+		for _, r := range th.replies {
+			if r.ID == id {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func (m Model) commentsDockTopRow() int {
+	h := m.commentsDockHeight()
+	if h <= 0 {
+		return -1
+	}
+	return m.detail.Height - h
+}
+
+func (m Model) commentsDockFoldHit(detailX, detailRow int) bool {
+	if m.detail.Issue == nil {
+		return false
+	}
+	top := m.commentsDockTopRow()
+	headerRow := top
+	if m.commentsDockOpen && m.commentsDockHeight() > 1 {
+		headerRow = top + 1
+	}
+	if detailRow != headerRow && detailRow != top {
+		return false
+	}
+	return detailX >= m.detail.Width-4
+}
+
+func (m Model) commentsDockHeaderHit(detailRow int) bool {
+	if m.detail.Issue == nil {
+		return false
+	}
+	top := m.commentsDockTopRow()
+	if detailRow == top {
+		return true
+	}
+	return m.commentsDockOpen && detailRow == top+1
+}
+
+func (m Model) commentsDockContains(detailRow int) bool {
+	top := m.commentsDockTopRow()
+	if top < 0 {
+		return false
+	}
+	return detailRow >= top && detailRow < m.detail.Height
+}
+
+func (m Model) commentsDockHitAt(detailRow int) int {
+	top := m.commentsDockTopRow()
+	if top < 0 {
+		return dockHitBlank
+	}
+	idx := detailRow - top
+	paint := m.paintCommentsDock(m.detail.Width, m.commentsDockHeight())
+	if idx < 0 || idx >= len(paint.hits) {
+		return dockHitBlank
+	}
+	return paint.hits[idx]
+}
+
+func (m *Model) hoverCommentsDock(detailX, detailRow int) {
+	// Unread is click-to-read, not hover. Motion is ignored on purpose.
+	_, _ = detailX, detailRow
+}
+
+func (m *Model) selectCommentAt(detailRow int) bool {
+	hit := m.commentsDockHitAt(detailRow)
+	if hit == dockHitCompose {
+		return true
+	}
+	if hit < 0 {
+		return false
+	}
+	m.commentsFocus = true
+	m.commentsDockOpen = true
+	m.commentsDockCursor = hit
+	m.markSeenAtCursor()
+	return true
+}
+
+func (m *Model) startCommentReply() tea.Cmd {
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return nil
+	}
+	threads := m.commentThreads()
+	if len(threads) == 0 {
+		return nil
+	}
+	th := threads[m.clampedCommentCursor(len(threads))]
+	m.replyToID = th.root.ID
+	m.replyToAuthor = th.root.Author
+	m.commentsDockOpen = true
+	m.commentsFocus = true
+	who := th.root.Author
+	if who == "" {
+		who = "comment"
+	}
+	return m.startQuickAction("reply", issue.ID, "reply> ", "reply to "+who+"…")
+}
+
+func (m Model) selectedThread() (commentThread, bool) {
+	threads := m.commentThreads()
+	if len(threads) == 0 {
+		return commentThread{}, false
+	}
+	return threads[m.clampedCommentCursor(len(threads))], true
 }
 
 func (m Model) commentIsSeen(issueID, commentID string) bool {
@@ -195,53 +586,163 @@ func (m *Model) markCommentSeen(issueID, commentID string) {
 	m.seenCommentIDs[issueID][commentID] = true
 }
 
-// commentsDockTopRow is the detail-local row of the dock header.
-func (m Model) commentsDockTopRow() int {
-	h := m.commentsDockHeight()
-	if h <= 0 {
-		return -1
+func encodeReply(parentID, body string) string {
+	parentID = strings.TrimSpace(parentID)
+	if parentID == "" {
+		return body
 	}
-	return m.detail.Height - h
+	return replyPrefix + parentID + "\n" + body
 }
 
-func (m Model) commentsDockFoldHit(detailX, detailRow int) bool {
-	if m.detail.Issue == nil {
-		return false
+func splitReply(c gastown.Comment) (parentID, body string) {
+	body = c.Body
+	if !strings.HasPrefix(body, replyPrefix) {
+		return "", body
 	}
-	top := m.commentsDockTopRow()
-	if detailRow != top {
-		return false
+	rest := strings.TrimPrefix(body, replyPrefix)
+	id, rest, ok := strings.Cut(rest, "\n")
+	if !ok {
+		return "", body
 	}
-	w := m.detail.Width
-	return detailX >= w-8
+	return strings.TrimSpace(id), rest
 }
 
-func (m Model) commentsDockHeaderHit(detailRow int) bool {
-	return m.detail.Issue != nil && detailRow == m.commentsDockTopRow()
+func displayBody(c gastown.Comment) string {
+	_, body := splitReply(c)
+	return body
 }
 
-func (m *Model) hoverCommentsDock(detailX, detailRow int) {
-	if m.detail.Issue == nil || !m.commentsDockOpen {
-		return
-	}
-	top := m.commentsDockTopRow()
-	bodyRow := detailRow - top - 1
-	if bodyRow < 0 {
-		return
-	}
-	if m.detail.CommentsIssueID != m.detail.Issue.ID {
-		return
-	}
-	_ = detailX
-	if bodyRow >= 0 && bodyRow < len(m.detail.Comments) {
-		m.markCommentSeen(m.detail.Issue.ID, m.detail.Comments[bodyRow].ID)
-	}
+func formatCommentBody(s string) string {
+	s = strings.ReplaceAll(s, "</hcom>", "\n</hcom>")
+	s = strings.ReplaceAll(s, "\n\n</hcom>", "\n</hcom>")
+	return strings.TrimSpace(s)
 }
 
-func commentPreviewLine(c gastown.Comment, width int) string {
-	line := strings.ReplaceAll(c.Body, "\n", " ")
-	if lipgloss.Width(line) > width {
-		return ansi.Truncate(line, width, "…")
+func compactCommentTime(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
 	}
-	return line
+	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05Z"} {
+		t, err := time.Parse(layout, raw)
+		if err == nil {
+			return t.Local().Format("15:04")
+		}
+	}
+	if len(raw) >= 16 {
+		return raw[11:16]
+	}
+	return raw
+}
+
+func wrapCommentLines(s string, width int) []string {
+	if width < 8 {
+		width = 8
+	}
+	if strings.TrimSpace(s) == "" {
+		return []string{lipgloss.NewStyle().Foreground(ui.Dim).Render("(empty)")}
+	}
+	var out []string
+	for _, para := range strings.Split(s, "\n") {
+		if strings.TrimSpace(para) == "" {
+			out = append(out, "")
+			continue
+		}
+		var line string
+		for _, word := range strings.Fields(para) {
+			if line == "" {
+				if lipgloss.Width(word) <= width {
+					line = word
+					continue
+				}
+				for lipgloss.Width(word) > width {
+					cut := cutWidth(word, width)
+					out = append(out, word[:cut])
+					word = word[cut:]
+				}
+				line = word
+				continue
+			}
+			cand := line + " " + word
+			if lipgloss.Width(cand) <= width {
+				line = cand
+				continue
+			}
+			out = append(out, line)
+			line = word
+		}
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func cutWidth(s string, width int) int {
+	w := 0
+	for i, r := range s {
+		rw := 1
+		if r == '\t' {
+			rw = 4
+		}
+		if w+rw > width {
+			if i == 0 {
+				return len(string(r))
+			}
+			return i
+		}
+		w += rw
+	}
+	return len(s)
+}
+
+func authorRole(name string) string {
+	if strings.EqualFold(name, "ata") {
+		return "operator"
+	}
+	return "actor"
+}
+
+func authorColor(name string, selected bool) color.Color {
+	var base color.Color
+	if strings.EqualFold(name, "ata") {
+		base = lipgloss.Color("#C4A35A")
+	} else {
+		palette := []color.Color{
+			lipgloss.Color("#6B7C8A"),
+			lipgloss.Color("#7A6B82"),
+			lipgloss.Color("#6B8275"),
+			lipgloss.Color("#826B6B"),
+			lipgloss.Color("#6B7582"),
+			lipgloss.Color("#7A8270"),
+			lipgloss.Color("#6E7380"),
+			lipgloss.Color("#7A7068"),
+		}
+		h := 0
+		for _, r := range strings.ToLower(name) {
+			h = 31*h + int(r)
+		}
+		if h < 0 {
+			h = -h
+		}
+		base = palette[h%len(palette)]
+	}
+	if selected {
+		return brightenColor(base)
+	}
+	return base
+}
+
+func brightenColor(c color.Color) color.Color {
+	r, g, b, _ := c.RGBA()
+	mix := func(v uint32) uint8 {
+		x := int(v >> 8)
+		return uint8(x + (255-x)*2/5)
+	}
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", mix(r), mix(g), mix(b)))
+}
+
+func wavyUnderline(s string) string {
+	// CSI 4:3 curly underline (kitty/vte). Unsupported terminals ignore it.
+	return "\x1b[4:3m" + s + "\x1b[24m"
 }

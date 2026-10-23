@@ -268,6 +268,11 @@ type Model struct {
 	draggingCommentsDock bool
 	commentsErr          error
 	seenCommentIDs       map[string]map[string]bool
+	commentsFocus        bool
+	commentsDockCursor   int
+	commentsDockScroll   int
+	replyToID            string
+	replyToAuthor        string
 
 	lastClickAt  time.Time
 	lastClickRow int
@@ -1039,13 +1044,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "esc":
 				m.qaMode = ""
+				m.replyToID = ""
+				m.replyToAuthor = ""
 				return m, nil
 			case "enter":
 				mode := m.qaMode
 				id := m.qaID
 				value := m.qaInput.Value()
+				parent := m.replyToID
 				m.qaMode = ""
+				if mode != "reply" {
+					m.replyToID = ""
+					m.replyToAuthor = ""
+				}
+				m.commentsFocus = true
+				m.commentsDockOpen = true
+				m.activPane = PaneDetail
+				m.detail.Focused = true
 				if value == "" {
+					m.replyToID = ""
+					m.replyToAuthor = ""
 					return m, nil
 				}
 				return m, func() tea.Msg {
@@ -1054,6 +1072,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch mode {
 					case "comment":
 						err = data.AddComment(id, value)
+						action = "comment added"
+					case "reply":
+						err = data.AddComment(id, encodeReply(parent, value))
 						action = "comment added"
 					case "note":
 						err = data.AddNote(id, value)
@@ -1070,6 +1091,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return mutateResultMsg{issueID: id, action: action, err: err}
 				}
+
 			}
 		}
 		var cmd tea.Cmd
@@ -1832,8 +1854,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.commentsErr = nil
 		if m.detail.Issue != nil && m.detail.Issue.ID == msg.issueID {
+			oldN := 0
+			if m.detail.CommentsIssueID == msg.issueID {
+				oldN = len(m.detail.Comments)
+			}
+			parent := m.replyToID
+			m.replyToID = ""
+			m.replyToAuthor = ""
 			m.detail.SetComments(msg.issueID, msg.comments)
+			threads := m.commentThreads()
+			if parent != "" {
+				if i, ok := threadIndexFor(threads, parent); ok {
+					m.commentsDockCursor = i
+				}
+				m.commentsDockOpen = true
+				m.commentsFocus = true
+				m.markSeenAtCursor()
+			} else if len(msg.comments) > oldN {
+				m.commentsDockCursor = max(0, len(threads)-1)
+				m.commentsDockOpen = true
+				m.commentsFocus = true
+				m.markSeenAtCursor()
+			} else if m.commentsDockCursor >= len(threads) {
+				m.commentsDockCursor = max(0, len(threads)-1)
+			}
 		}
+
 		return m, nil
 
 	case issueDetailMsg:
@@ -1948,6 +1994,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toast = toast
 			return m, cmd
 		}
+		if msg.action == "comment added" {
+			m.commentsDockOpen = true
+			m.commentsFocus = true
+			m.lastFileMod = time.Time{}
+			return m, m.fetchComments(msg.issueID)
+		}
+
 		toast, toastCmd := components.ShowToast(
 			fmt.Sprintf("%s \u2192 %s", msg.issueID, msg.action),
 			components.ToastSuccess, toastDuration,
@@ -2168,6 +2221,22 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commentsDockOpen = true
 			return m, nil
 		}
+		if m.commentsDockContains(drow) {
+			if m.commentsDockHitAt(drow) == dockHitCompose {
+				issue := m.parade.SelectedIssue
+				if issue == nil {
+					return m, nil
+				}
+				m.commentsDockOpen = true
+				cmd := m.startQuickAction("comment", issue.ID, "comment> ", "Add comment to "+issue.ID+"...")
+				return m, cmd
+			}
+			if m.selectCommentAt(drow) {
+				m.activPane = PaneDetail
+				m.detail.Focused = true
+				return m, nil
+			}
+		}
 	}
 
 	right := x >= paradeWidth
@@ -2271,9 +2340,11 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.openIssueInDetail(issue)
 				return m, nil
 			}
+			m.commentsFocus = false
 			m.activPane = PaneDetail
 			m.detail.Focused = true
 			return m, nil
+
 		}
 	case tea.MouseWheelMsg:
 		if !right {
@@ -2294,6 +2365,16 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		dx := x - paradeWidth
+		if m.commentsDockContains(bodyRow) && len(m.previews) == 0 {
+			m.commentsFocus = true
+			m.commentsDockOpen = true
+			if down {
+				m.moveCommentCursor(1)
+			} else {
+				m.moveCommentCursor(-1)
+			}
+			return m, nil
+		}
 		// Pointer inside a gold box scrolls that preview. At its scroll
 		// edge, leftover ticks pass to the preview that opened it, then
 		// the parent bead. The true gap around every overlay is the parent.
@@ -2308,6 +2389,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		scrollViewport(&m.detail.Viewport, down)
+
 	}
 	return m, nil
 }
@@ -2459,15 +2541,22 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.activPane == PaneParade {
 			m.activPane = PaneDetail
 			m.detail.Focused = true
-		} else {
-			m.activPane = PaneParade
-			m.detail.Focused = false
+			if cmds := m.detailFetchBatch(); len(cmds) > 0 {
+				return m, tea.Batch(cmds...)
+			}
+			return m, nil
 		}
+		m.activPane = PaneParade
+		m.detail.Focused = false
 		return m, nil
 
 	case "esc":
 		if len(m.previews) > 0 {
 			m.popPreview()
+			return m, nil
+		}
+		if m.commentsFocus {
+			m.commentsFocus = false
 			return m, nil
 		}
 		// Scope exits first: esc out of a scope is one press, and it must not
@@ -2783,19 +2872,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.rebuildParade()
 		return m, nil
 
-	case "r": // Reply (codex transcript) OR Comment (remark) on parade
-		// When the codex transcript overlay is visible, r opens the reply
-		// input bar against the active session instead of the normal
-		// parade-level comment action.
+	case "r":
 		if m.showCodex {
 			return m.openCodexReply()
 		}
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
+		if cmd := m.startCommentReply(); cmd != nil {
+			return m, cmd
 		}
-		cmd := m.startQuickAction("comment", issue.ID, "comment> ", "Add comment to "+issue.ID+"...")
-		return m, cmd
+		return m, nil
 
 	case "y": // Assign (yours)
 		issue := m.parade.SelectedIssue
@@ -2831,40 +2915,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case "C":
-		if !m.orchestratorAvailable() {
-			return m, nil
-		}
-		var ids []string
-		var epicID string
-		if selected := m.parade.SelectedIssues(); len(selected) > 0 {
-			ids = make([]string, len(selected))
-			for i, iss := range selected {
-				ids[i] = iss.ID
-			}
-			m.parade.ClearSelection()
-		} else if m.parade.SelectedIssue != nil {
-			if m.parade.SelectedIssue.IssueType == data.TypeEpic {
-				epicID = m.parade.SelectedIssue.ID
-			} else {
-				ids = []string{m.parade.SelectedIssue.ID}
-			}
-		}
-		if len(ids) == 0 && epicID == "" {
-			return m, nil
-		}
-		m.convoyCreating = true
-		m.convoyIssueIDs = ids
-		m.convoyEpicID = epicID
-		m.convoyInput = textinput.New()
-		m.convoyInput.Prompt = ui.InputPrompt.Render("convoy> ")
-		if epicID != "" {
-			m.convoyInput.Placeholder = fmt.Sprintf("Name for convoy (from epic %s)...", epicID)
-		} else {
-			m.convoyInput.Placeholder = fmt.Sprintf("Name for convoy (%d issues)...", len(ids))
-		}
-		m.convoyInput.SetWidth(50)
-		m.convoyInput.Focus()
-		return m, textinput.Blink
+		m.commentsDockOpen = !m.commentsDockOpen
+		return m, nil
 
 	case "ctrl+k":
 		m.showPalette = true
@@ -2938,6 +2990,26 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.gasTown, cmd = m.gasTown.Update(msg)
 			return m, cmd
+		}
+		if m.commentsFocus && m.commentsDockOpen {
+			switch str {
+			case "j", "down":
+				m.moveCommentCursor(1)
+				return m, nil
+			case "k", "up":
+				m.moveCommentCursor(-1)
+				return m, nil
+			case "g":
+				m.commentsDockCursor = 0
+				m.markSeenAtCursor()
+				return m, nil
+			case "G":
+				if n := len(m.dockComments()); n > 0 {
+					m.commentsDockCursor = n - 1
+					m.markSeenAtCursor()
+				}
+				return m, nil
+			}
 		}
 		var cmd tea.Cmd
 		switch str {
@@ -3251,6 +3323,7 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 			Name: "Collapse / expand selected branch", Desc: "Collapse / expand selected branch", Key: ">", Action: components.ActionToggleNode,
 		})
 	}
+
 	if m.agentAvail {
 		cmds = append(cmds,
 			components.PaletteCommand{Name: "Launch agent", Desc: fmt.Sprintf("Start %s agent on issue", m.agentRuntime.RuntimeLabel()), Key: "a", Action: components.ActionLaunchAgent},
@@ -3269,7 +3342,8 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 			components.PaletteCommand{Name: "Sling with formula", Desc: "Pick formula and sling to polecat", Key: "s", Action: components.ActionSlingFormula},
 			components.PaletteCommand{Name: "Nudge agent", Desc: "Nudge agent with message", Key: "n", Action: components.ActionNudgeAgent},
 			components.PaletteCommand{Name: "Create & assign to crew", Desc: "Create issue and hook to crew member", Key: "", Action: components.ActionAssign},
-			components.PaletteCommand{Name: "Create convoy", Desc: "Create convoy from selected issues", Key: "C", Action: components.ActionCreateConvoy},
+			components.PaletteCommand{Name: "Create convoy", Desc: "Create convoy from selected issues", Key: "", Action: components.ActionCreateConvoy},
+
 			components.PaletteCommand{Name: "Cascade close", Desc: "Close issue and all children", Key: "", Action: components.ActionCascadeClose},
 		)
 		// Recovery shells out to gt directly rather than going through the
@@ -3284,6 +3358,43 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 	}
 
 	return cmds
+}
+
+func (m Model) startConvoyCreate() (tea.Model, tea.Cmd) {
+	if !m.orchestratorAvailable() {
+		return m, nil
+	}
+	var ids []string
+	var epicID string
+	if selected := m.parade.SelectedIssues(); len(selected) > 0 {
+		ids = make([]string, len(selected))
+		for i, iss := range selected {
+			ids[i] = iss.ID
+		}
+		m.parade.ClearSelection()
+	} else if m.parade.SelectedIssue != nil {
+		if m.parade.SelectedIssue.IssueType == data.TypeEpic {
+			epicID = m.parade.SelectedIssue.ID
+		} else {
+			ids = []string{m.parade.SelectedIssue.ID}
+		}
+	}
+	if len(ids) == 0 && epicID == "" {
+		return m, nil
+	}
+	m.convoyCreating = true
+	m.convoyIssueIDs = ids
+	m.convoyEpicID = epicID
+	m.convoyInput = textinput.New()
+	m.convoyInput.Prompt = ui.InputPrompt.Render("convoy> ")
+	if epicID != "" {
+		m.convoyInput.Placeholder = fmt.Sprintf("Name for convoy (from epic %s)...", epicID)
+	} else {
+		m.convoyInput.Placeholder = fmt.Sprintf("Name for convoy (%d issues)...", len(ids))
+	}
+	m.convoyInput.SetWidth(50)
+	m.convoyInput.Focus()
+	return m, textinput.Blink
 }
 
 // executePaletteAction maps a palette action to an existing method.
@@ -3369,7 +3480,8 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		}
 		return m, nil
 	case components.ActionCreateConvoy:
-		return m.handleKey(tea.KeyPressMsg{Code: 'C', Text: "C"})
+		return m.startConvoyCreate()
+
 	case components.ActionCascadeClose:
 		return m.cascadeCloseIssue()
 	case components.ActionCycleLayout:

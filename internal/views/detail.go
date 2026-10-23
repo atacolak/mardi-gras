@@ -207,15 +207,10 @@ func (d *Detail) ContentView() string {
 	return d.Viewport.View()
 }
 
-// View renders the detail panel.
 func (d *Detail) View() string {
-	// The left border doubles as the pane divider and the focus cue: it
-	// brightens to gold when the detail pane holds focus (keys scroll it),
-	// and stays a dim purple rule when the parade is focused.
-	border := ui.DetailBorder
-	if d.Focused {
-		border = border.BorderForeground(ui.Gold)
-	}
+	// Split chrome stays gold. Tab still owns keyboard focus; it does not
+	// recolor the bar.
+	border := ui.DetailBorder.BorderForeground(ui.Gold)
 
 	if d.Issue == nil {
 		empty := lipgloss.NewStyle().

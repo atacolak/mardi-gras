@@ -430,9 +430,10 @@ func TestConvoyCreateFromEpic(t *testing.T) {
 	got := model.(Model)
 	got.gtEnv.Available = true
 
-	// Simulate pressing C on the epic
+	// Convoy create is palette-only; C folds the comments dock.
 	got.parade.SelectedIssue = &issues[0]
-	result, _ := got.handleKey(tea.KeyPressMsg{Code: 'C', Text: "C"})
+	result, _ := got.startConvoyCreate()
+
 	got = result.(Model)
 
 	if !got.convoyCreating {
@@ -456,9 +457,9 @@ func TestConvoyCreateFromNonEpic(t *testing.T) {
 	got := model.(Model)
 	got.gtEnv.Available = true
 
-	// Simulate pressing C on a regular issue
 	got.parade.SelectedIssue = &issues[0]
-	result, _ := got.handleKey(tea.KeyPressMsg{Code: 'C', Text: "C"})
+	result, _ := got.startConvoyCreate()
+
 	got = result.(Model)
 
 	if !got.convoyCreating {

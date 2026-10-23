@@ -172,7 +172,8 @@ func allSections() []helpSection {
 				{key: "r", desc: "Reply to selected message"},
 				{key: "w", desc: "Compose new message to agent"},
 				{key: "d", desc: "Archive selected message"},
-				{key: "C", desc: "Create convoy from selection"},
+				{key: "C", desc: "Fold / unfold comments dock"},
+
 				{key: "", desc: "convoy mini-DAG: ● done · ○ open · ─ dependency"},
 			},
 		},
