@@ -37,7 +37,11 @@ const (
 	SymUnselected  = "○"
 
 	// Comments
-	SymComment = "💬"
+	SymComment     = "💬"
+	SymCommentNerd = "\uf075" // nf-fa-comment
+	SymDockFold    = "\uf077" // nf-fa-chevron-up
+	SymDockUnfold  = "\uf078" // nf-fa-chevron-down
+	SymUnseen      = "\uf111" // nf-fa-circle
 
 	// Due dates
 	SymOverdue  = "▲"

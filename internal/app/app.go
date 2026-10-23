@@ -260,6 +260,15 @@ type Model struct {
 	paradeWidthRatio    float64
 	draggingDivider     bool
 
+	// comments dock: bottom overlay on the detail pane. Covers, does not
+	// reflow the viewport. Ratio survives resize; override is live drag.
+	commentsDockOpen     bool
+	commentsDockRatio    float64
+	commentsDockOverride int
+	draggingCommentsDock bool
+	commentsErr          error
+	seenCommentIDs       map[string]map[string]bool
+
 	lastClickAt  time.Time
 	lastClickRow int
 	lastClickX   int
@@ -350,36 +359,39 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 	metaSchema := data.LoadMetadataSchema(projectDir)
 
 	return Model{
-		issues:         issues,
-		groups:         groups,
-		unmapped:       unmapped,
-		activPane:      PaneParade,
-		watchPath:      watchPath,
-		pathExplicit:   pathExplicit,
-		lastFileMod:    lastFileMod,
-		blockingTypes:  blockingTypes,
-		excludeTypes:   f.ExcludeTypes,
-		excludeLabels:  f.ExcludeLabels,
-		filterInput:    ti,
-		agentAvail:     agent.Available(),
-		agentRuntime:   agent.DetectRuntime(),
-		projectDir:     projectDir,
-		inTmux:         agent.InTmux() && agent.TmuxAvailable(),
-		activeAgents:   make(map[string]string),
-		gtEnv:          gtEnv,
-		driver:         gastown.SelectDriver(),
-		gtPollInFlight: gtEnv.Available || gastown.GCEnabled(), // Init() launches the first poll; gate subsequent ones
-		actorsAvail:    actors.Available(),
-		changedIDs:     make(map[string]bool),
-		prevIssueMap:   prevMap,
-		sourceMode:     source.Mode,
-		cliBinary:      source.CLIBinary,
-		metadataSchema: metaSchema,
-		startedAt:      time.Now(),
-		spinner:        newLoadingSpinner(),
-		oscGuard:       guard,
-		noAnimations:   noAnimations,
-		codexSessions:  make(map[string]*codexSession),
+		issues:            issues,
+		groups:            groups,
+		unmapped:          unmapped,
+		activPane:         PaneParade,
+		watchPath:         watchPath,
+		pathExplicit:      pathExplicit,
+		lastFileMod:       lastFileMod,
+		blockingTypes:     blockingTypes,
+		excludeTypes:      f.ExcludeTypes,
+		excludeLabels:     f.ExcludeLabels,
+		filterInput:       ti,
+		agentAvail:        agent.Available(),
+		agentRuntime:      agent.DetectRuntime(),
+		projectDir:        projectDir,
+		inTmux:            agent.InTmux() && agent.TmuxAvailable(),
+		activeAgents:      make(map[string]string),
+		gtEnv:             gtEnv,
+		driver:            gastown.SelectDriver(),
+		gtPollInFlight:    gtEnv.Available || gastown.GCEnabled(), // Init() launches the first poll; gate subsequent ones
+		actorsAvail:       actors.Available(),
+		changedIDs:        make(map[string]bool),
+		prevIssueMap:      prevMap,
+		sourceMode:        source.Mode,
+		cliBinary:         source.CLIBinary,
+		metadataSchema:    metaSchema,
+		startedAt:         time.Now(),
+		spinner:           newLoadingSpinner(),
+		oscGuard:          guard,
+		noAnimations:      noAnimations,
+		codexSessions:     make(map[string]*codexSession),
+		commentsDockOpen:  true,
+		commentsDockRatio: defaultCommentsDockRatio,
+		seenCommentIDs:    make(map[string]map[string]bool),
 	}
 }
 
@@ -1814,10 +1826,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case commentsMsg:
-		if msg.err == nil {
-			if m.detail.Issue != nil && m.detail.Issue.ID == msg.issueID {
-				m.detail.SetComments(msg.issueID, msg.comments)
-			}
+		if msg.err != nil {
+			m.commentsErr = msg.err
+			return m.toastResult(msg.err, "comments failed", "")
+		}
+		m.commentsErr = nil
+		if m.detail.Issue != nil && m.detail.Issue.ID == msg.issueID {
+			m.detail.SetComments(msg.issueID, msg.comments)
 		}
 		return m, nil
 
@@ -2082,10 +2097,25 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch mouse := msg.(type) {
 	case tea.MouseReleaseMsg:
 		m.draggingDivider = false
+		m.draggingCommentsDock = false
 		return m, nil
 	case tea.MouseMotionMsg:
 		m.lastMouseX, m.lastMouseY = mouse.X, mouse.Y
+		if m.draggingCommentsDock && m.detail.Height > 0 {
+			top, _, paradeWidth := m.bodyBounds()
+			bodyRow := mouse.Y - top
+			if mouse.X >= paradeWidth {
+				want := m.detail.Height - bodyRow
+				m.commentsDockOverride = want
+				m.commentsDockRatio = float64(clampDockHeight(want, m.detail.Height)) / float64(m.detail.Height)
+			}
+			return m, nil
+		}
 		if !m.draggingDivider {
+			top, _, paradeWidth := m.bodyBounds()
+			if mouse.X >= paradeWidth && m.layoutPreset != LayoutWide {
+				m.hoverCommentsDock(mouse.X-paradeWidth, mouse.Y-top)
+			}
 			return m, nil
 		}
 		m.paradeWidthOverride = mouse.X
@@ -2124,6 +2154,20 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		x == paradeWidth && m.layoutPreset != LayoutWide {
 		m.draggingDivider = true
 		return m, nil
+	}
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft &&
+		x > paradeWidth && m.layoutPreset != LayoutWide &&
+		!(m.showGasTown || m.showActors || m.showProblems || m.showDoctor || m.showCodex) {
+		dx, drow := x-paradeWidth, y-top
+		if m.commentsDockFoldHit(dx, drow) {
+			m.commentsDockOpen = !m.commentsDockOpen
+			return m, nil
+		}
+		if m.commentsDockHeaderHit(drow) {
+			m.draggingCommentsDock = true
+			m.commentsDockOpen = true
+			return m, nil
+		}
 	}
 
 	right := x >= paradeWidth
@@ -2775,6 +2819,15 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		cmd := m.startQuickAction("link", issue.ID, "link> ", "Issue ID that "+issue.ID+" depends on...")
+		return m, cmd
+
+	case "c":
+		issue := m.parade.SelectedIssue
+		if issue == nil {
+			return m, nil
+		}
+		m.commentsDockOpen = true
+		cmd := m.startQuickAction("comment", issue.ID, "comment> ", "Add comment to "+issue.ID+"...")
 		return m, cmd
 
 	case "C":

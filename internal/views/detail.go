@@ -545,11 +545,9 @@ func (d *Detail) renderContent() string {
 	lines = append(lines, "")
 	lines = append(lines, d.renderActivity())
 
-	// Comments section
-	if len(d.Comments) > 0 && d.CommentsIssueID == issue.ID {
-		lines = append(lines, "")
-		d.appendComments(&lines)
-	}
+	// Comments live in the bottom dock overlay (app.stampCommentsDock),
+	// not in the scrolled body. Leaving them here would push the body
+	// and duplicate the thread.
 
 	// Agent output section (live tail from tmux pane)
 	if len(d.AgentOutput) > 0 && d.AgentOutputID == issue.ID {
