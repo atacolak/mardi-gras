@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+LIB=$HERE/../lib/comment-watch
+SCOPE_ROOT=${SYSTEMD_OPS_SCOPE_ROOT:-/home/sf/workspace/mardi-gras}
+export SYSTEMD_OPS_SCOPE_ROOT="$SCOPE_ROOT"
+export STATE_DIR=${STATE_DIR:-$SCOPE_ROOT/.systemd-ops/operations/managed-mardi-gras-comment-watch/state}
+export SYSTEM_NOTIFY_LIB=${SYSTEM_NOTIFY_LIB:-/home/sf/workspace/systemd-ops/dogfood/lib/system-notify}
+# shellcheck source=/dev/null
+source "$LIB"
+ata_comment_watch_run

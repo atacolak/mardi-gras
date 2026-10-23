@@ -40,6 +40,9 @@ docs/internal/
 # Beads local project tracking
 .beads/
 
+# comment-watch cursor/state (runtime, not the driver)
+.systemd-ops/operations/*/state/
+
 # Gas Town (added by gt)
 .runtime/
 .claude/commands/
