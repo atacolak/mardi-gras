@@ -231,7 +231,7 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 	return out
 }
 
-const nameTimeGap = "        " // one tab
+const nameTimeGap = "    " // one tab less
 
 func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
 	_ = innerW
