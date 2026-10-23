@@ -37,7 +37,8 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/quietpublish/mardi-gras"
-    description: "Terminal UI for Beads issue tracking — your issues deserve a parade"
+    description: "Terminal UI for Beads issue tracking"
+
     binaries:
       - mg
     manpages:
@@ -82,4 +83,4 @@ release:
     ```
   footer: |
     ---
-    _Let the good tasks roll._ ⚜
+

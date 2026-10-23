@@ -1,6 +1,7 @@
 # Contributing to Mardi Gras
 
-Thanks for your interest in making the parade better! This guide covers everything you need to get started.
+Thanks for contributing. This covers setup and local conventions.
+
 
 ## Prerequisites
 
@@ -17,7 +18,8 @@ Optional (for orchestrator features — mg works fine without any of these):
 ## Getting Started
 
 ```bash
-git clone https://github.com/quietpublish/mardi-gras.git
+git clone https://github.com/atacolak/mardi-gras.git
+
 cd mardi-gras
 make build
 ```
