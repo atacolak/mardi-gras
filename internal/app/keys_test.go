@@ -256,12 +256,11 @@ func TestKeyGJumpsToTop(t *testing.T) {
 func TestKeyGGJumpsToBottom(t *testing.T) {
 	got := setupModel(t)
 
-	// First expand closed so we have more items
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	got = model.(Model)
+	// Closed-section toggle is a mouse hit on ╭─, not `c` (`c` composes).
+	got.parade.ToggleClosedSection()
 
 	// Press G to jump to bottom
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	model, _ := got.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
 	got = model.(Model)
 
 	// The cursor should be on the last non-header item

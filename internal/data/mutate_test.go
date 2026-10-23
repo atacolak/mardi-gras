@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -236,16 +237,57 @@ func TestCreateIssueExecError(t *testing.T) {
 // --- AddComment tests ---
 
 func TestAddCommentArgs(t *testing.T) {
+	t.Setenv("MG_AUTHOR", "")
+	commentAuthorPath = filepath.Join(t.TempDir(), "author")
+	t.Cleanup(func() { commentAuthorPath = "" })
 	calls, restore := mockRunCapture([]byte("ok\n"), nil)
 	defer restore()
 	err := AddComment("mg-42", "Fixed the auth bug")
 	if err != nil {
 		t.Fatalf("AddComment() error = %v", err)
 	}
+	want := []string{"br", "comments", "add", "--author", "operator", "mg-42", "--", "Fixed the auth bug"}
 	args := (*calls)[0]
-	// Should be: bd comments add mg-42 -- "Fixed the auth bug"
-	if len(args) != 6 || args[0] != "bd" || args[1] != "comments" || args[2] != "add" || args[3] != "mg-42" || args[4] != "--" || args[5] != "Fixed the auth bug" {
-		t.Errorf("args = %v", args)
+	if len(args) != len(want) {
+		t.Errorf("args = %v, want %v", args, want)
+	} else {
+		for i := range want {
+			if args[i] != want[i] {
+				t.Errorf("args = %v, want %v", args, want)
+				break
+			}
+		}
+	}
+}
+
+func TestAddCommentPassesMGAuthor(t *testing.T) {
+	t.Setenv("MG_AUTHOR", "operator-x")
+	calls, restore := mockRunCapture([]byte("ok\n"), nil)
+	defer restore()
+	if err := AddComment("mg-42", "a note"); err != nil {
+		t.Fatalf("AddComment() error = %v", err)
+	}
+	want := []string{"br", "comments", "add", "--author", "operator-x", "mg-42", "--", "a note"}
+	args := (*calls)[0]
+	if len(args) != len(want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args = %v, want %v", args, want)
+		}
+	}
+}
+
+func TestSaveCommentAuthorPersists(t *testing.T) {
+	t.Setenv("MG_AUTHOR", "")
+	commentAuthorPath = filepath.Join(t.TempDir(), "author")
+	t.Cleanup(func() { commentAuthorPath = "" })
+	if err := SaveCommentAuthor("ata"); err != nil {
+		t.Fatal(err)
+	}
+	if CommentAuthor() != "ata" {
+		t.Fatalf("got %q", CommentAuthor())
 	}
 }
 

@@ -247,7 +247,7 @@ func (m Model) hitPreview(dx, dy int) previewHit {
 }
 
 func (m Model) viewDetailWithPreviews() string {
-	base := m.detail.View()
+	base := m.stampCommentsDock(m.detail.View())
 	if len(m.previews) == 0 {
 		return base
 	}

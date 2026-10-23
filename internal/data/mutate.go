@@ -106,14 +106,15 @@ func UpdateTitle(issueID, title string) error {
 	return execWithTimeout(timeoutShort, "bd", "update", issueID, "--title="+title)
 }
 
-// AddComment runs `bd comments add <id> -- <body>` to add a comment to an issue.
+// AddComment runs `br comments add --author <who> <id> -- <body>`.
+// Who is CommentAuthor(): MG_AUTHOR, then saved `mg --author`, then "operator".
 func AddComment(issueID, body string) error {
 	if err := ValidateIssueID(issueID); err != nil {
 		return err
 	}
 	body = sanitizeText(body, maxTextLen)
-	_, err := runWithTimeout(timeoutShort, "bd", "comments", "add", issueID, "--", body)
-	return wrapExitError("bd comments add", err)
+	_, err := runWithTimeout(timeoutShort, "br", "comments", "add", "--author", CommentAuthor(), issueID, "--", body)
+	return wrapExitError("br comments add", err)
 }
 
 // AddNote runs `bd note <id> -- <body>` to add a note to an issue.

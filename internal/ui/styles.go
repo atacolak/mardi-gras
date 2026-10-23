@@ -184,6 +184,21 @@ func SelectedRow(row string, width int) string {
 	return FillBackground(row, DimPurple)
 }
 
+// DockSelectedRow is the comments-dock cursor fill: a slightly lifted black,
+// quieter than the parade's DimPurple so a long expanded comment does not
+// shout.
+func DockSelectedRow(row string, width int) string {
+	row = ansi.Truncate(row, width, "")
+	if pad := width - lipgloss.Width(row); pad > 0 {
+		row += strings.Repeat(" ", pad)
+	}
+	bg := lipgloss.Color("#242428")
+	if isLight() {
+		bg = lipgloss.Color("#E6E6EA")
+	}
+	return FillBackground(row, bg)
+}
+
 // OverlayBox renders content inside the shared overlay box (help, command
 // palette, dialogs), with the box background re-asserted across inner spans.
 func OverlayBox(content string, width int) string {
@@ -251,7 +266,7 @@ func rebuildStyles() {
 	DetailBorder = lipgloss.NewStyle().
 		BorderLeft(true).
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(DimPurple).
+		BorderForeground(Gold).
 		PaddingLeft(1)
 
 	DetailTitle = lipgloss.NewStyle().

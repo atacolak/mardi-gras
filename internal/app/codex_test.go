@@ -114,11 +114,11 @@ func TestKeyRGate(t *testing.T) {
 			wantReplying: false,
 		},
 		{
-			name:         "overlay closed falls through to comment",
+			name:         "overlay closed does not fall through to comment",
 			overlay:      false,
 			sess:         nil,
 			wantReplying: false,
-			wantQAMode:   "comment",
+			wantQAMode:   "",
 		},
 	}
 	for _, tc := range tests {

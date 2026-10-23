@@ -74,15 +74,16 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `B`           | Create + checkout git branch             |
 | `N`           | Create new issue                         |
 | `e`           | Edit selected issue (title, priority)    |
-| `r`           | Add comment to selected issue            |
+| `c`           | Comment on the selected bead             |
+
+| `r`           | Reply to the selected comment thread (or Codex reply when that overlay is open) |
 | `y`           | Assign selected issue                    |
 | `t`           | Add label to selected issue              |
 | `l`           | Add dependency link                      |
 | `s`           | Pick a formula and sling the issue **(orch)** |
 | `n`           | Nudge the agent working the issue **(orch)** |
-| `C`           | Create a convoy from the selection **(orch)** |
+| `C`           | Fold / unfold the comments dock          |
 
-`3` on a single issue closes it and atomically claims the next ready bead. `n` only fires when an agent is actually active on the selected issue. `C` on an epic builds the convoy from that epic's tree; on any other issue (or a multi-selection) it builds from the selected IDs.
 
 ## Multi-select
 
@@ -95,7 +96,8 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `!/@/#/$`     | Bulk set priority on selected       |
 | `a`           | Sling all selected issues           |
 | `s`           | Pick formula and sling all selected |
-| `C`           | Create a convoy from all selected   |
+| *palette*     | Create a convoy from selected issues **(orch)** |
+
 
 ## Detail Pane
 

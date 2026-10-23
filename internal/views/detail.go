@@ -151,6 +151,21 @@ func (d *Detail) SetSize(width, height int) {
 	}
 }
 
+// SetViewportBottomInset shrinks the scrollable body so an overlay (the
+// comments dock) does not cover the last lines. Height and width of the pane
+// stay put; only the viewport shortens. A no-op when the height is unchanged
+// so drag frames do not reset scroll.
+func (d *Detail) SetViewportBottomInset(inset int) {
+	if inset < 0 {
+		inset = 0
+	}
+	vis := max(d.Height-1-inset, 1)
+	if d.Viewport.Height() == vis {
+		return
+	}
+	d.Viewport.SetHeight(vis)
+}
+
 // SetPreviewSize sizes the viewport to fill a gold preview box. No left-border
 // reservation and no scroll-cue row — those belong to the parent pane only.
 func (d *Detail) SetPreviewSize(width, height int) {
@@ -207,15 +222,10 @@ func (d *Detail) ContentView() string {
 	return d.Viewport.View()
 }
 
-// View renders the detail panel.
 func (d *Detail) View() string {
-	// The left border doubles as the pane divider and the focus cue: it
-	// brightens to gold when the detail pane holds focus (keys scroll it),
-	// and stays a dim purple rule when the parade is focused.
-	border := ui.DetailBorder
-	if d.Focused {
-		border = border.BorderForeground(ui.Gold)
-	}
+	// Split chrome stays gold. Tab still owns keyboard focus; it does not
+	// recolor the bar.
+	border := ui.DetailBorder.BorderForeground(ui.Gold)
 
 	if d.Issue == nil {
 		empty := lipgloss.NewStyle().
@@ -545,11 +555,9 @@ func (d *Detail) renderContent() string {
 	lines = append(lines, "")
 	lines = append(lines, d.renderActivity())
 
-	// Comments section
-	if len(d.Comments) > 0 && d.CommentsIssueID == issue.ID {
-		lines = append(lines, "")
-		d.appendComments(&lines)
-	}
+	// Comments live in the bottom dock overlay (app.stampCommentsDock),
+	// not in the scrolled body. Leaving them here would push the body
+	// and duplicate the thread.
 
 	// Agent output section (live tail from tmux pane)
 	if len(d.AgentOutput) > 0 && d.AgentOutputID == issue.ID {

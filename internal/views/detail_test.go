@@ -631,18 +631,8 @@ func TestCommentsRendering(t *testing.T) {
 	d.SetComments("mg-001", comments)
 
 	content := d.renderContent()
-
-	if !strings.Contains(content, "COMMENTS (2)") {
-		t.Error("content should contain 'COMMENTS (2)' section header")
-	}
-	if !strings.Contains(content, "claude (Toast)") {
-		t.Error("content should contain comment author")
-	}
-	if !strings.Contains(content, "JWT validation") {
-		t.Error("content should contain comment body")
-	}
-	if !strings.Contains(content, "overseer") {
-		t.Error("content should contain second comment author")
+	if strings.Contains(content, "COMMENTS") {
+		t.Error("comments belong in the dock overlay, not the scrolled body")
 	}
 }
 
@@ -1088,9 +1078,9 @@ func TestSetRichDetailNoIssueIsNoOp(t *testing.T) {
 	d.SetRichDetail("mg-001", &data.Issue{ID: "mg-001", Notes: "x"})
 }
 
-// TestFocusChangesBorder verifies the detail pane's border (the divider + focus
-// cue) renders differently when focused vs not — gold when focused, dim when not.
-func TestFocusChangesBorder(t *testing.T) {
+// TestFocusDoesNotRecolorBorder: tab still owns keyboard focus; the split
+// chrome stays gold.
+func TestFocusDoesNotRecolorBorder(t *testing.T) {
 	issues := []data.Issue{
 		{ID: "mg-001", Title: "Focus test", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask},
 	}
@@ -1102,8 +1092,8 @@ func TestFocusChangesBorder(t *testing.T) {
 	d.Focused = true
 	focused := d.View()
 
-	if unfocused == focused {
-		t.Fatal("detail View() should differ between focused and unfocused (border cue)")
+	if unfocused != focused {
+		t.Fatal("detail chrome must stay gold; tab does not recolor the bar")
 	}
 }
 
