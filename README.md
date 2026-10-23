@@ -24,7 +24,9 @@ The live cockpit, a preview, and a nested preview:
 
 ### Comments dock
 
-A gold overlay on the detail pane, not a second database. Selecting a bead loads the thread. `c` comments, `r` replies (`re:<id>` in the store, hidden in the dock), `C` folds the bar. Collapsed rows are author + preview + reply count; open a row and the body stays put with replies indented under it. Unread is a curly underline on the name, not a hover-circle. Author is whoever `br` already is.
+A gold overlay on the detail pane, not a second database. Selecting a bead loads the thread. `c` comments, `r` replies (`re:<id>` in the store, hidden in the dock), `C` folds the bar. Collapsed rows are author + preview + reply count; open a row and the body stays put with replies indented under it. Unread is a curly underline on the name, not a hover-circle. Comment author follows `br` (typically `$USER`) unless `MG_AUTHOR` is set.
+
+
 
 
 <img src="docs/screenshots/comments-dock.png" alt="Comments dock with a selected reply thread" />
@@ -228,7 +230,8 @@ mg --status                             # tmux status-line summary, then exit
 mg --version
 ```
 
-Every option has an environment variable so you can set it once: `MG_BLOCK_TYPES`, `MG_THEME`, `MG_AGENT_RUNTIME`, `MG_CMD_TIMEOUT`, `MG_NO_ANIMATIONS=1`. `MG_DEBUG=1` writes `mg-debug.log` in the current directory. `MG_GC_API` and `MG_GC_CITY` select the Gas City backend, as above.
+Every option has an environment variable so you can set it once: `MG_BLOCK_TYPES`, `MG_THEME`, `MG_AGENT_RUNTIME`, `MG_CMD_TIMEOUT`, `MG_NO_ANIMATIONS=1`. `MG_AUTHOR` sets the `br comments add --author` override; unset, br uses actor/env/`$USER`. `MG_DEBUG=1` writes `mg-debug.log` in the current directory. `MG_GC_API` and `MG_GC_CITY` select the Gas City backend, as above.
+
 
 ## Live updates
 

@@ -3,6 +3,7 @@ package data
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -107,13 +108,20 @@ func UpdateTitle(issueID, title string) error {
 }
 
 // AddComment runs `br comments add <id> -- <body>`.
-// Author is whoever br already is — actor, env, or user. mg does not stamp a name.
+// If MG_AUTHOR is set, it is passed as --author; otherwise br picks
+// actor/env/user. mg never invents a name.
 func AddComment(issueID, body string) error {
 	if err := ValidateIssueID(issueID); err != nil {
 		return err
 	}
 	body = sanitizeText(body, maxTextLen)
-	_, err := runWithTimeout(timeoutShort, "br", "comments", "add", issueID, "--", body)
+	args := []string{"comments", "add"}
+	if author := strings.TrimSpace(os.Getenv("MG_AUTHOR")); author != "" {
+		args = append(args, "--author", author)
+	}
+	args = append(args, issueID, "--", body)
+	_, err := runWithTimeout(timeoutShort, "br", args...)
+
 	return wrapExitError("br comments add", err)
 }
 
