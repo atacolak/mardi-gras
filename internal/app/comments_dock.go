@@ -207,12 +207,12 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 		}
 	} else {
 		preview := strings.ReplaceAll(rootBody, "\n", " ")
-		name := m.authorLabel(th.root.Author, false, unread)
+		head := m.nameAndWhen(th.root, false, unread, " ")
 		suffix := ""
 		if n := len(th.replies); n > 0 {
 			suffix = fmt.Sprintf("  %d", n)
 		}
-		line := " " + name + "  " + lipgloss.NewStyle().Foreground(ui.Muted).Render(preview)
+		line := head + "  " + lipgloss.NewStyle().Foreground(ui.Muted).Render(preview)
 		if lipgloss.Width(line)+lipgloss.Width(suffix) > innerW {
 			line = ansi.Truncate(line, innerW-lipgloss.Width(suffix), "…")
 		}
@@ -231,26 +231,27 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 	return out
 }
 
+const nameTimeGap = "        " // one tab
+
 func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
-	name := m.authorLabel(c.Author, selected, unread)
-	when := lipgloss.NewStyle().Foreground(ui.Dim).Render(compactCommentTime(c.Time))
-	left := " " + name
-	fill := innerW - lipgloss.Width(left) - lipgloss.Width(when) - 1
-	if fill < 1 {
-		fill = 1
-	}
-	return left + strings.Repeat(" ", fill) + when
+	_ = innerW
+	return m.nameAndWhen(c, selected, unread, " ")
 }
 
 func (m Model) replyMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
+	_ = innerW
+	return m.nameAndWhen(c, selected, unread, "    ")
+}
+
+func (m Model) nameAndWhen(c gastown.Comment, selected, unread bool, indent string) string {
 	name := m.authorLabel(c.Author, selected, unread)
-	when := lipgloss.NewStyle().Foreground(ui.Dim).Render(compactCommentTime(c.Time))
-	left := "    " + name
-	fill := innerW - lipgloss.Width(left) - lipgloss.Width(when) - 1
-	if fill < 1 {
-		fill = 1
+	clock := lipgloss.NewStyle().Foreground(ui.Muted).Render(commentClock(c.Time))
+	date := lipgloss.NewStyle().Foreground(ui.Dim).Render(commentDate(c.Time))
+	out := indent + name + nameTimeGap + clock
+	if date != "" {
+		out += " " + date
 	}
-	return left + strings.Repeat(" ", fill) + when
+	return out
 }
 
 func (m Model) authorLabel(name string, selected, unread bool) string {
@@ -621,21 +622,43 @@ func formatCommentBody(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func compactCommentTime(raw string) string {
+func parseCommentTime(raw string) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return ""
+		return time.Time{}, false
 	}
 	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05Z"} {
 		t, err := time.Parse(layout, raw)
 		if err == nil {
-			return t.Local().Format("15:04")
+			return t.Local(), true
 		}
+	}
+	return time.Time{}, false
+}
+
+func commentClock(raw string) string {
+	if t, ok := parseCommentTime(raw); ok {
+		return t.Format("15:04")
 	}
 	if len(raw) >= 16 {
 		return raw[11:16]
 	}
 	return raw
+}
+
+func commentDate(raw string) string {
+	if t, ok := parseCommentTime(raw); ok {
+		return t.Format("2 Jan")
+	}
+	return ""
+}
+
+func compactCommentTime(raw string) string {
+	c, d := commentClock(raw), commentDate(raw)
+	if d == "" {
+		return c
+	}
+	return c + " " + d
 }
 
 func wrapCommentLines(s string, width int) []string {
@@ -701,14 +724,14 @@ func cutWidth(s string, width int) int {
 
 func authorColor(name string, selected bool) color.Color {
 	palette := []color.Color{
-		lipgloss.Color("#6B7C8A"),
-		lipgloss.Color("#7A6B82"),
-		lipgloss.Color("#6B8275"),
-		lipgloss.Color("#826B6B"),
-		lipgloss.Color("#6B7582"),
-		lipgloss.Color("#7A8270"),
-		lipgloss.Color("#6E7380"),
-		lipgloss.Color("#7A7068"),
+		lipgloss.Color("#5E8A7A"),
+		lipgloss.Color("#7A6B9A"),
+		lipgloss.Color("#8A7355"),
+		lipgloss.Color("#5A7A8A"),
+		lipgloss.Color("#8A5E6E"),
+		lipgloss.Color("#6A8A5E"),
+		lipgloss.Color("#8A7A4E"),
+		lipgloss.Color("#6E5A8A"),
 	}
 	h := 0
 	for _, r := range strings.ToLower(name) {
@@ -728,7 +751,7 @@ func brightenColor(c color.Color) color.Color {
 	r, g, b, _ := c.RGBA()
 	mix := func(v uint32) uint8 {
 		x := int(v >> 8)
-		return uint8(x + (255-x)*2/5)
+		return uint8(x + (255-x)/6)
 	}
 	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", mix(r), mix(g), mix(b)))
 }
