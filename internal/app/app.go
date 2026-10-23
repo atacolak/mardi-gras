@@ -2226,21 +2226,22 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.commentsDockContains(drow) {
+			m.commentsFocus = true
+			m.commentsDockOpen = true
+			m.activPane = PaneDetail
+			m.detail.Focused = true
 			if m.commentsDockHitAt(drow) == dockHitCompose {
 				issue := m.parade.SelectedIssue
 				if issue == nil {
 					return m, nil
 				}
-				m.commentsDockOpen = true
 				cmd := m.startQuickAction("comment", issue.ID, "comment> ", "Add comment to "+issue.ID+"...")
 				return m, cmd
 			}
-			if m.selectCommentAt(drow) {
-				m.activPane = PaneDetail
-				m.detail.Focused = true
-				return m, nil
-			}
+			_ = m.selectCommentAt(drow)
+			return m, nil
 		}
+
 	}
 
 	right := x >= paradeWidth
