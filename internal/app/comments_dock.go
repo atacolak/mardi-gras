@@ -583,7 +583,11 @@ func (m *Model) markCommentSeen(issueID, commentID string) {
 	if m.seenCommentIDs[issueID] == nil {
 		m.seenCommentIDs[issueID] = map[string]bool{}
 	}
+	if m.seenCommentIDs[issueID][commentID] {
+		return
+	}
 	m.seenCommentIDs[issueID][commentID] = true
+	saveSeenComments(m.projectDir, m.seenCommentIDs)
 }
 
 func encodeReply(parentID, body string) string {

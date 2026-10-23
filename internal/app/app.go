@@ -396,7 +396,7 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 		codexSessions:     make(map[string]*codexSession),
 		commentsDockOpen:  true,
 		commentsDockRatio: defaultCommentsDockRatio,
-		seenCommentIDs:    make(map[string]map[string]bool),
+		seenCommentIDs:    loadSeenComments(projectDir),
 	}
 }
 
