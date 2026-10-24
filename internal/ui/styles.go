@@ -300,18 +300,20 @@ func rebuildStyles() {
 	BadgeType = lipgloss.NewStyle().
 		Italic(true)
 
-	// Footer
+	// Footer. No Foreground on the bar itself — that would paint over
+	// FooterKey gold when the whole row is Render()'d.
 	FooterStyle = lipgloss.NewStyle().
-		Foreground(Light).
 		Background(DimPurple).
 		Padding(0, 1)
 
 	FooterKey = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(BrightGold)
+		Foreground(BrightGold).
+		Background(DimPurple)
 
 	FooterDesc = lipgloss.NewStyle().
-		Foreground(Light)
+		Foreground(Muted).
+		Background(DimPurple)
 
 	// Dependency display
 	DepBlocked = lipgloss.NewStyle().
@@ -391,7 +393,8 @@ func rebuildStyles() {
 		MarginTop(1)
 
 	FooterSource = lipgloss.NewStyle().
-		Foreground(Muted)
+		Foreground(Muted).
+		Background(DimPurple)
 
 	// Molecule step styles
 	MolStepDone = lipgloss.NewStyle().
