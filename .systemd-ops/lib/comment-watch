@@ -261,13 +261,16 @@ ata_comment_watch_record() {
   fi
   local home=${COMMENT_WATCH_HOME:-}
   local unit=${COMMENT_WATCH_UNIT:-managed-mardi-gras-comment-watch}
+  local bin=${SYSTEMD_OPS_BIN:-}
   [[ -n $home ]] || return 0
-  command -v systemd-ops >/dev/null || return 0
-  systemd-ops --json --manager user --scope-root "$home" \
+  [[ -n $bin ]] || bin=$(command -v systemd-ops || true)
+  [[ -n $bin ]] || return 0
+  "$bin" --json --manager user --scope-root "$home" \
     operator append --unit "$unit" --text "$text" >/dev/null ||
     echo "ata-comment-watch: operator append failed (advisory)" >&2
   return 0
 }
+
 
 
 
