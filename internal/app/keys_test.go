@@ -439,19 +439,12 @@ func TestSetPriorityReturnsCmd(t *testing.T) {
 // 21. 's' key with Gas Town spawns formula list fetch
 // ---------------------------------------------------------------------------
 
-func TestKeySGasTownFetchesFormulas(t *testing.T) {
+func TestKeySIsNoOp(t *testing.T) {
 	got := setupModel(t)
 	got.gtEnv.Available = true
-
-	model, cmd := got.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-	got = model.(Model)
-
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd from pressing s with Gas Town available")
-	}
-	// The formulaTarget should be set to the selected issue ID
-	if got.formulaTarget == "" {
-		t.Fatal("expected formulaTarget to be set after pressing s")
+	_, cmd := got.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	if cmd != nil {
+		t.Fatal("s should be a no-op")
 	}
 }
 
@@ -473,23 +466,18 @@ func TestKeySNoGasTownNoop(t *testing.T) {
 // 23. 'n' key opens nudge input when agent active
 // ---------------------------------------------------------------------------
 
-func TestKeyNOpensNudgeInput(t *testing.T) {
+func TestKeyNIsNoOp(t *testing.T) {
 	got := setupModel(t)
 	got.gtEnv.Available = true
 	issueID := got.parade.SelectedIssue.ID
 	got.activeAgents[issueID] = "Toast"
-
 	model, cmd := got.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	got = model.(Model)
-
-	if !got.nudging {
-		t.Fatal("expected nudging to be true after pressing n with active agent")
+	if got.nudging {
+		t.Fatal("n should not open nudge")
 	}
-	if got.nudgeTarget != "Toast" {
-		t.Fatalf("expected nudgeTarget 'Toast', got %q", got.nudgeTarget)
-	}
-	if cmd == nil {
-		t.Fatal("expected blink cmd from nudge input")
+	if cmd != nil {
+		t.Fatal("n should be a no-op")
 	}
 }
 
@@ -516,20 +504,14 @@ func TestKeyNNoActiveAgentNoop(t *testing.T) {
 // 25. 'A' key with Gas Town dispatches unsling
 // ---------------------------------------------------------------------------
 
-func TestKeyAGasTownUnsling(t *testing.T) {
+func TestKeyAIsNoOp(t *testing.T) {
 	got := setupModel(t)
 	got.gtEnv.Available = true
 	issueID := got.parade.SelectedIssue.ID
 	got.activeAgents[issueID] = "Toast"
-
 	_, cmd := got.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd from pressing A with Gas Town and active agent")
-	}
-	// Execute the cmd and verify it returns unslingResultMsg
-	msg := cmd()
-	if _, ok := msg.(unslingResultMsg); !ok {
-		t.Fatalf("expected unslingResultMsg, got %T", msg)
+	if cmd != nil {
+		t.Fatal("A should be a no-op")
 	}
 }
 
@@ -592,43 +574,13 @@ func TestFormulaListMsgEmptyFallback(t *testing.T) {
 // 29. multi-sling 'a' key with Gas Town and selection
 // ---------------------------------------------------------------------------
 
-func TestKeyAMultiSlingWithSelection(t *testing.T) {
+func TestKeyALaunchIsNoOp(t *testing.T) {
 	got := setupModel(t)
 	got.gtEnv.Available = true
-
-	// Select current item
-	model, _ := got.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	got = model.(Model)
-	if got.parade.SelectionCount() == 0 {
-		t.Fatal("expected items to be selected")
-	}
-
-	model, cmd := got.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	got = model.(Model)
-
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd from multi-sling")
-	}
-	// Selection should be cleared
-	if got.parade.SelectionCount() != 0 {
-		t.Fatal("expected selection to be cleared after multi-sling")
-	}
-}
-
-// TestKeyASlingsWithoutLocalRuntime pins the fix for an asymmetry in the `a`
-// handler: the !agentAvail guard sat ahead of the Gas Town sling branch, so on
-// a box with gt but no claude/cursor-agent/codex installed, `a` on a SINGLE
-// issue did nothing while `a` on a multi-selection dispatched fine. Only direct
-// launch needs a local runtime — the orchestrator starts the agent itself.
-func TestKeyASlingsWithoutLocalRuntime(t *testing.T) {
-	got := setupModel(t)
-	got.gtEnv.Available = true
-	got.agentAvail = false // no claude/cursor-agent/codex on PATH
-	got.inTmux = false
-
+	got.agentAvail = false
 	_, cmd := got.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	if cmd == nil {
-		t.Fatal("pressing a on a single issue produced no command; sling does not need a local runtime")
+	if cmd != nil {
+		t.Fatal("a should be a no-op")
 	}
 }
 

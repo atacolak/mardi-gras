@@ -11,40 +11,19 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/views"
 )
 
-func TestKeyMTogglesCodexOverlay(t *testing.T) {
-	got := setupModel(t)
-	if got.showCodex {
-		t.Fatal("expected showCodex=false initially")
-	}
-
-	// First press: should open the overlay.
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'M', Text: "M"})
-	got = model.(Model)
-	if !got.showCodex {
-		t.Fatal("expected showCodex=true after M")
-	}
-
-	// Second press: should close the overlay.
-	model, _ = got.Update(tea.KeyPressMsg{Code: 'M', Text: "M"})
-	got = model.(Model)
-	if got.showCodex {
-		t.Fatal("expected showCodex=false after second M")
-	}
-}
-
-func TestKeyMOpeningClearsOtherOverlays(t *testing.T) {
+func TestKeyMIsNoOp(t *testing.T) {
 	got := setupModel(t)
 	got.showProblems = true
-	got.showGasTown = true
-	got.showDoctor = true
-
-	model, _ := got.Update(tea.KeyPressMsg{Code: 'M', Text: "M"})
+	model, cmd := got.Update(tea.KeyPressMsg{Code: 'M', Text: "M"})
 	got = model.(Model)
-	if !got.showCodex {
-		t.Fatal("showCodex should be true")
+	if got.showCodex {
+		t.Fatal("M should not open the Codex overlay")
 	}
-	if got.showProblems || got.showGasTown || got.showDoctor {
-		t.Fatal("other overlays should be cleared")
+	if !got.showProblems {
+		t.Fatal("M should not clear other overlays")
+	}
+	if cmd != nil {
+		t.Fatal("M should be a no-op")
 	}
 }
 

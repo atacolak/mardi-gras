@@ -17,13 +17,11 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `/`          | Enter filter mode          |
 | `f`          | Toggle focus mode (my work + top priority) |
 | `E`          | Scope the parade to the selected issue's epic subtree |
-| `ctrl+g`     | Toggle Gas Town panel **(orch)** |
 | `o`          | Toggle the actor society pane **(actor CLI)** |
-| `p`          | Toggle problems view **(orch)** |
 | `D`          | Toggle doctor diagnostics overlay |
-| `M`          | Toggle Codex (MCP) live transcript |
 
-`ctrl+g`, `o`, `p`, `D` and `M` all render into the same right-hand panel, but opening one does not always close the others: `o` displaces nothing, so pressing it while the Gas Town panel is open leaves Gas Town holding the shared slot, and the actors pane becomes visible once Gas Town is closed. `o` is progressive-hide like `ctrl+g`: without the `actor` CLI on `PATH` the pane, its key and its help section do not exist (see [Actors Pane](#actors-pane-o)), and pressing `o` is a no-op rather than an error.
+`o` is progressive-hide: without the `actor` CLI on `PATH` the pane, its key and its help section do not exist (see [Actors Pane](#actors-pane-o)), and pressing `o` is a no-op rather than an error.
+
 
 ## Parade
 
@@ -41,10 +39,7 @@ Keys marked **(orch)** need a live orchestrator — Gas Town (`gt`) or Gas City.
 | `S`          | Cycle sibling sort: attention (default) / priority / chronological (bead ID) |
 | `click ID`   | Open a mentioned bead in the detail pane |
 | `ctrl` on ID or row | Preview a mentioned bead or a parade row (pointer on the link or left-hand bead, then Ctrl). Wheel or `j`/`k` scrolls. Gap click closes. Two deep. |
-| `a`          | Launch agent (tmux: new pane; orchestrator: sling) |
-| `A`          | Stop the active agent on the issue         |
 
-`a` picks its dispatch path from the environment: with an orchestrator it slings, on the Gas City backend it first prompts for a target agent, in tmux without an orchestrator it opens an agent pane, and outside tmux it suspends the TUI. Pressing `a` on an issue that already has a tmux agent switches to that pane instead of launching a second one. `A` asks the orchestrator to unsling when one is present and only falls back to killing the tmux pane when there is none.
 
 ### Epic scope (`E`)
 
@@ -68,22 +63,14 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 
 | Key           | Action                                   |
 | ------------- | ---------------------------------------- |
-| `1` / `2` / `3` | Set status: in_progress / open / closed |
-| `!` / `@` / `#` / `$` | Set priority: P1 / P2 / P3 / P4 |
-| `b`           | Copy branch name to clipboard            |
-| `B`           | Create + checkout git branch             |
 | `N`           | Create new issue                         |
 | `e`           | Edit selected issue (title, priority)    |
 | `c`           | Comment on the selected bead             |
-
-| `r`           | Reply to the selected comment thread (or Codex reply when that overlay is open) |
+| `r`           | Reply to the selected comment thread     |
 | `y`           | Assign selected issue                    |
 | `t`           | Add label to selected issue              |
 | `l`           | Add dependency link                      |
-| `s`           | Pick a formula and sling the issue **(orch)** |
-| `n`           | Nudge the agent working the issue **(orch)** |
 | `C`           | Fold / unfold the comments dock          |
-
 
 ## Multi-select
 
@@ -92,11 +79,7 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `space` / `x` | Toggle select on cursor issue      |
 | `Shift+J/K`   | Select and move down/up            |
 | `X`           | Clear all selections                |
-| `1/2/3`       | Bulk set status on selected         |
-| `!/@/#/$`     | Bulk set priority on selected       |
-| `a`           | Sling all selected issues           |
-| `s`           | Pick formula and sling all selected |
-| *palette*     | Create a convoy from selected issues **(orch)** |
+
 
 
 ## Detail Pane
@@ -106,47 +89,8 @@ Operator Attention is an explicit stored Beads state. The lead transition is `br
 | `j` / `k`    | Scroll down/up            |
 | `esc`        | Back to parade pane        |
 | `/`          | Enter filter mode          |
-| `a`          | Launch agent               |
-| `A`          | Stop the active agent      |
-| `m`          | Mark active molecule step done |
 
 Any other navigation key (`pgup`, `pgdn`, `home`, `end`, …) is passed straight to the viewport.
-
-## Gas Town Panel (`ctrl+g`)
-
-The panel takes over the detail pane; give it focus with `tab` (or `enter` from the parade) and these keys route to it instead of the global handlers.
-
-| Key          | Action                          |
-| ------------ | ------------------------------- |
-| `j` / `k`    | Navigate agents/convoys/mail   |
-| `g` / `G`    | Jump to first/last             |
-| `tab`        | Switch section (agents/convoys/mail) |
-| `n`          | Nudge selected agent (agents)   |
-| `h`          | Handoff work from agent (agents) |
-| `K`          | Decommission polecat (agents; polecat role only) |
-| `enter`      | Expand/collapse convoy or message |
-| `l`          | Land convoy (convoys)           |
-| `x`          | Close convoy (convoys)          |
-| `w`          | Watch convoy (convoys) / compose message (agents, mail) |
-| `W`          | Unwatch convoy (convoys)        |
-| `r`          | Reply to selected message (mail) |
-| `d`          | Archive selected message (mail) |
-| `R`          | Mark all mail read (mail)       |
-
-`tab` skips sections with nothing in them, so a town with no convoys cycles agents → mail → agents. Expanding an unread message also marks it read. Note that `l`, `x`, `r`, `d` and `w` mean something different here than they do in the parade — the panel claims them while it has focus.
-
-## Problems View (`p`)
-
-| Key          | Action                          |
-| ------------ | ------------------------------- |
-| `j` / `k`    | Navigate problems              |
-| `g` / `G`    | Jump to first/last             |
-| `n`          | Nudge agent on selected problem |
-| `h`          | Handoff from agent              |
-| `K`          | Decommission polecat (polecat role only) |
-| `R`          | Recover dead rig — opens a confirmation dialog, then releases + re-slings orphans |
-
-`R` only applies to a `dead_rig` problem; on any other row it does nothing. Recovery shells out to `gt` directly, so it is offered on the Gas Town backend only.
 
 ## Actors Pane (`o`)
 

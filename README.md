@@ -132,16 +132,12 @@ The right pane renders description, design, and acceptance as markdown. It shows
 
 Writes go through `br` (or `bd` if that's what you have), so anything mg changes is what an agent would see.
 
-- `1` `2` `3` set status; `!` `@` `#` `$` set priority.
 - `N` creates an issue, `e` edits it, `c` comments, `r` replies, `y` assigns it, `t` labels it, `l` links a dependency.
-- `b` copies a branch name; `B` creates and checks out that branch.
-- `space` builds a multi-selection; status and priority keys then apply to all of it.
-- `3` on a single issue closes it and claims the next ready issue.
+- `space` builds a multi-selection.
 - `D` opens a `bd doctor` overlay.
 
-`a` starts an AI coding agent on the selected issue ([Claude Code](https://claude.com/claude-code), [Cursor](https://cursor.com), [OpenAI Codex](https://github.com/openai/codex)). mg picks the first one on `PATH`, or you pass `--agent`. In tmux it opens in a split; `a` again jumps back to that pane. `A` stops it. `M` is a live Codex transcript. See the [agent guide](docs/agents.md).
+Agent launch, Gas Town, Codex transcript, status/priority hotkeys, and git-branch keys are parked until the actor surface exists.
 
-If Gas Town or Gas City is around, `ctrl+g` opens the orchestrator panel. `a` slings instead of launching locally. [Gas Town](docs/gastown.md) and [Gas City](docs/gascity.md) have the details.
 
 ## Options
 

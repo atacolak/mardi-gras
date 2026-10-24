@@ -33,40 +33,16 @@ func TestNewFooterDetailBindings(t *testing.T) {
 	}
 }
 
-func TestNewFooterGasTownAddsBindings(t *testing.T) {
+func TestNewFooterGasTownAddsNoBindings(t *testing.T) {
 	f := NewFooter(80, false, true, false)
-
-	// Should have ParadeBindings + 4 Gas Town bindings (gas town, problems, sling, nudge)
-	expected := len(ParadeBindings) + 4
-	if len(f.Bindings) != expected {
-		t.Fatalf("expected %d bindings with Gas Town, got %d", expected, len(f.Bindings))
+	if len(f.Bindings) != len(ParadeBindings) {
+		t.Fatalf("expected %d bindings with Gas Town flag, got %d", len(ParadeBindings), len(f.Bindings))
 	}
-
-	// Find sling and nudge before quit
-	foundSling := false
-	foundNudge := false
-	quitIdx := -1
-	for i, b := range f.Bindings {
+	for _, b := range f.Bindings {
 		switch b.Key {
-		case "s":
-			foundSling = true
-			if quitIdx >= 0 {
-				t.Fatal("sling binding appears after quit")
-			}
-		case "n":
-			foundNudge = true
-			if quitIdx >= 0 {
-				t.Fatal("nudge binding appears after quit")
-			}
-		case "q":
-			quitIdx = i
+		case "s", "n", "^g", "p", "a", "A":
+			t.Fatalf("unused key still in footer: %s", b.Key)
 		}
-	}
-	if !foundSling {
-		t.Fatal("missing sling binding")
-	}
-	if !foundNudge {
-		t.Fatal("missing nudge binding")
 	}
 }
 
@@ -176,28 +152,22 @@ func TestBulkFooterContainsCount(t *testing.T) {
 	}
 }
 
-func TestBulkFooterGasTownBindings(t *testing.T) {
+func TestBulkFooterHasNoSling(t *testing.T) {
 	output := BulkFooter(80, 3, true)
 	if !strings.Contains(output, "3") {
 		t.Fatal("BulkFooter output should contain the selection count")
 	}
-	if !strings.Contains(output, "sling") {
-		t.Fatal("BulkFooter with Gas Town should contain 'sling'")
-	}
-}
-
-func TestBulkFooterNoGasTownNoSling(t *testing.T) {
-	output := BulkFooter(80, 2, false)
 	if strings.Contains(output, "sling") {
-		t.Fatal("BulkFooter without Gas Town should not contain 'sling'")
+		t.Fatal("BulkFooter should not advertise sling")
 	}
 }
 
-func TestFooterViewWithBeadsContext(t *testing.T) {
+func TestFooterViewOmitsSourceChip(t *testing.T) {
 	f := Footer{
 		Width:       120,
 		Bindings:    ParadeBindings,
 		SourceMode:  data.SourceCLI,
+		SourceLabel: "br list",
 		LastRefresh: time.Now(),
 		BeadsContext: &data.BeadsContext{
 			Database: "mardi_gras",
@@ -205,112 +175,11 @@ func TestFooterViewWithBeadsContext(t *testing.T) {
 		},
 	}
 	output := f.View()
-	if !strings.Contains(output, "mardi_gras/dolt") {
-		t.Fatalf("footer should contain database/backend, got: %s", output)
-	}
-}
-
-func TestFooterViewWithBeadsContextVersion(t *testing.T) {
-	f := Footer{
-		Width:       120,
-		Bindings:    ParadeBindings,
-		SourceMode:  data.SourceCLI,
-		LastRefresh: time.Now(),
-		BeadsContext: &data.BeadsContext{
-			Database:  "mardi_gras",
-			Backend:   "dolt",
-			BdVersion: "0.60.0",
-		},
-	}
-	output := f.View()
-	if !strings.Contains(output, "v0.60.0") {
-		t.Fatalf("footer should contain bd version, got: %s", output)
-	}
-}
-
-func TestFooterViewWithBeadsContextNoBackend(t *testing.T) {
-	f := Footer{
-		Width:       120,
-		Bindings:    ParadeBindings,
-		SourceMode:  data.SourceCLI,
-		LastRefresh: time.Now(),
-		BeadsContext: &data.BeadsContext{
-			Database: "mardi_gras",
-		},
-	}
-	output := f.View()
-	if !strings.Contains(output, "mardi_gras") {
-		t.Fatalf("footer should contain database name, got: %s", output)
-	}
-	if strings.Contains(output, "mardi_gras/") {
-		t.Fatalf("footer should not have trailing slash without backend, got: %s", output)
-	}
-}
-
-func TestFooterViewWithoutBeadsContext(t *testing.T) {
-	f := Footer{
-		Width:       120,
-		Bindings:    ParadeBindings,
-		SourceMode:  data.SourceCLI,
-		LastRefresh: time.Now(),
-	}
-	output := f.View()
-	if strings.Contains(output, "mardi_gras") {
-		t.Fatalf("footer should not contain context info when nil, got: %s", output)
-	}
-}
-
-// Source.Label() already returns "br list" for CLIBr, but the footer used to
-// hardcode "bd list" for every SourceCLI source. Prefer the resolved label.
-func TestFooterViewUsesSourceLabel(t *testing.T) {
-	f := Footer{
-		Width:       120,
-		Bindings:    ParadeBindings,
-		SourceMode:  data.SourceCLI,
-		SourceLabel: "br list",
-		LastRefresh: time.Now(),
-	}
-	output := f.View()
-	if !strings.Contains(output, "br list") {
-		t.Fatalf("footer should report SourceLabel, got: %s", output)
-	}
-	if strings.Contains(output, "bd list") {
-		t.Fatalf("footer should not fall back to bd list when SourceLabel is set, got: %s", output)
-	}
-}
-
-func TestFooterViewCLIFallsBackToBdList(t *testing.T) {
-	f := Footer{
-		Width:       120,
-		Bindings:    ParadeBindings,
-		SourceMode:  data.SourceCLI,
-		LastRefresh: time.Now(),
-	}
-	output := f.View()
-	if !strings.Contains(output, "bd list") {
-		t.Fatalf("empty SourceLabel should keep the bd list fallback, got: %s", output)
-	}
-}
-
-func TestFooterViewJSONLIgnoresSourceLabel(t *testing.T) {
-	f := Footer{
-		Width:        120,
-		Bindings:     ParadeBindings,
-		SourceMode:   data.SourceJSONL,
-		SourcePath:   "/tmp/.beads/issues.jsonl",
-		SourceLabel:  "br list",
-		LastRefresh:  time.Now(),
-		PathExplicit: false,
-	}
-	output := f.View()
-	if !strings.Contains(output, "issues.jsonl") {
-		t.Fatalf("JSONL footer should keep the file basename, got: %s", output)
-	}
 	if strings.Contains(output, "br list") {
-		t.Fatalf("JSONL footer should ignore SourceLabel, got: %s", output)
+		t.Fatalf("footer should not show source chip, got: %s", output)
 	}
-	if !strings.Contains(output, "(legacy)") {
-		t.Fatalf("JSONL footer should keep the (legacy) mode, got: %s", output)
+	if strings.Contains(output, "mardi_gras") {
+		t.Fatalf("footer should not show beads context, got: %s", output)
 	}
 }
 

@@ -268,55 +268,26 @@ func TestViewWithHelp(t *testing.T) {
 // TestBuildPaletteCommandsGasTown
 // ---------------------------------------------------------------------------
 
-func TestBuildPaletteCommandsGasTown(t *testing.T) {
+func TestBuildPaletteCommandsIgnoresGasTown(t *testing.T) {
 	issues := []data.Issue{testIssue("open-1", data.StatusOpen)}
 	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
 	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	got := model.(Model)
-
-	// Pin the Gas Town driver explicitly. New() picks a driver from the ambient
-	// environment, so on a host with gc installed and no gt this model would
-	// otherwise carry a Gas City driver, which correctly gates the gt-only
-	// commands off and makes the assertion below fail for the wrong reason.
 	got.driver = gastown.NewGTDriver()
-
-	// Baseline without Gas Town.
 	got.gtEnv.Available = false
 	got.agentAvail = false
 	baseCmds := got.buildPaletteCommands()
-	baseLen := len(baseCmds)
-
-	// Enable Gas Town.
 	got.gtEnv.Available = true
+	got.agentAvail = true
 	gtCmds := got.buildPaletteCommands()
-
-	if len(gtCmds) <= baseLen {
-		t.Fatalf("expected more palette commands with gastown (got %d, base %d)", len(gtCmds), baseLen)
+	if len(gtCmds) != len(baseCmds) {
+		t.Fatalf("palette should not grow for gastown/agent, base %d got %d", len(baseCmds), len(gtCmds))
 	}
-
-	// Verify sling/nudge actions are present.
-	foundSling := false
-	foundNudge := false
-	foundAssign := false
 	for _, cmd := range gtCmds {
-		if cmd.Action == components.ActionSlingFormula {
-			foundSling = true
+		switch cmd.Action {
+		case components.ActionSlingFormula, components.ActionNudgeAgent, components.ActionAssign, components.ActionLaunchAgent, components.ActionToggleGasTown:
+			t.Fatalf("unused action still in palette: %v", cmd.Action)
 		}
-		if cmd.Action == components.ActionNudgeAgent {
-			foundNudge = true
-		}
-		if cmd.Action == components.ActionAssign {
-			foundAssign = true
-		}
-	}
-	if !foundSling {
-		t.Error("expected ActionSlingFormula in gastown palette commands")
-	}
-	if !foundNudge {
-		t.Error("expected ActionNudgeAgent in gastown palette commands")
-	}
-	if !foundAssign {
-		t.Error("expected ActionAssign in gastown palette commands")
 	}
 }
 
