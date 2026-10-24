@@ -40,10 +40,13 @@
 # four-letter actor name, is skipped, not broadcast. A board with no bound
 # lead skips top-level ata comments the same way. A failed notify leaves the
 # cursor unmoved for that comment so the next tick retries it.
-#
 # mg compose writes author=ata (`br comments add --author ata`). Dock `r`
 # prefixes `re:<id>\n`. Wrap is not a gate. This watcher does not call br
-# or hcom itself except through system_notify.
+# or hcom itself except through system_notify. A successful wake also
+# appends one line to this unit's operator activity (TUI: NOTABLE
+# ACTIVITY). Quiet ticks do not. Timer last/next is every run, not a wake.
+
+
 
 ATA_COMMENT_AUTHOR_DEFAULT=ata
 ATA_COMMENT_TITLE_MAX=80
@@ -242,11 +245,37 @@ ata_comment_watch_notify() {
       system_notify "$ATA_COMMENT_SOURCE_ID" inform "$message"
   fi
 }
+ata_comment_watch_lead() {
+  local root=$1
+  local scope=$root/.systemd-ops/scope.toml
+  [[ -r $scope ]] || return 1
+  sed -n 's/^lead[[:space:]]*=[[:space:]]*"hcom:\([a-z]\{4\}\)"/\1/p' "$scope" | head -n1
+}
+
+ata_comment_watch_record() {
+  local text=$1
+  [[ -n $text ]] || return 0
+  if [[ -n ${COMMENT_WATCH_RECORD:-} ]]; then
+    printf '%s\n' "$text" >>"$COMMENT_WATCH_RECORD"
+    return 0
+  fi
+  local home=${COMMENT_WATCH_HOME:-}
+  local unit=${COMMENT_WATCH_UNIT:-managed-mardi-gras-comment-watch}
+  [[ -n $home ]] || return 0
+  command -v systemd-ops >/dev/null || return 0
+  systemd-ops --json --manager user --scope-root "$home" \
+    operator append --unit "$unit" --text "$text" >/dev/null ||
+    echo "ata-comment-watch: operator append failed (advisory)" >&2
+  return 0
+}
+
+
 
 ata_comment_watch_run() {
   local operator=${ATA_COMMENT_AUTHOR:-$ATA_COMMENT_AUTHOR_DEFAULT}
   local state_dir=${STATE_DIR:-}
-  local cursors db root last max rows row id rc author text parent_json parent_author parent_text payload
+  local cursors db root last max rows row id rc author text parent_json parent_author parent_text payload lead
+
   REPLY_PARENT_ID=
   REPLY_BODY=
   if [[ -z $state_dir ]]; then
@@ -313,6 +342,7 @@ ata_comment_watch_run() {
           echo "ata-comment-watch: notify failed for $db comment $id status $rc" >&2
           return "$rc"
         fi
+        ata_comment_watch_record "$author replied to $parent_author on $(jq -r '.issue_type' <<<"$row") $(jq -r '.issue_id' <<<"$row")"
         ata_comment_watch_cursor_set "$cursors" "$db" "$id"
         continue
       fi
@@ -341,7 +371,14 @@ ata_comment_watch_run() {
         echo "ata-comment-watch: notify failed for $db comment $id status $rc" >&2
         return "$rc"
       fi
+      lead=$(ata_comment_watch_lead "$root" || true)
+      if [[ -n $lead ]]; then
+        ata_comment_watch_record "$author commented on $(jq -r '.issue_type' <<<"$row") $(jq -r '.issue_id' <<<"$row") → $lead"
+      else
+        ata_comment_watch_record "$author commented on $(jq -r '.issue_type' <<<"$row") $(jq -r '.issue_id' <<<"$row")"
+      fi
       ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+
     done < <(jq -c '.[]' <<<"$rows")
   done < <(ata_comment_watch_discover)
   return 0

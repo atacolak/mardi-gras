@@ -81,7 +81,11 @@ NOTIFY_LOG=$TMP/notify.log
 : >"$NOTIFY_LOG"
 export NOTIFY_LOG
 export SYSTEM_NOTIFY_LIB=$fake_notify
+WAKE_LOG=$TMP/wakes.log
+: >"$WAKE_LOG"
+export COMMENT_WATCH_RECORD=$WAKE_LOG
 export STATE_DIR=$TMP/state
+
 BOARD=$TMP/board-a
 plant_board "$BOARD" midi
 add_issue "$BOARD" "omp-demo" "Fix the watch" epic
@@ -92,6 +96,7 @@ export ATA_COMMENT_BOARDS=$BOARD
 ata_comment_watch_run || fail "first tick failed"
 [[ -s $STATE_DIR/cursors.json ]] || fail "first tick wrote no cursor"
 [[ ! -s $NOTIFY_LOG ]] || fail "first tick sent a notification: $(cat "$NOTIFY_LOG")"
+[[ ! -s $WAKE_LOG ]] || fail "first tick recorded a wake: $(cat "$WAKE_LOG")"
 max=$(last_id "$BOARD")
 got=$(jq -r --arg db "$BOARD/.beads/beads.db" '.[$db]' "$STATE_DIR/cursors.json")
 [[ $got == "$max" ]] || fail "first tick cursor $got want $max"
@@ -99,6 +104,8 @@ got=$(jq -r --arg db "$BOARD/.beads/beads.db" '.[$db]' "$STATE_DIR/cursors.json"
 add_comment "$BOARD" "omp-demo" sf "sf must stay silent"
 ata_comment_watch_run || fail "sf tick failed"
 [[ ! -s $NOTIFY_LOG ]] || fail "sf comment notified: $(cat "$NOTIFY_LOG")"
+[[ ! -s $WAKE_LOG ]] || fail "sf comment recorded a wake: $(cat "$WAKE_LOG")"
+
 
 add_comment "$BOARD" "omp-demo" ata "please look at this"
 ata_comment_watch_run || fail "ata tick failed"
@@ -119,10 +126,15 @@ intent=$(jq -r '.intent' "$NOTIFY_LOG")
 delivery=$(jq -r '.delivery' "$NOTIFY_LOG")
 [[ $delivery == steer ]] || fail "delivery $delivery want steer"
 [[ $(jq -r '.recipient' "$NOTIFY_LOG") == "" ]] || fail "top-level used recipient override"
+[[ $(wc -l <"$WAKE_LOG") -eq 1 ]] || fail "ata tick wake count: $(cat "$WAKE_LOG")"
+grep -qx 'ata commented on epic omp-demo → midi' "$WAKE_LOG" \
+  || fail "ata wake line: $(cat "$WAKE_LOG")"
 
 : >"$NOTIFY_LOG"
 ata_comment_watch_run || fail "repeat tick failed"
 [[ ! -s $NOTIFY_LOG ]] || fail "repeat tick re-notified: $(cat "$NOTIFY_LOG")"
+[[ $(wc -l <"$WAKE_LOG") -eq 1 ]] || fail "repeat tick extra wake: $(cat "$WAKE_LOG")"
+
 
 long=$(printf 'a%.0s' {1..400})
 fmt=$(ata_comment_watch_format ata bug "sdo-x" $'line\nbreak "q"' "$long"; printf .)
@@ -167,6 +179,8 @@ printf '%s\n' "$got_msg" | grep -q "^> please look at this full sentence$" \
   || fail "reply quote: $got_msg"
 [[ $(jq -r '.recipient' "$NOTIFY_LOG") == midi ]] || fail "reply recipient $(jq -r '.recipient' "$NOTIFY_LOG")"
 [[ $(jq -r '.delivery' "$NOTIFY_LOG") == steer ]] || fail "reply not steered"
+grep -qx 'ata replied to midi on epic omp-demo' "$WAKE_LOG" \
+  || fail "ata reply wake: $(cat "$WAKE_LOG")"
 
 zime_id=$(
   add_comment "$BOARD" "omp-demo" zime "zime left this"
@@ -181,12 +195,15 @@ printf '%s\n' "$got_msg" | grep -q "^midi replied to your comment" \
 printf '%s\n' "$got_msg" | grep -q "zime's comment" \
   && fail "actor-to-actor named the target: $got_msg"
 [[ $(jq -r '.recipient' "$NOTIFY_LOG") == zime ]] || fail "actor-to-actor recipient"
-
+grep -qx 'midi replied to zime on epic omp-demo' "$WAKE_LOG" \
+  || fail "actor-to-actor wake: $(cat "$WAKE_LOG")"
 
 : >"$NOTIFY_LOG"
 add_comment "$BOARD" "omp-demo" midi "top-level midi stays silent"
 ata_comment_watch_run || fail "midi top-level tick failed"
 [[ ! -s $NOTIFY_LOG ]] || fail "top-level non-ata notified: $(cat "$NOTIFY_LOG")"
+grep -q 'midi commented' "$WAKE_LOG" && fail "midi top-level recorded a wake"
+
 
 sf_id=$(
   add_comment "$BOARD" "omp-demo" sf "not an actor"
@@ -234,5 +251,8 @@ jq -r '.msg' "$NOTIFY_LOG" | grep -q 'feature sdo-bn2' \
   || fail "driver used the wrong scope root"
 [[ $(jq -r '.delivery' "$NOTIFY_LOG") == steer ]] \
   || fail "driver did not steer"
+grep -qx 'ata commented on feature sdo-bn2 → hera' "$WAKE_LOG" \
+  || fail "driver wake: $(cat "$WAKE_LOG")"
+
 
 echo "comment-watch ok"
