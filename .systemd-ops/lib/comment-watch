@@ -24,15 +24,22 @@
 # If the parent author's name is four lowercase letters, the send uses
 # SYSTEM_NOTIFY_RECIPIENT=<parentAuthor> (still this seam, still addressed,
 # never a borrowed --from). The parent is the notify target, so the first
-# line says `your comment`, not `<parentAuthor>'s comment`. Format:
+# line says `your comment`, not `<parentAuthor>'s comment`. Speakers in the
+# thread who are that recipient render as `you`. Earlier messages are
+# `said`; only the new comment is `replied`. Ancestors plus earlier
+# sibling replies to the same parent are included. Format:
 #   <author> replied to your comment on <type> <issueID> | <title>
 #
-#   <parentAuthor> said:
+#   you said:
 #   > <parent body, full>
+#
+#   <other> said:
+#   > <earlier reply, full>
 #
 #   <author> replied:
 #   > <reply body, full>
 #   <trailing newline>
+
 # Quoted bodies are not truncated. Each body line is prefixed with `> `.
 # The payload always ends with a newline so an hcom closer cannot glue onto
 # the last quote line. Command substitution of the formatter keeps those
@@ -93,26 +100,101 @@ ata_comment_watch_format() {
   printf '\n'
 }
 
+ata_comment_watch_speaker() {
+  local author=$1
+  local you=$2
+  if [[ $author == "$you" ]]; then
+    printf 'you'
+  else
+    printf '%s' "$author"
+  fi
+}
+
+ata_comment_watch_display_body() {
+  local text=$1
+  local save_id=$REPLY_PARENT_ID
+  local save_body=$REPLY_BODY
+  if ata_comment_watch_parse_reply "$text"; then
+    printf '%s' "$REPLY_BODY"
+  else
+    printf '%s' "$text"
+  fi
+  REPLY_PARENT_ID=$save_id
+  REPLY_BODY=$save_body
+}
+
+ata_comment_watch_thread_json() {
+  local db=$1
+  local current_id=$2
+  local current_author=$3
+  local current_body=$4
+  local parent_id=$5
+  local items='[]' pid=$parent_id depth=0 json author text disp sibs
+  local save_id=$REPLY_PARENT_ID save_body=$REPLY_BODY
+  while [[ -n $pid && $depth -lt 20 ]]; do
+    json=$(ata_comment_watch_load_comment "$db" "$pid")
+    author=$(jq -r '.[0].author // empty' <<<"$json" 2>/dev/null || true)
+    text=$(jq -r '.[0].text // empty' <<<"$json" 2>/dev/null || true)
+    [[ -n $author ]] || break
+    disp=$(ata_comment_watch_display_body "$text")
+    items=$(jq -c --argjson id "$pid" --arg author "$author" --arg text "$disp" \
+      '. + [{id:$id,author:$author,text:$text}]' <<<"$items")
+    if ata_comment_watch_parse_reply "$text"; then
+      pid=$REPLY_PARENT_ID
+    else
+      pid=
+    fi
+    depth=$((depth + 1))
+  done
+  REPLY_PARENT_ID=$save_id
+  REPLY_BODY=$save_body
+  sibs=$(sqlite3 -batch -json "$db" \
+    "SELECT id, author, text FROM comments
+      WHERE id < $current_id
+        AND substr(text, 1, length('re:$parent_id' || x'0a'))
+            = 're:$parent_id' || x'0a'
+      ORDER BY id ASC;" 2>/dev/null || printf '[]')
+  [[ -n $sibs && $sibs != null ]] || sibs='[]'
+  while IFS= read -r json; do
+    [[ -n $json ]] || continue
+    author=$(jq -r '.author' <<<"$json")
+    text=$(jq -r '.text' <<<"$json")
+    disp=$(ata_comment_watch_display_body "$text")
+    items=$(jq -c --argjson id "$(jq -r '.id' <<<"$json")" --arg author "$author" --arg text "$disp" \
+      '. + [{id:$id,author:$author,text:$text}]' <<<"$items")
+  done < <(jq -c '.[]?' <<<"$sibs")
+  items=$(jq -c --argjson id "$current_id" --arg author "$current_author" --arg text "$current_body" \
+    '. + [{id:$id,author:$author,text:$text}] | unique_by(.id) | sort_by(.id)' <<<"$items")
+  printf '%s' "$items"
+}
+
 ata_comment_watch_format_reply() {
   local author=$1
-  local parent_author=$2
+  local you=$2
   local issue_type=$3
   local issue_id=$4
   local title=$5
-  local parent_text=$6
-  local reply_text=$7
+  local thread=$6
+  local n i speaker body
   [[ -n $issue_type ]] || issue_type=task
+  [[ -n $thread && $thread != null ]] || thread='[]'
   title=$(ata_comment_watch_clip "$(ata_comment_watch_flatten "$title")" "$ATA_COMMENT_TITLE_MAX")
-  # parent_author is the @recipient. `your comment` so the envelope
-  # `-> <parent>:` does not read as `<parent>: … <parent>'s comment`.
   printf '%s replied to your comment on %s %s | %s\n\n' \
     "$author" "$issue_type" "$issue_id" "$title"
-  printf '%s said:\n' "$parent_author"
-  ata_comment_watch_quote "$parent_text"
-  printf '\n%s replied:\n' "$author"
-  ata_comment_watch_quote "$reply_text"
-  printf '\n'
+  n=$(jq 'length' <<<"$thread")
+  for ((i = 0; i < n; i++)); do
+    speaker=$(jq -r ".[$i].author" <<<"$thread")
+    body=$(jq -r ".[$i].text" <<<"$thread")
+    if ((i == n - 1)); then
+      printf '%s replied:\n' "$author"
+    else
+      printf '%s said:\n' "$(ata_comment_watch_speaker "$speaker" "$you")"
+    fi
+    ata_comment_watch_quote "$body"
+    printf '\n'
+  done
 }
+
 
 ata_comment_watch_parse_reply() {
   local text=$1
@@ -277,7 +359,8 @@ ata_comment_watch_record() {
 ata_comment_watch_run() {
   local operator=${ATA_COMMENT_AUTHOR:-$ATA_COMMENT_AUTHOR_DEFAULT}
   local state_dir=${STATE_DIR:-}
-  local cursors db root last max rows row id rc author text parent_json parent_author parent_text payload lead
+  local cursors db root last max rows row id rc author text parent_json parent_author parent_text payload lead parent_id reply_body thread
+
 
   REPLY_PARENT_ID=
   REPLY_BODY=
@@ -330,15 +413,19 @@ ata_comment_watch_run() {
           continue
         fi
         rc=0
+        parent_id=$REPLY_PARENT_ID
+        reply_body=$REPLY_BODY
+        thread=$(ata_comment_watch_thread_json "$db" "$id" "$author" "$reply_body" "$parent_id")
         payload=$(
           ata_comment_watch_format_reply \
             "$author" "$parent_author" \
             "$(jq -r '.issue_type' <<<"$row")" \
             "$(jq -r '.issue_id' <<<"$row")" \
             "$(jq -r '.title' <<<"$row")" \
-            "$parent_text" "$REPLY_BODY"
+            "$thread"
           printf .
         )
+
         payload=${payload%.}
         ata_comment_watch_notify "$root" "$payload" "$parent_author" || rc=$?
         if ((rc != 0)); then

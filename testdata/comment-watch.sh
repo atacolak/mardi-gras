@@ -170,6 +170,8 @@ printf '%s\n' "$got_msg" | grep -q "^ata replied to your comment on epic omp-dem
 printf '%s\n' "$got_msg" | grep -q "midi's comment" \
   && fail "reply named the target: $got_msg"
 printf '%s\n' "$got_msg" | grep -q "^midi said:" \
+  && fail "addressed midi as midi, want you: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^you said:" \
   || fail "parent said: $got_msg"
 printf '%s\n' "$got_msg" | grep -q "^> the original note$" \
   || fail "parent quote: $got_msg"
@@ -181,6 +183,25 @@ printf '%s\n' "$got_msg" | grep -q "^> please look at this full sentence$" \
 [[ $(jq -r '.delivery' "$NOTIFY_LOG") == steer ]] || fail "reply not steered"
 grep -qx 'ata replied to midi on epic omp-demo' "$WAKE_LOG" \
   || fail "ata reply wake: $(cat "$WAKE_LOG")"
+
+: >"$NOTIFY_LOG"
+add_comment "$BOARD" "omp-demo" ata $'re:'"$parent_id"$'\nsecond reply on the same parent'
+ata_comment_watch_run || fail "chained reply tick failed"
+got_msg=$(jq -r '.msg' "$NOTIFY_LOG")
+printf '%s\n' "$got_msg" | grep -q "^you said:" \
+  || fail "chain you said: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^ata said:" \
+  || fail "chain earlier said: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^> please look at this full sentence$" \
+  || fail "chain earlier quote: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^ata replied:" \
+  || fail "chain latest replied: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^> second reply on the same parent$" \
+  || fail "chain latest quote: $got_msg"
+n_replied=$(printf '%s\n' "$got_msg" | grep -c "^ata replied:" || true)
+[[ $n_replied -eq 1 ]] || fail "chain repeated replied: $got_msg"
+[[ $(jq -r '.recipient' "$NOTIFY_LOG") == midi ]] || fail "chain recipient"
+
 
 zime_id=$(
   add_comment "$BOARD" "omp-demo" zime "zime left this"
@@ -194,7 +215,12 @@ printf '%s\n' "$got_msg" | grep -q "^midi replied to your comment" \
   || fail "actor-to-actor header: $got_msg"
 printf '%s\n' "$got_msg" | grep -q "zime's comment" \
   && fail "actor-to-actor named the target: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^zime said:" \
+  && fail "actor-to-actor named zime, want you: $got_msg"
+printf '%s\n' "$got_msg" | grep -q "^you said:" \
+  || fail "actor-to-actor you said: $got_msg"
 [[ $(jq -r '.recipient' "$NOTIFY_LOG") == zime ]] || fail "actor-to-actor recipient"
+
 grep -qx 'midi replied to zime on epic omp-demo' "$WAKE_LOG" \
   || fail "actor-to-actor wake: $(cat "$WAKE_LOG")"
 
