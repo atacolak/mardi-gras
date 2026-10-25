@@ -17,14 +17,16 @@ import (
 
 // Detail renders the right-panel issue details with a scrollable viewport.
 type Detail struct {
-	Issue            *data.Issue
-	AllIssues        []data.Issue
-	IssueMap         map[string]*data.Issue
-	BlockingTypes    map[string]bool
-	Viewport         viewport.Model
-	Width            int
-	Height           int
-	Focused          bool
+	Issue         *data.Issue
+	AllIssues     []data.Issue
+	IssueMap      map[string]*data.Issue
+	BlockingTypes map[string]bool
+	Viewport      viewport.Model
+	Width         int
+	Height        int
+	Focused       bool
+	ShowBack      bool // link-nav history; not parade selection
+
 	ActiveAgents     map[string]string
 	TownStatus       *gastown.TownStatus
 	MoleculeDAG      *gastown.DAGInfo
@@ -213,6 +215,17 @@ func (d *Detail) ReferenceAtXY(viewportRow, contentX int) *data.Issue {
 	return d.ReferenceAt(viewportRow)
 }
 
+// BackHit is the 3-cell ` < ` chip on content line 0 when ShowBack.
+func (d *Detail) BackHit(viewportRow, contentX int) bool {
+	if !d.ShowBack || d.Issue == nil || viewportRow < 0 || viewportRow >= d.Viewport.Height() {
+		return false
+	}
+	if d.Viewport.YOffset()+viewportRow != 0 {
+		return false
+	}
+	return contentX >= 0 && contentX < 3
+}
+
 // ContentView is the scrollable body without the pane divider. Preview
 // overlays wrap this in their own box.
 func (d *Detail) ContentView() string {
@@ -314,6 +327,10 @@ func (d *Detail) renderContent() string {
 			}
 			d.referenceLines[referenceLine] = id
 		}
+	}
+
+	if d.ShowBack {
+		lines = append(lines, ui.BackButton.Render(" < "))
 	}
 
 	// Title

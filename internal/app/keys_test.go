@@ -2034,3 +2034,43 @@ func TestPreviewWheelAtNestedEdgePassesToOuter(t *testing.T) {
 		t.Fatalf("nested-edge wheel outer offset %d → %d, want pass-through", outerOff, m.previews[0].detail.Viewport.YOffset())
 	}
 }
+
+func TestLinkNavPushesBackAndParadeClearsIt(t *testing.T) {
+	got := setupModel(t)
+	_ = got.afterSelect()
+	from := got.detail.Issue
+	if from == nil {
+		t.Fatal("need a selected issue")
+	}
+	var dest *data.Issue
+	for i := range got.issues {
+		if got.issues[i].ID != from.ID {
+			iss := got.issues[i]
+			dest = &iss
+			break
+		}
+	}
+	if dest == nil {
+		t.Fatal("need a second issue")
+	}
+	got.openIssueInDetail(dest)
+	if !got.detail.ShowBack {
+		t.Fatal("body-link jump must show back")
+	}
+	if got.detail.Issue == nil || got.detail.Issue.ID != dest.ID {
+		t.Fatalf("detail = %v, want %s", got.detail.Issue, dest.ID)
+	}
+	got.goDetailBack()
+	if got.detail.Issue == nil || got.detail.Issue.ID != from.ID {
+		t.Fatalf("back landed on %v, want %s", got.detail.Issue, from.ID)
+	}
+	if got.detail.ShowBack {
+		t.Fatal("empty stack must hide back")
+	}
+
+	got.openIssueInDetail(dest)
+	_ = got.afterSelect()
+	if got.detail.ShowBack || len(got.detailBack) != 0 {
+		t.Fatal("parade select must drop link history")
+	}
+}

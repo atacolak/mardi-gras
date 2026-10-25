@@ -69,11 +69,13 @@ const (
 
 // Model is the root BubbleTea model.
 type Model struct {
-	issues        []data.Issue
-	groups        map[data.SemanticState][]data.Issue
-	unmapped      []data.Issue // issues DeriveState cannot classify; never counted as work
-	parade        views.Parade
-	detail        views.Detail
+	issues     []data.Issue
+	groups     map[data.SemanticState][]data.Issue
+	unmapped   []data.Issue // issues DeriveState cannot classify; never counted as work
+	parade     views.Parade
+	detail     views.Detail
+	detailBack []string // issue IDs reached via body links, not parade
+
 	header        components.Header
 	activPane     Pane
 	width         int
@@ -2320,14 +2322,17 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if issue != nil {
-					m.openIssueInDetail(issue)
-					return m, nil
+					return m, m.openIssueInDetail(issue)
 				}
+
 				m.activPane = PaneDetail
 				m.detail.Focused = true
 				return m, nil
 			}
 			contentX := dx - m.detail.ContentInsetX()
+			if m.detail.BackHit(bodyRow, contentX) {
+				return m, m.goDetailBack()
+			}
 			issue := m.detail.ReferenceAtXY(bodyRow, contentX)
 			if issue == nil && mouse.Button == tea.MouseRight {
 				issue = m.detail.ReferenceAt(bodyRow)
@@ -2337,9 +2342,9 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if issue != nil {
-				m.openIssueInDetail(issue)
-				return m, nil
+				return m, m.openIssueInDetail(issue)
 			}
+
 			m.commentsFocus = false
 			m.activPane = PaneDetail
 			m.detail.Focused = true
@@ -3555,6 +3560,8 @@ func (m *Model) syncSelection() {
 // Parade clicks and j/k used to skip this, so the dock painted empty until
 // the operator clicked the body (which focused detail and happened to refetch).
 func (m *Model) afterSelect() tea.Cmd {
+	m.detailBack = nil
+	m.detail.ShowBack = false
 	m.syncSelection()
 	cmds := m.detailFetchBatch()
 	if len(cmds) == 0 {

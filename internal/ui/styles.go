@@ -54,8 +54,10 @@ var (
 	ItemCursor   lipgloss.Style
 
 	// Detail panel (right side)
-	DetailBorder  lipgloss.Style
-	DetailTitle   lipgloss.Style
+	DetailBorder lipgloss.Style
+	DetailTitle  lipgloss.Style
+	BackButton   lipgloss.Style
+
 	DetailLabel   lipgloss.Style
 	DetailValue   lipgloss.Style
 	DetailSection lipgloss.Style
@@ -272,6 +274,10 @@ func rebuildStyles() {
 	DetailTitle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(White)
+
+	BackButton = lipgloss.NewStyle().
+		Foreground(Light).
+		Background(Dim)
 
 	DetailLabel = lipgloss.NewStyle().
 		Foreground(Muted).

@@ -296,15 +296,51 @@ func spliceLine(base string, col int, insert string) string {
 	return left + insert + right
 }
 
-func (m *Model) openIssueInDetail(issue *data.Issue) {
+func (m *Model) openIssueInDetail(issue *data.Issue) tea.Cmd {
 	if issue == nil {
-		return
+		return nil
+	}
+	if cur := m.detail.Issue; cur != nil && cur.ID != issue.ID {
+		m.detailBack = append(m.detailBack, cur.ID)
 	}
 	m.clearPreviews()
 	m.activPane = PaneDetail
 	m.detail.Focused = true
+	m.detail.ShowBack = len(m.detailBack) > 0
 	m.detail.SetIssue(issue)
 	if m.restoreParadeSelection(issue.ID) {
 		m.syncSelection()
 	}
+	m.detail.ShowBack = len(m.detailBack) > 0
+	cmds := m.detailFetchBatch()
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *Model) goDetailBack() tea.Cmd {
+	n := len(m.detailBack)
+	if n == 0 {
+		m.detail.ShowBack = false
+		return nil
+	}
+	id := m.detailBack[n-1]
+	m.detailBack = m.detailBack[:n-1]
+	issue := m.detail.IssueMap[id]
+	if issue == nil {
+		m.detail.ShowBack = len(m.detailBack) > 0
+		return nil
+	}
+	m.detail.ShowBack = len(m.detailBack) > 0
+	m.detail.SetIssue(issue)
+	if m.restoreParadeSelection(id) {
+		m.syncSelection()
+	}
+	m.detail.ShowBack = len(m.detailBack) > 0
+	cmds := m.detailFetchBatch()
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
