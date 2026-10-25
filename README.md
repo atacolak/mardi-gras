@@ -1,6 +1,7 @@
 # Mardi Gras
 
-`mg` is a terminal UI for [Beads](https://github.com/gastownhall/beads) issues. This repo is [`atacolak/mardi-gras`](https://github.com/atacolak/mardi-gras) on `main` — that's the `mg` we run.
+`mg` is a terminal UI for [Beads](https://github.com/gastownhall/beads) issues.
+
 
 Upstream Mardi Gras talks to `bd` and groups issues into buckets. This fork talks to `br` first, keeps children under their epic, and is meant to be used with a mouse.
 
