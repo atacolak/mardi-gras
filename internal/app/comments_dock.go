@@ -131,7 +131,7 @@ func (m Model) paintCommentsDock(width, height int) dockPaint {
 	if bodyH < 1 {
 		bodyH = 1
 	}
-	body := windowCommentBlocks(blocks, cursor, m.commentsDockScroll, bodyH, innerW)
+	body := windowCommentBlocks(blocks, m.commentsDockScroll, bodyH, innerW)
 
 	lines := make([]string, 0, height)
 	hits := make([]int, 0, height)
@@ -189,7 +189,7 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 	var hits []int
 
 	if selected {
-		raw = append(raw, m.threadMetaLine(th.root, true, unread, innerW))
+		raw = append(raw, m.threadMetaLine(th.root, true, unread, innerW, len(th.replies)))
 		hits = append(hits, idx)
 		for _, line := range wrapCommentLines(rootBody, innerW-2) {
 			raw = append(raw, " "+line)
@@ -207,16 +207,12 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 		}
 	} else {
 		preview := strings.ReplaceAll(rootBody, "\n", " ")
-		head := m.nameAndWhen(th.root, false, unread, " ")
-		suffix := ""
-		if n := len(th.replies); n > 0 {
-			suffix = fmt.Sprintf("  %d", n)
-		}
+		head := m.nameAndWhen(th.root, false, unread, " ", len(th.replies))
 		line := head + "  " + lipgloss.NewStyle().Foreground(ui.Muted).Render(preview)
-		if lipgloss.Width(line)+lipgloss.Width(suffix) > innerW {
-			line = ansi.Truncate(line, innerW-lipgloss.Width(suffix), "…")
+		if lipgloss.Width(line) > innerW {
+			line = ansi.Truncate(line, innerW, "…")
 		}
-		raw = append(raw, line+lipgloss.NewStyle().Foreground(ui.Dim).Render(suffix))
+		raw = append(raw, line)
 		hits = append(hits, idx)
 	}
 
@@ -233,18 +229,21 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 
 const nameTimeGap = "    " // one tab less
 
-func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
+func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int, replies int) string {
 	_ = innerW
-	return m.nameAndWhen(c, selected, unread, " ")
+	return m.nameAndWhen(c, selected, unread, " ", replies)
 }
 
 func (m Model) replyMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
 	_ = innerW
-	return m.nameAndWhen(c, selected, unread, "    ")
+	return m.nameAndWhen(c, selected, unread, "    ", 0)
 }
 
-func (m Model) nameAndWhen(c gastown.Comment, selected, unread bool, indent string) string {
+func (m Model) nameAndWhen(c gastown.Comment, selected, unread bool, indent string, replies int) string {
 	name := m.authorLabel(c.Author, selected, unread)
+	if replies > 0 {
+		name += lipgloss.NewStyle().Foreground(ui.Dim).Render(superscriptInt(replies))
+	}
 	clock := lipgloss.NewStyle().Foreground(ui.Muted).Render(commentClock(c.Time))
 	out := indent + name + nameTimeGap + clock
 	if selected {
@@ -265,6 +264,22 @@ func (m Model) authorLabel(name string, selected, unread bool) string {
 		s = wavyUnderline(s)
 	}
 	return s
+}
+
+func superscriptInt(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	digits := []rune("⁰¹²³⁴⁵⁶⁷⁸⁹")
+	if n < 10 {
+		return string(digits[n])
+	}
+	var out []rune
+	for n > 0 {
+		out = append([]rune{digits[n%10]}, out...)
+		n /= 10
+	}
+	return string(out)
 }
 
 func (m Model) commentThreads() []commentThread {
@@ -312,7 +327,7 @@ func (m Model) unreadThreadCount(threads []commentThread) int {
 	return n
 }
 
-func windowCommentBlocks(blocks []dockPaint, cursor, scroll, bodyH, innerW int) dockPaint {
+func windowCommentBlocks(blocks []dockPaint, scroll, bodyH, innerW int) dockPaint {
 	if bodyH < 1 {
 		return dockPaint{}
 	}
@@ -322,40 +337,21 @@ func windowCommentBlocks(blocks []dockPaint, cursor, scroll, bodyH, innerW int) 
 	}
 	var allLines []string
 	var allHits []int
-	starts := make([]int, len(blocks))
-	for i, b := range blocks {
-		starts[i] = len(allLines)
+	for _, b := range blocks {
 		allLines = append(allLines, b.lines...)
 		allHits = append(allHits, b.hits...)
 	}
 	total := len(allLines)
-	if cursor < 0 {
-		cursor = 0
-	}
-	if cursor >= len(blocks) {
-		cursor = len(blocks) - 1
-	}
-	curStart := starts[cursor]
-	curEnd := curStart + len(blocks[cursor].lines)
-	off := 0
-	if scroll > 0 {
-		off = starts[min(scroll, len(blocks)-1)]
-	}
-	if curEnd-curStart >= bodyH {
-		off = curStart
-	} else {
-		if curStart < off {
-			off = curStart
-		}
-		if curEnd > off+bodyH {
-			off = curEnd - bodyH
-		}
-	}
+	off := scroll
 	if off < 0 {
 		off = 0
 	}
-	if total > bodyH && off > total-bodyH {
-		off = total - bodyH
+	maxOff := total - bodyH
+	if maxOff < 0 {
+		maxOff = 0
+	}
+	if off > maxOff {
+		off = maxOff
 	}
 	end := off + bodyH
 	if end > total {
@@ -418,17 +414,94 @@ func (m *Model) moveCommentCursor(delta int) {
 	if n == 0 {
 		return
 	}
-	m.commentsDockCursor = m.clampedCommentCursor(n) + delta
-	if m.commentsDockCursor < 0 {
-		m.commentsDockCursor = 0
+	old := m.clampedCommentCursor(n)
+	next := old + delta
+	if next < 0 {
+		next = 0
 	}
-	if m.commentsDockCursor >= n {
-		m.commentsDockCursor = n - 1
+	if next >= n {
+		next = n - 1
 	}
-	if m.commentsDockScroll > m.commentsDockCursor {
-		m.commentsDockScroll = m.commentsDockCursor
+	if next != old {
+		m.commentsDockCursor = next
+		m.revealCommentCursor()
+		m.markSeenAtCursor()
+		return
 	}
-	m.markSeenAtCursor()
+	m.scrollCommentLines(delta)
+}
+
+func (m Model) commentDockBodyGeom() (innerW, bodyH int) {
+	h := m.commentsDockHeight()
+	w := m.detail.Width
+	innerW = w - 1
+	if innerW < 8 {
+		innerW = 8
+	}
+	bodyH = h - 3
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	return innerW, bodyH
+}
+
+func (m Model) dockThreadBlocks(innerW int) []dockPaint {
+	threads := m.commentThreads()
+	cursor := m.clampedCommentCursor(len(threads))
+	var blocks []dockPaint
+	for i, th := range threads {
+		blocks = append(blocks, m.paintThread(th, i, i == cursor, innerW))
+	}
+	return blocks
+}
+
+func (m *Model) scrollCommentLines(delta int) {
+	innerW, bodyH := m.commentDockBodyGeom()
+	blocks := m.dockThreadBlocks(innerW)
+	total := 0
+	for _, b := range blocks {
+		total += len(b.lines)
+	}
+	maxOff := total - bodyH
+	if maxOff < 0 {
+		maxOff = 0
+	}
+	m.commentsDockScroll += delta
+	if m.commentsDockScroll < 0 {
+		m.commentsDockScroll = 0
+	}
+	if m.commentsDockScroll > maxOff {
+		m.commentsDockScroll = maxOff
+	}
+}
+
+func (m *Model) revealCommentCursor() {
+	innerW, bodyH := m.commentDockBodyGeom()
+	blocks := m.dockThreadBlocks(innerW)
+	if len(blocks) == 0 {
+		return
+	}
+	cursor := m.clampedCommentCursor(len(blocks))
+	start := 0
+	for i := range cursor {
+		start += len(blocks[i].lines)
+	}
+
+	end := start + len(blocks[cursor].lines)
+	off := m.commentsDockScroll
+	if start < off {
+		off = start
+	}
+	if end > off+bodyH {
+		off = end - bodyH
+		if off < start {
+			off = start
+		}
+	}
+	if off < 0 {
+		off = 0
+	}
+	m.commentsDockScroll = off
 }
 
 func (m *Model) markSeenAtCursor() {

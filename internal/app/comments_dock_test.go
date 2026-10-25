@@ -50,6 +50,107 @@ func TestAfterSelectInsetsOpenDock(t *testing.T) {
 	}
 }
 
+func TestScrollCommentLinesMovesWindow(t *testing.T) {
+	m := testDockModel(t)
+	m.commentsDockOpen = true
+	var comments []gastown.Comment
+	for i := range 12 {
+		comments = append(comments, gastown.Comment{
+			ID: fmt.Sprintf("%d", i+1), Author: "ata", Body: fmt.Sprintf("note %d", i),
+		})
+	}
+	m.detail.SetComments("j7k.9", comments)
+	m.applyDockInset()
+	before := m.commentsDockScroll
+	cursor := m.commentsDockCursor
+	m.scrollCommentLines(3)
+	if m.commentsDockScroll <= before {
+		t.Fatalf("scroll did not move: %d -> %d", before, m.commentsDockScroll)
+	}
+	if m.commentsDockCursor != cursor {
+		t.Fatal("line scroll must not change the active comment")
+	}
+	m.scrollCommentLines(-100)
+	if m.commentsDockScroll != 0 {
+		t.Fatalf("scroll top = %d, want 0", m.commentsDockScroll)
+	}
+
+}
+
+func TestWheelFollowsPointerNotLastClick(t *testing.T) {
+	m := testDockModel(t)
+	issue := *m.detail.Issue
+	issue.Description = strings.Repeat("line\n", 40)
+	m.detail.SetIssue(&issue)
+	m.commentsDockOpen = true
+	var comments []gastown.Comment
+	for i := range 20 {
+		comments = append(comments, gastown.Comment{
+			ID: fmt.Sprintf("%d", i+1), Author: "ata", Body: "n",
+		})
+	}
+	m.detail.SetComments("j7k.9", comments)
+	m.applyDockInset()
+	m.commentsFocus = true
+	m.commentsDockCursor = 0
+	x := m.parade.Width + 4
+	bodyY := headerHeight + 2
+	dockRow := -1
+	for row := 0; row < m.detail.Height; row++ {
+		if m.commentsDockContains(row) {
+			dockRow = row
+		}
+	}
+	if dockRow < 0 {
+		t.Fatal("dock occupies no rows")
+	}
+	dockY := headerHeight + dockRow
+	bodyOff := m.detail.Viewport.YOffset()
+	scroll := m.commentsDockScroll
+
+	model, _ := m.Update(tea.MouseWheelMsg{X: x, Y: bodyY, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.commentsDockScroll != scroll {
+		t.Fatal("wheel over body must not pan comments")
+	}
+	if m.detail.Viewport.YOffset() <= bodyOff {
+		t.Fatal("wheel over body must scroll the body")
+	}
+	if m.commentsDockCursor != 0 {
+		t.Fatal("wheel must not change the active comment")
+	}
+
+	model, _ = m.Update(tea.MouseWheelMsg{X: x, Y: dockY, Button: tea.MouseWheelDown})
+	m = model.(Model)
+	if m.commentsDockScroll <= scroll {
+		t.Fatal("wheel over dock must pan comments")
+	}
+
+	if m.commentsDockCursor != 0 {
+		t.Fatal("wheel must not change the active comment")
+	}
+}
+
+func TestReplyCountIsSuperscriptOnAuthor(t *testing.T) {
+	if superscriptInt(2) != "²" || superscriptInt(12) != "¹²" {
+		t.Fatalf("superscriptInt: 2=%q 12=%q", superscriptInt(2), superscriptInt(12))
+	}
+	m := testDockModel(t)
+	m.commentsDockOpen = true
+	m.detail.SetComments("j7k.9", []gastown.Comment{
+		{ID: "1", Author: "zime", Body: "root"},
+		{ID: "2", Author: "ata", Body: "re:1\nfirst"},
+		{ID: "3", Author: "ata", Body: "re:1\nsecond"},
+	})
+	out := ansi.Strip(strings.Join(m.paintCommentsDock(m.detail.Width, m.commentsDockHeight()).lines, "\n"))
+	if !strings.Contains(out, "zime²") {
+		t.Fatalf("want zime² on author, got:\n%s", out)
+	}
+	if strings.Contains(out, "  2") {
+		t.Fatalf("old trailing reply count still shown:\n%s", out)
+	}
+}
+
 func TestCommentsDockCoversWithoutChangingViewport(t *testing.T) {
 	m := testDockModel(t)
 	before := m.detail.Viewport.Height()

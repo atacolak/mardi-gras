@@ -2256,7 +2256,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	bodyRow := y - top
-	if right && bodyRow >= m.detail.Viewport.Height() && len(m.previews) == 0 {
+	if right && bodyRow >= m.detail.Viewport.Height() && len(m.previews) == 0 && !m.commentsDockContains(bodyRow) {
 		return m, nil
 	}
 
@@ -2335,6 +2335,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.detail.BackHit(bodyRow, contentX) {
 				return m, m.goDetailBack()
 			}
+			bodyRow -= m.detail.TitleBarHeight()
 			issue := m.detail.ReferenceAtXY(bodyRow, contentX)
 			if issue == nil && mouse.Button == tea.MouseRight {
 				issue = m.detail.ReferenceAt(bodyRow)
@@ -2371,16 +2372,15 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		dx := x - paradeWidth
-		if m.commentsDockContains(bodyRow) && len(m.previews) == 0 {
-			m.commentsFocus = true
-			m.commentsDockOpen = true
+		if len(m.previews) == 0 && m.commentsDockContains(bodyRow) {
 			if down {
-				m.moveCommentCursor(1)
+				m.scrollCommentLines(1)
 			} else {
-				m.moveCommentCursor(-1)
+				m.scrollCommentLines(-1)
 			}
 			return m, nil
 		}
+
 		// Pointer inside a gold box scrolls that preview. At its scroll
 		// edge, leftover ticks pass to the preview that opened it, then
 		// the parent bead. The true gap around every overlay is the parent.

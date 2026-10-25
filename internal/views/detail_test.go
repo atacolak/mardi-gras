@@ -1476,16 +1476,20 @@ func TestBackButtonOnlyWhenShowBack(t *testing.T) {
 	}
 	d := NewDetail(80, 24, issues)
 	d.SetIssue(&issues[0])
-	plain := ansi.Strip(d.renderContent())
-	if strings.Contains(plain, " < ") {
+	if strings.Contains(ansi.Strip(d.renderContent()), " < ") {
+		t.Fatal("back chip must not live in the scrolled body")
+	}
+	if strings.Contains(ansi.Strip(d.TitleBar()), " < ") {
 		t.Fatal("back chip must not show without history")
 	}
 	d.ShowBack = true
 	d.SetIssue(&issues[0])
-	plain = ansi.Strip(d.renderContent())
-	first := strings.Split(plain, "\n")[0]
-	if !strings.Contains(first, " < ") || !strings.Contains(first, "Focus test") {
-		t.Fatalf("back chip must sit on the title line:\n%s", first)
+	bar := ansi.Strip(d.TitleBar())
+	if !strings.Contains(bar, " < ") || !strings.Contains(bar, "Focus test") {
+		t.Fatalf("back chip must sit on the sticky title:\n%s", bar)
+	}
+	if strings.Contains(ansi.Strip(d.renderContent()), "Focus test") {
+		t.Fatal("title must not repeat in the scrolled body")
 	}
 	if !d.BackHit(0, 1) {
 		t.Fatal("click on chip must hit")
@@ -1493,10 +1497,28 @@ func TestBackButtonOnlyWhenShowBack(t *testing.T) {
 	if d.BackHit(0, 3) {
 		t.Fatal("click past chip must miss")
 	}
-
+	if d.BackHit(1, 1) {
+		t.Fatal("chip is not in the scrolled body")
+	}
 	d.ShowBack = false
 	if d.BackHit(0, 1) {
 		t.Fatal("no history, no hit")
+	}
+}
+
+func TestTitleBarStaysWhenBodyScrolls(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "mg-001", Title: "Sticky title", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask,
+			Description: strings.Repeat("line\n", 40)},
+	}
+	d := NewDetail(80, 16, issues)
+	d.SetIssue(&issues[0])
+	d.Viewport.GotoBottom()
+	if !strings.Contains(ansi.Strip(d.TitleBar()), "Sticky title") {
+		t.Fatal("title bar must stay after scrolling the body")
+	}
+	if strings.Contains(ansi.Strip(d.Viewport.View()), "Sticky title") {
+		t.Fatal("scrolled viewport must not still show the title")
 	}
 }
 

@@ -35,23 +35,25 @@ The UI is a bit quieter than upstream. There's no `⚜ MARDI GRAS ⚜` tally lin
 
 ### Mouse
 
-Click a row to select it. The wheel scrolls whichever pane the pointer is over. Click the gutter to collapse a parent without selecting it; double-click a parent to collapse or expand it.
+Click a row to select it. The wheel scrolls whatever the pointer is over — list, body, or comments. You don't have to click a pane first.
+
+Click the gutter to collapse a parent without selecting it; double-click a parent to collapse or expand it.
 
 Drag the purple bar between the list and the body to resize. Drag the comments header to change dock height. Both keep their size as a percentage when you zoom the terminal.
 
-Bead names in the body (and in dependencies) are links. Click one to open that bead.
+Bead names in the body (and in dependencies) are links. Click one to open that bead. A small gray ` < ` sits on the sticky title; click it to go back. Parade scrolling does not push that history. The title stays put while you scroll the body.
 
 Hold Ctrl on a bead name, or on a left-hand row, for a gold preview. Do it again from inside a preview to nest a second one. Click the first preview to close the nested one. Wheel scrolls the preview under the pointer.
 
-<img src="docs/screenshots/fork-after-preview.png" alt="Bead preview overlay" />
-
-<img src="docs/screenshots/fork-after-nested-preview.png" alt="Nested bead preview" />
 
 ### Comments
 
-Comments live in a gold bar at the bottom of the right pane, not in the scrolled body. Select a bead to load the thread. `c` adds a comment, `r` replies, `C` folds the bar. Unread names get a curly underline.
+Comments live in a gold bar at the bottom of the right pane, not in the scrolled body. Select a bead to load the thread. `c` adds a comment, `r` replies, `C` folds the bar. Unread names get a curly underline. Threads with replies show as `zime²` on the author (dim).
+
+Wheel over the dock pans the list without changing the selected thread. `j` / `k` move the selection.
 
 Run `mg --author ata` once to sign comments. That name is saved in `~/.config/mardi-gras/author`. Agents don't use `mg` — they use `br`.
+
 
 <img src="docs/screenshots/comments-dock.png" alt="Comments dock with a selected reply thread" />
 
@@ -116,8 +118,10 @@ mg
 | `esc` | Clear scope, then focus |
 | `>` | Collapse or expand the selected branch |
 | `click` | Select a bead and focus the pane under the pointer |
-| `wheel` | Scroll the pane under the pointer |
+| `wheel` | Scroll whatever the pointer is over (no click first) |
+| ` < ` on the title | After a body-link jump, go back |
 | Ctrl on a name or row | Preview (stack of two) |
+
 | `:` or `ctrl+k` | Command palette |
 | `?` | Help |
 | `q` | Quit |
