@@ -2256,7 +2256,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	bodyRow := y - top
-	if right && bodyRow >= m.detail.Viewport.Height() && len(m.previews) == 0 {
+	if right && bodyRow >= m.detail.Viewport.Height() && len(m.previews) == 0 && !m.commentsDockContains(bodyRow) {
 		return m, nil
 	}
 
@@ -2372,14 +2372,11 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		dx := x - paradeWidth
-		if len(m.previews) == 0 && (m.commentsFocus || m.commentsDockContains(bodyRow)) {
-			m.commentsFocus = true
-			m.commentsDockOpen = true
-			step := 1
+		if len(m.previews) == 0 && m.commentsDockContains(bodyRow) {
 			if down {
-				m.scrollCommentLines(step)
+				m.scrollCommentLines(1)
 			} else {
-				m.scrollCommentLines(-step)
+				m.scrollCommentLines(-1)
 			}
 			return m, nil
 		}
