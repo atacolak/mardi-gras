@@ -1,0 +1,6 @@
+[scope]
+id = "mardi-gras"
+owned = ["managed-mardi-gras-*"]
+
+[coordination]
+lead = "hcom:zime"

@@ -54,8 +54,10 @@ var (
 	ItemCursor   lipgloss.Style
 
 	// Detail panel (right side)
-	DetailBorder  lipgloss.Style
-	DetailTitle   lipgloss.Style
+	DetailBorder lipgloss.Style
+	DetailTitle  lipgloss.Style
+	BackButton   lipgloss.Style
+
 	DetailLabel   lipgloss.Style
 	DetailValue   lipgloss.Style
 	DetailSection lipgloss.Style
@@ -273,6 +275,10 @@ func rebuildStyles() {
 		Bold(true).
 		Foreground(White)
 
+	BackButton = lipgloss.NewStyle().
+		Foreground(Light).
+		Background(Dim)
+
 	DetailLabel = lipgloss.NewStyle().
 		Foreground(Muted).
 		Width(12)
@@ -300,10 +306,8 @@ func rebuildStyles() {
 	BadgeType = lipgloss.NewStyle().
 		Italic(true)
 
-	// Footer
+	// Footer. No bar fill — keys gold, hints muted, terminal shows through.
 	FooterStyle = lipgloss.NewStyle().
-		Foreground(Light).
-		Background(DimPurple).
 		Padding(0, 1)
 
 	FooterKey = lipgloss.NewStyle().
@@ -311,7 +315,7 @@ func rebuildStyles() {
 		Foreground(BrightGold)
 
 	FooterDesc = lipgloss.NewStyle().
-		Foreground(Light)
+		Foreground(Muted)
 
 	// Dependency display
 	DepBlocked = lipgloss.NewStyle().

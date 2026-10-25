@@ -34,11 +34,12 @@ func TestHelpViewRendersContent(t *testing.T) {
 	}
 	for _, section := range h.sections() {
 		for _, binding := range section.bindings {
-			if binding.key == "c" {
-				t.Fatal("should not show the removed c binding")
+			if binding.key == "c" && strings.Contains(strings.ToLower(binding.desc), "closed") {
+				t.Fatal("should not show the removed closed-issues toggle")
 			}
 		}
 	}
+
 }
 
 func TestHelpPagination(t *testing.T) {
@@ -164,30 +165,11 @@ func TestHelpActorsSectionShownWithActorCLI(t *testing.T) {
 	}
 }
 
-func TestHelpProblemsSection(t *testing.T) {
-	// Verify the PROBLEMS section exists in the help sections
-	sections := allSections()
-	found := false
-	for _, s := range sections {
-		if !strings.Contains(s.title, "PROBLEMS") {
-			continue
+func TestHelpHasNoProblemsSection(t *testing.T) {
+	for _, s := range allSections() {
+		if strings.Contains(s.title, "PROBLEMS") || strings.Contains(s.title, "GAS TOWN") {
+			t.Fatalf("unused section still in help: %s", s.title)
 		}
-		found = true
-		// Verify R key is documented
-		hasR := false
-		for _, b := range s.bindings {
-			if b.key == "R" {
-				hasR = true
-				break
-			}
-		}
-		if !hasR {
-			t.Fatal("PROBLEMS section should have R keybinding")
-		}
-		break
-	}
-	if !found {
-		t.Fatal("should have a PROBLEMS section in help")
 	}
 }
 

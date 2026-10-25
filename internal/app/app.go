@@ -69,11 +69,13 @@ const (
 
 // Model is the root BubbleTea model.
 type Model struct {
-	issues        []data.Issue
-	groups        map[data.SemanticState][]data.Issue
-	unmapped      []data.Issue // issues DeriveState cannot classify; never counted as work
-	parade        views.Parade
-	detail        views.Detail
+	issues     []data.Issue
+	groups     map[data.SemanticState][]data.Issue
+	unmapped   []data.Issue // issues DeriveState cannot classify; never counted as work
+	parade     views.Parade
+	detail     views.Detail
+	detailBack []string // issue IDs reached via body links, not parade
+
 	header        components.Header
 	activPane     Pane
 	width         int
@@ -1860,6 +1862,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			parent := m.replyToID
 			m.replyToID = ""
 			m.replyToAuthor = ""
+
 			m.detail.SetComments(msg.issueID, msg.comments)
 			threads := m.commentThreads()
 			if parent != "" {
@@ -1877,6 +1880,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.commentsDockCursor >= len(threads) {
 				m.commentsDockCursor = max(0, len(threads)-1)
 			}
+			m.applyDockInset()
 		}
 
 		return m, nil
@@ -2320,14 +2324,17 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if issue != nil {
-					m.openIssueInDetail(issue)
-					return m, nil
+					return m, m.openIssueInDetail(issue)
 				}
+
 				m.activPane = PaneDetail
 				m.detail.Focused = true
 				return m, nil
 			}
 			contentX := dx - m.detail.ContentInsetX()
+			if m.detail.BackHit(bodyRow, contentX) {
+				return m, m.goDetailBack()
+			}
 			issue := m.detail.ReferenceAtXY(bodyRow, contentX)
 			if issue == nil && mouse.Button == tea.MouseRight {
 				issue = m.detail.ReferenceAt(bodyRow)
@@ -2337,9 +2344,9 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if issue != nil {
-				m.openIssueInDetail(issue)
-				return m, nil
+				return m, m.openIssueInDetail(issue)
 			}
+
 			m.commentsFocus = false
 			m.activPane = PaneDetail
 			m.detail.Focused = true
@@ -2387,6 +2394,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.applyDockInset()
 		scrollViewport(&m.detail.Viewport, down)
 
 	}
@@ -2596,19 +2604,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		toast, cmd := components.ShowToast("Sort: "+m.paradeSortMode.Label(), components.ToastInfo, toastDuration)
 		m.toast = toast
 		return m, cmd
-	case "ctrl+g":
-		if !m.orchestratorAvailable() {
-			return m, nil
-		}
-		m.showGasTown = !m.showGasTown
-		if m.showGasTown {
-			m.showActors = false
-			m.showDoctor = false
-			m.showCodex = false
-			m.dismissCodexReply()
-			cmd := m.activateGasTown()
-			return m, cmd
-		}
+	case "ctrl+g", "p", "M", "1", "2", "3", "!", "@", "#", "$", "b", "B", "a", "A", "s", "n":
 		return m, nil
 
 	case "o":
@@ -2621,21 +2617,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.showActors {
 			logAction("actors pane open")
 			return m, m.activateActors()
-		}
-		return m, nil
-
-	case "p":
-		if !m.orchestratorAvailable() {
-			return m, nil
-		}
-		m.showProblems = !m.showProblems
-		if m.showProblems {
-			m.showGasTown = false
-			m.showActors = false
-			m.showDoctor = false
-			m.showCodex = false
-			m.dismissCodexReply()
-			m.problems.SetProblems(m.allProblems())
 		}
 		return m, nil
 
@@ -2654,193 +2635,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, fetchDoctorDiagnostics
 		}
 		return m, nil
-
-	case "M":
-		return m.toggleCodexTranscript()
-
-	// Quick actions: status changes (6.1)
-	case "1":
-		return m.quickAction(data.StatusInProgress, "in_progress")
-	case "2":
-		return m.quickAction(data.StatusOpen, "open")
-	case "3":
-		return m.closeSelectedIssue()
-
-	// Quick actions: priority changes (6.1)
-	case "!": // Shift+1
-		return m.setPriority(data.PriorityHigh)
-	case "@": // Shift+2
-		return m.setPriority(data.PriorityMedium)
-	case "#": // Shift+3
-		return m.setPriority(data.PriorityLow)
-	case "$": // Shift+4
-		return m.setPriority(data.PriorityBacklog)
-
-	// Git branch name copy (5.5)
-	case "b":
-		return m.copyBranchName()
-	case "B":
-		return m.createAndSwitchBranch()
-
-	case "a":
-		// Gas City dispatch needs an explicit target agent — prompt for it
-		// (single or multi), then sling through the target prompt.
-		if m.driver.Backend() == "gascity" {
-			var ids []string
-			if selected := m.parade.SelectedIssues(); len(selected) > 0 {
-				ids = make([]string, len(selected))
-				for i, iss := range selected {
-					ids[i] = iss.ID
-				}
-				m.parade.ClearSelection()
-			} else if issue := m.parade.SelectedIssue; issue != nil {
-				ids = []string{issue.ID}
-			}
-			if len(ids) == 0 {
-				return m, nil
-			}
-			return m.openSlingTarget(ids, "")
-		}
-
-		// Multi-sling with Gas Town
-		if selected := m.parade.SelectedIssues(); len(selected) > 0 && m.gtEnv.Available {
-			ids := make([]string, len(selected))
-			for i, iss := range selected {
-				ids[i] = iss.ID
-			}
-			m.parade.ClearSelection()
-			runtime := m.agentRuntime
-			driver := m.driver
-			return m, func() tea.Msg {
-				err := slingMultipleWithRuntime(driver, ids, runtime)
-				return multiSlingResultMsg{count: len(ids), err: err}
-			}
-		}
-
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
-		}
-		if _, active := m.activeAgents[issue.ID]; active && m.inTmux {
-			_ = agent.SelectAgentWindow(issue.ID)
-			return m, nil
-		}
-
-		if m.gtEnv.Available {
-			issueID := issue.ID
-			runtime := m.agentRuntime
-			driver := m.driver
-			return m, func() tea.Msg {
-				err := slingWithRuntime(driver, issueID, runtime)
-				return slingResultMsg{issueID: issueID, err: err}
-			}
-		}
-
-		// Only DIRECT launch needs a runtime on this machine — it is mg that
-		// execs the binary. Orchestrator dispatch does not: gt and Gas City
-		// start the agent themselves, which is why the branches above run
-		// without this check. Guarding earlier made `a` inert on a single
-		// issue for anyone driving gt without a local agent installed, while
-		// the multi-select and Gas City paths dispatched fine.
-		if !m.agentAvail {
-			return m, nil
-		}
-
-		deps := issue.EvaluateDependencies(m.detail.IssueMap, m.blockingTypes)
-		prompt := agent.BuildPrompt(*issue, deps, m.detail.IssueMap)
-
-		if m.inTmux {
-			issueID := issue.ID
-			return m, func() tea.Msg {
-				winName, err := agent.LaunchInTmux(prompt, m.projectDir, issueID)
-				if err != nil {
-					return agentLaunchErrorMsg{issueID: issueID, err: err}
-				}
-				return agentLaunchedMsg{issueID: issueID, windowName: winName}
-			}
-		}
-		c := agent.Command(prompt, m.projectDir)
-		return m, tea.ExecProcess(c, func(err error) tea.Msg {
-			return agentFinishedMsg{err: err}
-		})
-
-	case "A":
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
-		}
-		if _, active := m.activeAgents[issue.ID]; !active {
-			return m, nil
-		}
-		issueID := issue.ID
-		// Any live orchestrator owns the agent's lifecycle, so ask it to
-		// unsling — a backend that cannot returns ErrUnsupported, which is a
-		// truthful message. Fall back to killing the tmux window only when
-		// there is no orchestrator at all.
-		if m.orchestratorAvailable() {
-			driver := m.driver
-			return m, func() tea.Msg {
-				err := driver.Unsling(context.Background(), issueID)
-				return unslingResultMsg{issueID: issueID, err: err}
-			}
-		}
-		if m.inTmux {
-			return m, func() tea.Msg {
-				_ = agent.KillAgentWindow(issueID)
-				return agentStatusMsg{activeAgents: make(map[string]string)}
-			}
-		}
-		return m, nil
-
-	case "s":
-		if !m.orchestratorAvailable() {
-			return m, nil
-		}
-		// Multi-select: collect IDs for formula picking
-		if selected := m.parade.SelectedIssues(); len(selected) > 0 {
-			ids := make([]string, len(selected))
-			for i, iss := range selected {
-				ids[i] = iss.ID
-			}
-			m.parade.ClearSelection()
-			m.formulaMulti = ids
-			m.formulaTarget = ""
-			driver := m.driver
-			return m, func() tea.Msg {
-				formulas, err := driver.Formulas(context.Background())
-				return formulaListMsg{formulas: formulas, err: err}
-			}
-		}
-		// Single issue
-		issue := m.parade.SelectedIssue
-		if issue == nil {
-			return m, nil
-		}
-		m.formulaTarget = issue.ID
-		m.formulaMulti = nil
-		driver := m.driver
-		return m, func() tea.Msg {
-			formulas, err := driver.Formulas(context.Background())
-			return formulaListMsg{formulas: formulas, err: err}
-		}
-
-	case "n":
-		issue := m.parade.SelectedIssue
-		if issue == nil || !m.orchestratorAvailable() {
-			return m, nil
-		}
-		agentName, active := m.activeAgents[issue.ID]
-		if !active {
-			return m, nil
-		}
-		m.nudging = true
-		m.nudgeTarget = agentName
-		m.nudgeInput = textinput.New()
-		m.nudgeInput.Prompt = ui.InputPrompt.Render("nudge> ")
-		m.nudgeInput.Placeholder = "Message for " + agentName + "..."
-		m.nudgeInput.SetWidth(50)
-		m.nudgeInput.Focus()
-		return m, textinput.Blink
 
 	case "N":
 		m.creating = true
@@ -3008,12 +2802,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		m.applyDockInset()
 		var cmd tea.Cmd
 		switch str {
 		case "j", "down":
 			m.detail.Viewport.ScrollDown(1)
 		case "k", "up":
 			m.detail.Viewport.ScrollUp(1)
+
 		case "m":
 			// Mark current molecule step as done
 			if m.detail.MoleculeDAG != nil {
@@ -3293,15 +3089,6 @@ func createBranchCmd(ctx context.Context, projectDir, branch string) *exec.Cmd {
 // buildPaletteCommands returns the context-aware list of palette commands.
 func (m Model) buildPaletteCommands() []components.PaletteCommand {
 	cmds := []components.PaletteCommand{
-		{Name: "Set status: in_progress", Desc: "Mark issue as rolling", Key: "1", Action: components.ActionSetInProgress},
-		{Name: "Set status: open", Desc: "Mark issue as lined up", Key: "2", Action: components.ActionSetOpen},
-		{Name: "Close issue", Desc: "Mark issue as closed", Key: "3", Action: components.ActionCloseIssue},
-		{Name: "Set priority: P1 high", Desc: "Urgent work", Key: "!", Action: components.ActionSetPriorityHigh},
-		{Name: "Set priority: P2 medium", Desc: "Normal priority", Key: "@", Action: components.ActionSetPriorityMedium},
-		{Name: "Set priority: P3 low", Desc: "Can wait", Key: "#", Action: components.ActionSetPriorityLow},
-		{Name: "Set priority: P4 backlog", Desc: "Someday maybe", Key: "$", Action: components.ActionSetPriorityBacklog},
-		{Name: "Copy branch name", Desc: "Copy git branch to clipboard", Key: "b", Action: components.ActionCopyBranch},
-		{Name: "Create git branch", Desc: "Checkout new branch for issue", Key: "B", Action: components.ActionCreateBranch},
 		{Name: "New issue", Desc: "Create a new beads issue", Key: "N", Action: components.ActionNewIssue},
 		{Name: "Add note", Desc: "Add a note to the selected issue", Key: "", Action: components.ActionAddNote},
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
@@ -3309,7 +3096,6 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "Filter", Desc: "Fuzzy filter the parade list", Key: "/", Action: components.ActionFilter},
 		{Name: "Help", Desc: "Show keybinding help", Key: "?", Action: components.ActionHelp},
 		{Name: "Quit", Desc: "Exit Mardi Gras", Key: "q", Action: components.ActionQuit},
-		{Name: "Cycle layout", Desc: "Switch panel arrangement", Key: "", Action: components.ActionCycleLayout},
 		{Name: "Prune preview (closed > 30d)", Desc: "Dry-run: report closed non-ephemeral beads older than 30d", Key: "", Action: components.ActionPrunePreview},
 		{Name: "Prune closed > 30d (force)", Desc: "Delete closed non-ephemeral beads older than 30d — destructive, no undo", Key: "", Action: components.ActionPruneClosed},
 		{Name: "Claim next ready", Desc: "Atomically claim the top-priority ready bead (bd ready --claim)", Key: "", Action: components.ActionClaimNextReady},
@@ -3319,39 +3105,6 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		cmds = append(cmds, components.PaletteCommand{
 			Name: "Collapse / expand selected branch", Desc: "Collapse / expand selected branch", Key: ">", Action: components.ActionToggleNode,
 		})
-	}
-
-	if m.agentAvail {
-		cmds = append(cmds,
-			components.PaletteCommand{Name: "Launch agent", Desc: fmt.Sprintf("Start %s agent on issue", m.agentRuntime.RuntimeLabel()), Key: "a", Action: components.ActionLaunchAgent},
-			components.PaletteCommand{Name: "Kill agent", Desc: "Stop agent working on issue", Key: "A", Action: components.ActionKillAgent},
-		)
-		if m.agentRuntime == agent.RuntimeCodex && m.inTmux {
-			cmds = append(cmds,
-				components.PaletteCommand{Name: "Resume last Codex session", Desc: "codex resume --last in a new tmux pane", Key: "", Action: components.ActionCodexResume},
-			)
-		}
-	}
-
-	if m.orchestratorAvailable() {
-		cmds = append(cmds,
-			components.PaletteCommand{Name: "Toggle Gas Town", Desc: "Show/hide Gas Town panel", Key: "^g", Action: components.ActionToggleGasTown},
-			components.PaletteCommand{Name: "Sling with formula", Desc: "Pick formula and sling to polecat", Key: "s", Action: components.ActionSlingFormula},
-			components.PaletteCommand{Name: "Nudge agent", Desc: "Nudge agent with message", Key: "n", Action: components.ActionNudgeAgent},
-			components.PaletteCommand{Name: "Create & assign to crew", Desc: "Create issue and hook to crew member", Key: "", Action: components.ActionAssign},
-			components.PaletteCommand{Name: "Create convoy", Desc: "Create convoy from selected issues", Key: "", Action: components.ActionCreateConvoy},
-
-			components.PaletteCommand{Name: "Cascade close", Desc: "Close issue and all children", Key: "", Action: components.ActionCascadeClose},
-		)
-		// Recovery shells out to gt directly rather than going through the
-		// Driver, so it must not be offered on a backend that has no gt.
-		if m.driver.Supports(gastown.FeatureRecovery) {
-			if deadRigs := gastown.FindDeadRigs(m.townStatus); len(deadRigs) > 0 {
-				cmds = append(cmds,
-					components.PaletteCommand{Name: "Recover dead rigs", Desc: fmt.Sprintf("Release orphans from %d dead rig(s)", len(deadRigs)), Key: "", Action: components.ActionRecoverRigs},
-				)
-			}
-		}
 	}
 
 	return cmds
@@ -3512,7 +3265,6 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 			m.toast = toast
 			return m, cmd
 		}
-		// Recover the first dead rig (most common case is a single dead rig)
 		rigName := deadRigs[0]
 		orphans := gastown.FindOrphans(m.townStatus, rigName)
 		m.recovering = true
@@ -3535,10 +3287,6 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 	return m, nil
 }
 
-// handleGasTownAction processes actions emitted by the Gas Town panel.
-// toastResult handles the common error/success toast pattern for async action results.
-// On error, shows an error toast with "failPrefix: err". On success, shows successMsg
-// and batches any follow-up commands.
 func (m Model) toastResult(err error, failPrefix, successMsg string, followUp ...tea.Cmd) (Model, tea.Cmd) {
 	if err != nil {
 		toast, cmd := components.ShowToast(
@@ -3559,7 +3307,6 @@ func (m Model) toastResult(err error, failPrefix, successMsg string, followUp ..
 func (m Model) handleGasTownAction(msg views.GasTownActionMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case views.ActionNudge:
-		// Reuse the existing nudge input flow
 		m.nudging = true
 		target := msg.Agent.Address
 		if target == "" {
@@ -3807,17 +3554,21 @@ func (m *Model) syncSelection() {
 				m.detail.AgentOutputID = ""
 			}
 		}
+		m.applyDockInset()
 		return
 	}
 	m.detail.SetIssue(nil)
 	m.detail.AgentOutput = nil
 	m.detail.AgentOutputID = ""
+	m.applyDockInset()
 }
 
 // afterSelect restamps detail and fetches comments for the selected bead.
 // Parade clicks and j/k used to skip this, so the dock painted empty until
 // the operator clicked the body (which focused detail and happened to refetch).
 func (m *Model) afterSelect() tea.Cmd {
+	m.detailBack = nil
+	m.detail.ShowBack = false
 	m.syncSelection()
 	cmds := m.detailFetchBatch()
 	if len(cmds) == 0 {

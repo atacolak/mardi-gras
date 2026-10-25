@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,10 +46,7 @@ var ParadeBindings = []FooterBinding{
 	{Key: ":", Desc: "palette"},
 	{Key: "/", Desc: "filter"},
 	{Key: "j/k", Desc: "navigate"},
-	{Key: "1/2/3", Desc: "status"},
-	{Key: "b", Desc: "branch"},
 	{Key: "N", Desc: "new"},
-	{Key: "a", Desc: "agent"},
 	{Key: "q", Desc: "quit"},
 }
 
@@ -61,8 +57,6 @@ var DetailBindings = []FooterBinding{
 	{Key: "j/k", Desc: "scroll"},
 	{Key: "tab", Desc: "switch pane"},
 	{Key: "esc", Desc: "back"},
-	{Key: "a", Desc: "agent"},
-	{Key: "A", Desc: "kill agent"},
 	{Key: "q", Desc: "quit"},
 }
 
@@ -76,44 +70,9 @@ func (f Footer) View() string {
 		parts = append(parts, key+" "+desc)
 	}
 
-	// Build source info (left side)
+	// Left side stays empty unless SCOPE/FOCUS is on. The old
+	// `br list (cli) · 2m ago` chip is noise.
 	sourceInfo := ""
-	if f.SourceMode == data.SourceCLI || f.SourcePath != "" {
-		name := "bd list"
-		mode := "(cli)"
-		if f.SourceMode == data.SourceCLI && f.SourceLabel != "" {
-			name = f.SourceLabel
-		}
-		if f.SourceMode != data.SourceCLI {
-			name = filepath.Base(f.SourcePath)
-			mode = "(legacy)"
-			if f.PathExplicit {
-				mode = "(--path)"
-			}
-		}
-		age := "?"
-		if !f.LastRefresh.IsZero() {
-			age = data.RelativeAge(time.Since(f.LastRefresh))
-		}
-		contextInfo := ""
-		if f.BeadsContext != nil && f.BeadsContext.Database != "" {
-			contextInfo = f.BeadsContext.Database
-			if f.BeadsContext.Backend != "" {
-				contextInfo += "/" + f.BeadsContext.Backend
-			}
-			if f.BeadsContext.BdVersion != "" {
-				contextInfo += " v" + f.BeadsContext.BdVersion
-			}
-			contextInfo = " · " + contextInfo
-		}
-
-		// Override rendering when source is in a degraded or fallback state.
-		if f.SourceHealth != nil && f.SourceHealth.IsDegraded() {
-			sourceInfo = f.renderHealthState(age)
-		} else {
-			sourceInfo = ui.FooterSource.Render(fmt.Sprintf("%s %s · %s%s", name, mode, age, contextInfo))
-		}
-	}
 
 	// Persistent mode badges: without them the only signal is a transient toast
 	// (audit #12). Scope leads — it is the narrower state, and the chip is the
@@ -204,21 +163,13 @@ func (f Footer) renderHealthState(age string) string {
 // hide entirely when their CLI is absent, so the footer must not advertise keys
 // that do nothing.
 func NewFooter(width int, detailFocused, hasGasTown, hasActors bool) Footer {
+	_ = hasGasTown
 	bindings := ParadeBindings
 	if detailFocused {
 		bindings = DetailBindings
 	}
 	if hasActors {
 		bindings = insertBefore(bindings, "j/k", FooterBinding{Key: "o", Desc: "actors"})
-	}
-	if hasGasTown {
-		gtBindings := []FooterBinding{
-			{Key: "^g", Desc: "gas town"},
-			{Key: "p", Desc: "problems"},
-			{Key: "s", Desc: "sling"},
-			{Key: "n", Desc: "nudge"},
-		}
-		bindings = insertBefore(bindings, "q", gtBindings...)
 	}
 	return Footer{Width: width, Bindings: bindings}
 }
@@ -238,21 +189,13 @@ func insertBefore(bindings []FooterBinding, key string, extra ...FooterBinding) 
 	return append(bindings, extra...)
 }
 
-// BulkFooter renders the footer bar shown during multi-select.
 func BulkFooter(width, count int, hasGasTown bool) string {
+	_ = hasGasTown
 	label := ui.FooterKey.Render(fmt.Sprintf(" %d selected: ", count))
 	bindings := []FooterBinding{
-		{Key: "1", Desc: "in_progress"},
-		{Key: "2", Desc: "open"},
-		{Key: "3", Desc: "close"},
+		{Key: "X", Desc: "clear"},
 	}
-	if hasGasTown {
-		bindings = append(bindings,
-			FooterBinding{Key: "a", Desc: "sling"},
-			FooterBinding{Key: "s", Desc: "sling+formula"},
-		)
-	}
-	bindings = append(bindings, FooterBinding{Key: "X", Desc: "clear"})
+
 	var parts []string
 	for _, b := range bindings {
 		key := ui.FooterKey.Render(b.Key)

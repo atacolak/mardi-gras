@@ -14,8 +14,8 @@
 - `internal/ui`: Theme palette (with Gas Town role/state colors), Lipgloss styles, Unicode symbols (including DAG connectors), gradients, sparklines.
 - `testdata/sample.jsonl`: fixture for tests and local demo runs.
 - `testdata/fake-gt.sh`: fake `gt` binary for local Gas Town testing (`make dev-gt`).
-- `testdata/fakegc/`: fake Gas City supervisor for local Gas City testing (`make dev-gc`).
 - `docs/`: Architecture and integration docs, screenshots. `docs/internal/` is gitignored and local-only — never commit it.
+- `.systemd-ops/`: mardi-gras jurisdiction for comment-wake. `drivers/comment-watch` + `lib/comment-watch` deliver author=ata comments and `re:<id>` replies through systemd-ops `system-notify`. Unit stem `managed-mardi-gras-comment-watch`. Proof: `bash testdata/comment-watch.sh`. Do not vendor the notify seam.
 
 ## Beads Data Contract
 

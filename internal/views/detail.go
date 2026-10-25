@@ -17,14 +17,17 @@ import (
 
 // Detail renders the right-panel issue details with a scrollable viewport.
 type Detail struct {
-	Issue            *data.Issue
-	AllIssues        []data.Issue
-	IssueMap         map[string]*data.Issue
-	BlockingTypes    map[string]bool
-	Viewport         viewport.Model
-	Width            int
-	Height           int
-	Focused          bool
+	Issue         *data.Issue
+	AllIssues     []data.Issue
+	IssueMap      map[string]*data.Issue
+	BlockingTypes map[string]bool
+	Viewport      viewport.Model
+	Width         int
+	Height        int
+	Focused       bool
+	ShowBack      bool // link-nav history; not parade selection
+	bottomInset   int  // comments dock rows covering the body
+
 	ActiveAgents     map[string]string
 	TownStatus       *gastown.TownStatus
 	MoleculeDAG      *gastown.DAGInfo
@@ -65,7 +68,11 @@ func NewDetail(width, height int, issues []data.Issue) Detail {
 // the pane's size contract: one row under the viewport belongs to the scroll
 // cue. Callers must size the pane via SetSize first.
 func (d *Detail) ResetViewport() {
-	d.Viewport = viewport.New(viewport.WithWidth(d.Width-2), viewport.WithHeight(max(d.Height-1, 1)))
+	inset := d.bottomInset
+	if inset < 0 {
+		inset = 0
+	}
+	d.Viewport = viewport.New(viewport.WithWidth(d.Width-2), viewport.WithHeight(max(d.Height-1-inset, 1)))
 }
 
 // SetIssue updates the displayed issue and rebuilds content.
@@ -138,16 +145,25 @@ func (d *Detail) SetRichDetail(issueID string, rich *data.Issue) {
 	}
 }
 
-// SetSize updates dimensions and re-renders content.
 func (d *Detail) SetSize(width, height int) {
 	d.Width = width
 	d.Height = height
-	// One row is reserved under the viewport for the scroll position cue.
 	d.Viewport.SetWidth(width - 2)
-	d.Viewport.SetHeight(max(height-1, 1))
-	d.mdRenderer = nil // re-create with new width
+	d.mdRenderer = nil
+	d.applyViewportHeight()
 	if d.Issue != nil {
 		d.Viewport.SetContent(d.renderContent())
+	}
+}
+
+func (d *Detail) applyViewportHeight() {
+	inset := d.bottomInset
+	if inset < 0 {
+		inset = 0
+	}
+	vis := max(d.Height-1-inset, 1)
+	if d.Viewport.Height() != vis {
+		d.Viewport.SetHeight(vis)
 	}
 }
 
@@ -159,11 +175,8 @@ func (d *Detail) SetViewportBottomInset(inset int) {
 	if inset < 0 {
 		inset = 0
 	}
-	vis := max(d.Height-1-inset, 1)
-	if d.Viewport.Height() == vis {
-		return
-	}
-	d.Viewport.SetHeight(vis)
+	d.bottomInset = inset
+	d.applyViewportHeight()
 }
 
 // SetPreviewSize sizes the viewport to fill a gold preview box. No left-border
@@ -211,6 +224,17 @@ func (d *Detail) ReferenceAtXY(viewportRow, contentX int) *data.Issue {
 		}
 	}
 	return d.ReferenceAt(viewportRow)
+}
+
+// BackHit is the 3-cell ` < ` chip on content line 0 when ShowBack.
+func (d *Detail) BackHit(viewportRow, contentX int) bool {
+	if !d.ShowBack || d.Issue == nil || viewportRow < 0 || viewportRow >= d.Viewport.Height() {
+		return false
+	}
+	if d.Viewport.YOffset()+viewportRow != 0 {
+		return false
+	}
+	return contentX >= 0 && contentX < 3
 }
 
 // ContentView is the scrollable body without the pane divider. Preview
@@ -316,8 +340,11 @@ func (d *Detail) renderContent() string {
 		}
 	}
 
-	// Title
-	lines = append(lines, ui.DetailTitle.Render(issue.Title))
+	title := ui.DetailTitle.Render(issue.Title)
+	if d.ShowBack {
+		title = ui.BackButton.Render(" < ") + " " + title
+	}
+	lines = append(lines, title)
 	lines = append(lines, "")
 
 	// Status row. The state is derived once, from the same graph the parade

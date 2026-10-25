@@ -1,0 +1,475 @@
+#!/usr/bin/env bash
+# Beads comment watcher. Sourced, never executed.
+#
+# Jurisdiction: mardi-gras. This completes mg's comment protocol
+# (author=ata, re:<id> replies). It is not systemd-ops infra. The notify
+# seam it calls (`SYSTEM_NOTIFY_LIB`, default systemd-ops dogfood
+# system-notify) stays in systemd-ops.
+#
+# ata_comment_watch_run scans beads databases under workspace and worlds
+# project roots (or the colon-separated roots in ATA_COMMENT_BOARDS). For
+# each database it has not seen, it records the current max comment id and
+# sends nothing. Later ticks select every comment above that cursor.
+#
+# A top-level comment whose author is ATA_COMMENT_AUTHOR (default ata) is
+# delivered through system_notify as intent inform, SYSTEM_NOTIFY_DELIVERY=steer,
+# SYSTEMD_OPS_SCOPE_ROOT set to that board's project root so the recipient is
+# that scope's coordination.lead:
+#   operator <author> has commented on your <issue_type> <id> | <title>:
+#   > <text>
+#   <trailing newline>
+#
+# A comment whose body starts with `re:<parentCommentID>` then a newline is a
+# reply, from any author. The parent row is loaded from the same database.
+# If the parent author's name is four lowercase letters, the send uses
+# SYSTEM_NOTIFY_RECIPIENT=<parentAuthor> (still this seam, still addressed,
+# never a borrowed --from). The parent is the notify target, so the first
+# line says `your comment`, not `<parentAuthor>'s comment`. Speakers in the
+# thread who are that recipient render as `you`. Earlier messages are
+# `said`; only the new comment is `replied`. Ancestors plus earlier
+# sibling replies to the same parent are included. Format:
+#   <author> replied to your comment on <type> <issueID> | <title>
+#
+#   you said:
+#   > <parent body, full>
+#
+#   <other> said:
+#   > <earlier reply, full>
+#
+#   <author> replied:
+#   > <reply body, full>
+#   <trailing newline>
+
+# Quoted bodies are not truncated. Each body line is prefixed with `> `.
+# The payload always ends with a newline so an hcom closer cannot glue onto
+# the last quote line. Command substitution of the formatter keeps those
+# trailing newlines. A missing parent, or a parent author that is not a
+# four-letter actor name, is skipped, not broadcast. A board with no bound
+# lead skips top-level ata comments the same way. A failed notify leaves the
+# cursor unmoved for that comment so the next tick retries it.
+# mg compose writes author=ata (`br comments add --author ata`). Dock `r`
+# prefixes `re:<id>\n`. Wrap is not a gate. This watcher does not call br
+# or hcom itself except through system_notify. A successful wake also
+# appends one line to this unit's operator activity (TUI: NOTABLE
+# ACTIVITY). Quiet ticks do not. Timer last/next is every run, not a wake.
+
+
+
+ATA_COMMENT_AUTHOR_DEFAULT=ata
+ATA_COMMENT_TITLE_MAX=80
+ATA_COMMENT_SOURCE_ID=mardi-gras:comment-watch
+
+ata_comment_watch_flatten() {
+  local s=$1
+  s=${s//$'\r'/ }
+  s=${s//$'\n'/ }
+  s=${s//$'\t'/ }
+  printf '%s' "$s" | tr -s ' '
+}
+
+ata_comment_watch_clip() {
+  local s=$1
+  local n=$2
+  if ((${#s} > n)); then
+    printf '%s' "${s:0:n}..."
+  else
+    printf '%s' "$s"
+  fi
+}
+
+ata_comment_watch_quote() {
+  local body=$1
+  if [[ -z $body ]]; then
+    printf '> \n'
+    return
+  fi
+  printf '%s\n' "$body" | sed 's/^/> /'
+}
+
+ata_comment_watch_format() {
+  local author=$1
+  local issue_type=$2
+  local issue_id=$3
+  local title=$4
+  local text=$5
+  [[ -n $issue_type ]] || issue_type=task
+  title=$(ata_comment_watch_clip "$(ata_comment_watch_flatten "$title")" "$ATA_COMMENT_TITLE_MAX")
+  printf 'operator %s has commented on your %s %s | %s:\n' \
+    "$author" "$issue_type" "$issue_id" "$title"
+  ata_comment_watch_quote "$text"
+  printf '\n'
+}
+
+ata_comment_watch_speaker() {
+  local author=$1
+  local you=$2
+  if [[ $author == "$you" ]]; then
+    printf 'you'
+  else
+    printf '%s' "$author"
+  fi
+}
+
+ata_comment_watch_display_body() {
+  local text=$1
+  local save_id=$REPLY_PARENT_ID
+  local save_body=$REPLY_BODY
+  if ata_comment_watch_parse_reply "$text"; then
+    printf '%s' "$REPLY_BODY"
+  else
+    printf '%s' "$text"
+  fi
+  REPLY_PARENT_ID=$save_id
+  REPLY_BODY=$save_body
+}
+
+ata_comment_watch_thread_json() {
+  local db=$1
+  local current_id=$2
+  local current_author=$3
+  local current_body=$4
+  local parent_id=$5
+  local items='[]' pid=$parent_id depth=0 json author text disp sibs
+  local save_id=$REPLY_PARENT_ID save_body=$REPLY_BODY
+  while [[ -n $pid && $depth -lt 20 ]]; do
+    json=$(ata_comment_watch_load_comment "$db" "$pid")
+    author=$(jq -r '.[0].author // empty' <<<"$json" 2>/dev/null || true)
+    text=$(jq -r '.[0].text // empty' <<<"$json" 2>/dev/null || true)
+    [[ -n $author ]] || break
+    disp=$(ata_comment_watch_display_body "$text")
+    items=$(jq -c --argjson id "$pid" --arg author "$author" --arg text "$disp" \
+      '. + [{id:$id,author:$author,text:$text}]' <<<"$items")
+    if ata_comment_watch_parse_reply "$text"; then
+      pid=$REPLY_PARENT_ID
+    else
+      pid=
+    fi
+    depth=$((depth + 1))
+  done
+  REPLY_PARENT_ID=$save_id
+  REPLY_BODY=$save_body
+  sibs=$(sqlite3 -batch -json "$db" \
+    "SELECT id, author, text FROM comments
+      WHERE id < $current_id
+        AND substr(text, 1, length('re:$parent_id' || x'0a'))
+            = 're:$parent_id' || x'0a'
+      ORDER BY id ASC;" 2>/dev/null || printf '[]')
+  [[ -n $sibs && $sibs != null ]] || sibs='[]'
+  while IFS= read -r json; do
+    [[ -n $json ]] || continue
+    author=$(jq -r '.author' <<<"$json")
+    text=$(jq -r '.text' <<<"$json")
+    disp=$(ata_comment_watch_display_body "$text")
+    items=$(jq -c --argjson id "$(jq -r '.id' <<<"$json")" --arg author "$author" --arg text "$disp" \
+      '. + [{id:$id,author:$author,text:$text}]' <<<"$items")
+  done < <(jq -c '.[]?' <<<"$sibs")
+  items=$(jq -c --argjson id "$current_id" --arg author "$current_author" --arg text "$current_body" \
+    '. + [{id:$id,author:$author,text:$text}] | unique_by(.id) | sort_by(.id)' <<<"$items")
+  printf '%s' "$items"
+}
+
+ata_comment_watch_format_reply() {
+  local author=$1
+  local you=$2
+  local issue_type=$3
+  local issue_id=$4
+  local title=$5
+  local thread=$6
+  local n i speaker body
+  [[ -n $issue_type ]] || issue_type=task
+  [[ -n $thread && $thread != null ]] || thread='[]'
+  title=$(ata_comment_watch_clip "$(ata_comment_watch_flatten "$title")" "$ATA_COMMENT_TITLE_MAX")
+  printf '%s replied to your comment on %s %s | %s\n\n' \
+    "$author" "$issue_type" "$issue_id" "$title"
+  n=$(jq 'length' <<<"$thread")
+  for ((i = 0; i < n; i++)); do
+    speaker=$(jq -r ".[$i].author" <<<"$thread")
+    body=$(jq -r ".[$i].text" <<<"$thread")
+    if ((i == n - 1)); then
+      printf '%s replied:\n' "$author"
+    else
+      printf '%s said:\n' "$(ata_comment_watch_speaker "$speaker" "$you")"
+    fi
+    ata_comment_watch_quote "$body"
+    printf '\n'
+  done
+}
+
+
+ata_comment_watch_parse_reply() {
+  local text=$1
+  local first=${text%%$'\n'*}
+  if [[ $first == "$text" ]]; then
+    return 1
+  fi
+  case $first in
+    re:[0123456789]*)
+      case ${first#re:} in
+        '' | *[!0123456789]*) return 1 ;;
+      esac
+      REPLY_PARENT_ID=${first#re:}
+      REPLY_BODY=${text#*$'\n'}
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+ata_comment_watch_is_actor() {
+  local name=$1
+  local ascii_lower='abcdefghijklmnopqrstuvwxyz'
+  [[ $name =~ ^[$ascii_lower]{4}$ ]]
+}
+
+ata_comment_watch_discover() {
+  local d
+  if [[ -n ${ATA_COMMENT_BOARDS:-} ]]; then
+    local IFS=:
+    for d in $ATA_COMMENT_BOARDS; do
+      [[ -n $d ]] && printf '%s\n' "$d"
+    done
+    return 0
+  fi
+  for d in /home/sf/workspace/* /home/sf/worlds/*; do
+    if [[ -f $d/.beads/beads.db ]]; then
+      printf '%s\n' "$d"
+    fi
+  done
+}
+
+ata_comment_watch_cursor_get() {
+  local cursors=$1
+  local db=$2
+  if [[ ! -r $cursors ]]; then
+    printf '0'
+    return 0
+  fi
+  jq -r --arg db "$db" '.[$db] // 0' "$cursors" 2>/dev/null || printf '0'
+}
+
+ata_comment_watch_cursor_set() {
+  local cursors=$1
+  local db=$2
+  local id=$3
+  local tmp dir
+  dir=$(dirname -- "$cursors")
+  mkdir -p "$dir"
+  chmod 700 "$dir"
+  tmp="$cursors.tmp.$$"
+  if [[ -r $cursors ]]; then
+    jq --arg db "$db" --argjson id "$id" '.[$db]=$id' "$cursors" >"$tmp"
+  else
+    jq -n --arg db "$db" --argjson id "$id" '{($db):$id}' >"$tmp"
+  fi
+  chmod 600 "$tmp"
+  mv -f -- "$tmp" "$cursors"
+}
+
+ata_comment_watch_max_id() {
+  local db=$1
+  sqlite3 -batch -noheader "$db" "SELECT COALESCE(MAX(id),0) FROM comments;" 2>/dev/null || printf '0'
+}
+
+ata_comment_watch_new_comments() {
+  local db=$1
+  local last=$2
+  case $last in
+    '' | *[!0123456789]*) last=0 ;;
+  esac
+  sqlite3 -batch -json "$db" \
+    "SELECT c.id AS id, c.issue_id AS issue_id, c.author AS author, c.text AS text,
+            COALESCE(i.issue_type,'task') AS issue_type, COALESCE(i.title,'') AS title
+       FROM comments c
+       LEFT JOIN issues i ON i.id = c.issue_id
+      WHERE c.id > $last
+      ORDER BY c.id ASC;" 2>/dev/null || printf '[]'
+}
+
+ata_comment_watch_load_comment() {
+  local db=$1
+  local id=$2
+  case $id in
+    '' | *[!0123456789]*) printf ''; return 1 ;;
+  esac
+  sqlite3 -batch -json "$db" \
+    "SELECT id, author, text FROM comments WHERE id = $id LIMIT 1;" 2>/dev/null
+}
+
+ata_comment_watch_has_lead() {
+  local root=$1
+  local scope=$root/.systemd-ops/scope.toml
+  [[ -r $scope ]] || return 1
+  grep -qE '^lead[[:space:]]*=[[:space:]]*"hcom:[a-z]{4}"' "$scope"
+}
+
+ata_comment_watch_notify() {
+  local root=$1
+  local message=$2
+  local recipient=${3:-}
+  local lib=${SYSTEM_NOTIFY_LIB:-}
+  if [[ -z $lib ]]; then
+    echo "ata-comment-watch: SYSTEM_NOTIFY_LIB is unset" >&2
+    return 3
+  fi
+  if [[ ! -r $lib ]]; then
+    echo "ata-comment-watch: system_notify seam is not readable: $lib" >&2
+    return 3
+  fi
+  # shellcheck source=/dev/null
+  source "$lib"
+  if [[ -n $recipient ]]; then
+    SYSTEMD_OPS_SCOPE_ROOT=$root SCOPE_ROOT=$root \
+      SYSTEM_NOTIFY_DELIVERY=steer SYSTEM_NOTIFY_RECIPIENT=$recipient \
+      system_notify "$ATA_COMMENT_SOURCE_ID" inform "$message"
+  else
+    SYSTEMD_OPS_SCOPE_ROOT=$root SCOPE_ROOT=$root \
+      SYSTEM_NOTIFY_DELIVERY=steer SYSTEM_NOTIFY_RECIPIENT= \
+      system_notify "$ATA_COMMENT_SOURCE_ID" inform "$message"
+  fi
+}
+ata_comment_watch_lead() {
+  local root=$1
+  local scope=$root/.systemd-ops/scope.toml
+  [[ -r $scope ]] || return 1
+  sed -n 's/^lead[[:space:]]*=[[:space:]]*"hcom:\([a-z]\{4\}\)"/\1/p' "$scope" | head -n1
+}
+
+ata_comment_watch_record() {
+  local text=$1
+  [[ -n $text ]] || return 0
+  if [[ -n ${COMMENT_WATCH_RECORD:-} ]]; then
+    printf '%s\n' "$text" >>"$COMMENT_WATCH_RECORD"
+    return 0
+  fi
+  local home=${COMMENT_WATCH_HOME:-}
+  local unit=${COMMENT_WATCH_UNIT:-managed-mardi-gras-comment-watch}
+  local bin=${SYSTEMD_OPS_BIN:-}
+  [[ -n $home ]] || return 0
+  [[ -n $bin ]] || bin=$(command -v systemd-ops || true)
+  [[ -n $bin ]] || return 0
+  "$bin" --json --manager user --scope-root "$home" \
+    operator append --unit "$unit" --text "$text" >/dev/null ||
+    echo "ata-comment-watch: operator append failed (advisory)" >&2
+  return 0
+}
+
+
+
+
+ata_comment_watch_run() {
+  local operator=${ATA_COMMENT_AUTHOR:-$ATA_COMMENT_AUTHOR_DEFAULT}
+  local state_dir=${STATE_DIR:-}
+  local cursors db root last max rows row id rc author text parent_json parent_author parent_text payload lead parent_id reply_body thread
+
+
+  REPLY_PARENT_ID=
+  REPLY_BODY=
+  if [[ -z $state_dir ]]; then
+    echo "ata-comment-watch: STATE_DIR is unset" >&2
+    return 2
+  fi
+  mkdir -p "$state_dir"
+  chmod 700 "$state_dir"
+  cursors=$state_dir/cursors.json
+
+  command -v sqlite3 >/dev/null || {
+    echo "ata-comment-watch: sqlite3 is required" >&2
+    return 2
+  }
+  command -v jq >/dev/null || {
+    echo "ata-comment-watch: jq is required" >&2
+    return 2
+  }
+
+  while IFS= read -r root; do
+    [[ -n $root ]] || continue
+    db=$root/.beads/beads.db
+    [[ -f $db ]] || continue
+    last=$(ata_comment_watch_cursor_get "$cursors" "$db")
+    if [[ $last == 0 ]] && ! jq -e --arg db "$db" 'has($db)' "$cursors" >/dev/null 2>&1; then
+      max=$(ata_comment_watch_max_id "$db")
+      ata_comment_watch_cursor_set "$cursors" "$db" "$max"
+      continue
+    fi
+    rows=$(ata_comment_watch_new_comments "$db" "$last")
+    [[ -n $rows && $rows != null ]] || rows='[]'
+    while IFS= read -r row; do
+      [[ -n $row ]] || continue
+      id=$(jq -r '.id' <<<"$row")
+      author=$(jq -r '.author' <<<"$row")
+      text=$(jq -r '.text' <<<"$row")
+      if ata_comment_watch_parse_reply "$text"; then
+        parent_json=$(ata_comment_watch_load_comment "$db" "$REPLY_PARENT_ID")
+        parent_author=$(jq -r '.[0].author // empty' <<<"$parent_json" 2>/dev/null || true)
+        parent_text=$(jq -r '.[0].text // empty' <<<"$parent_json" 2>/dev/null || true)
+        if [[ -z $parent_author ]]; then
+          echo "ata-comment-watch: missing parent $REPLY_PARENT_ID for comment $id; skipping" >&2
+          ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+          continue
+        fi
+        if ! ata_comment_watch_is_actor "$parent_author"; then
+          echo "ata-comment-watch: parent author '$parent_author' is not an actor; skipping comment $id" >&2
+          ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+          continue
+        fi
+        rc=0
+        parent_id=$REPLY_PARENT_ID
+        reply_body=$REPLY_BODY
+        thread=$(ata_comment_watch_thread_json "$db" "$id" "$author" "$reply_body" "$parent_id")
+        payload=$(
+          ata_comment_watch_format_reply \
+            "$author" "$parent_author" \
+            "$(jq -r '.issue_type' <<<"$row")" \
+            "$(jq -r '.issue_id' <<<"$row")" \
+            "$(jq -r '.title' <<<"$row")" \
+            "$thread"
+          printf .
+        )
+
+        payload=${payload%.}
+        ata_comment_watch_notify "$root" "$payload" "$parent_author" || rc=$?
+        if ((rc != 0)); then
+          echo "ata-comment-watch: notify failed for $db comment $id status $rc" >&2
+          return "$rc"
+        fi
+        ata_comment_watch_record "$author replied to $parent_author on $(jq -r '.issue_type' <<<"$row") $(jq -r '.issue_id' <<<"$row")"
+        ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+        continue
+      fi
+      if [[ $author != "$operator" ]]; then
+        ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+        continue
+      fi
+      if ! ata_comment_watch_has_lead "$root"; then
+        echo "ata-comment-watch: no coordination.lead in $root; skipping comment $id" >&2
+        ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+        continue
+      fi
+      rc=0
+      payload=$(
+        ata_comment_watch_format \
+          "$author" \
+          "$(jq -r '.issue_type' <<<"$row")" \
+          "$(jq -r '.issue_id' <<<"$row")" \
+          "$(jq -r '.title' <<<"$row")" \
+          "$text"
+        printf .
+      )
+      payload=${payload%.}
+      ata_comment_watch_notify "$root" "$payload" || rc=$?
+      if ((rc != 0)); then
+        echo "ata-comment-watch: notify failed for $db comment $id status $rc" >&2
+        return "$rc"
+      fi
+      lead=$(ata_comment_watch_lead "$root" || true)
+      if [[ -n $lead ]]; then
+        ata_comment_watch_record "$author commented on $(jq -r '.issue_type' <<<"$row") $(jq -r '.issue_id' <<<"$row") → $lead"
+      else
+        ata_comment_watch_record "$author commented on $(jq -r '.issue_type' <<<"$row") $(jq -r '.issue_id' <<<"$row")"
+      fi
+      ata_comment_watch_cursor_set "$cursors" "$db" "$id"
+
+    done < <(jq -c '.[]' <<<"$rows")
+  done < <(ata_comment_watch_discover)
+  return 0
+}
