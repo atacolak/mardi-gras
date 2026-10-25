@@ -2372,17 +2372,18 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		dx := x - paradeWidth
-		if m.commentsDockContains(bodyRow) && len(m.previews) == 0 {
+		if len(m.previews) == 0 && (m.commentsFocus || m.commentsDockContains(bodyRow)) {
 			m.commentsFocus = true
 			m.commentsDockOpen = true
+			step := 1
 			if down {
-				m.scrollCommentLines(1)
+				m.scrollCommentLines(step)
 			} else {
-				m.scrollCommentLines(-1)
+				m.scrollCommentLines(-step)
 			}
-
 			return m, nil
 		}
+
 		// Pointer inside a gold box scrolls that preview. At its scroll
 		// edge, leftover ticks pass to the preview that opened it, then
 		// the parent bead. The true gap around every overlay is the parent.

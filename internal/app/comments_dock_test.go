@@ -62,13 +62,38 @@ func TestScrollCommentLinesMovesWindow(t *testing.T) {
 	m.detail.SetComments("j7k.9", comments)
 	m.applyDockInset()
 	before := m.commentsDockScroll
+	cursor := m.commentsDockCursor
 	m.scrollCommentLines(3)
 	if m.commentsDockScroll <= before {
 		t.Fatalf("scroll did not move: %d -> %d", before, m.commentsDockScroll)
 	}
+	if m.commentsDockCursor != cursor {
+		t.Fatal("line scroll must not change the active comment")
+	}
 	m.scrollCommentLines(-100)
 	if m.commentsDockScroll != 0 {
 		t.Fatalf("scroll top = %d, want 0", m.commentsDockScroll)
+	}
+
+}
+
+func TestReplyCountIsSuperscriptOnAuthor(t *testing.T) {
+	if superscriptInt(2) != "²" || superscriptInt(12) != "¹²" {
+		t.Fatalf("superscriptInt: 2=%q 12=%q", superscriptInt(2), superscriptInt(12))
+	}
+	m := testDockModel(t)
+	m.commentsDockOpen = true
+	m.detail.SetComments("j7k.9", []gastown.Comment{
+		{ID: "1", Author: "zime", Body: "root"},
+		{ID: "2", Author: "ata", Body: "re:1\nfirst"},
+		{ID: "3", Author: "ata", Body: "re:1\nsecond"},
+	})
+	out := ansi.Strip(strings.Join(m.paintCommentsDock(m.detail.Width, m.commentsDockHeight()).lines, "\n"))
+	if !strings.Contains(out, "zime²") {
+		t.Fatalf("want zime² on author, got:\n%s", out)
+	}
+	if strings.Contains(out, "  2") {
+		t.Fatalf("old trailing reply count still shown:\n%s", out)
 	}
 }
 

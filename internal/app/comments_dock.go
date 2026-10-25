@@ -189,7 +189,7 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 	var hits []int
 
 	if selected {
-		raw = append(raw, m.threadMetaLine(th.root, true, unread, innerW))
+		raw = append(raw, m.threadMetaLine(th.root, true, unread, innerW, len(th.replies)))
 		hits = append(hits, idx)
 		for _, line := range wrapCommentLines(rootBody, innerW-2) {
 			raw = append(raw, " "+line)
@@ -207,16 +207,12 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 		}
 	} else {
 		preview := strings.ReplaceAll(rootBody, "\n", " ")
-		head := m.nameAndWhen(th.root, false, unread, " ")
-		suffix := ""
-		if n := len(th.replies); n > 0 {
-			suffix = fmt.Sprintf("  %d", n)
-		}
+		head := m.nameAndWhen(th.root, false, unread, " ", len(th.replies))
 		line := head + "  " + lipgloss.NewStyle().Foreground(ui.Muted).Render(preview)
-		if lipgloss.Width(line)+lipgloss.Width(suffix) > innerW {
-			line = ansi.Truncate(line, innerW-lipgloss.Width(suffix), "…")
+		if lipgloss.Width(line) > innerW {
+			line = ansi.Truncate(line, innerW, "…")
 		}
-		raw = append(raw, line+lipgloss.NewStyle().Foreground(ui.Dim).Render(suffix))
+		raw = append(raw, line)
 		hits = append(hits, idx)
 	}
 
@@ -233,18 +229,21 @@ func (m Model) paintThread(th commentThread, idx int, selected bool, innerW int)
 
 const nameTimeGap = "    " // one tab less
 
-func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
+func (m Model) threadMetaLine(c gastown.Comment, selected, unread bool, innerW int, replies int) string {
 	_ = innerW
-	return m.nameAndWhen(c, selected, unread, " ")
+	return m.nameAndWhen(c, selected, unread, " ", replies)
 }
 
 func (m Model) replyMetaLine(c gastown.Comment, selected, unread bool, innerW int) string {
 	_ = innerW
-	return m.nameAndWhen(c, selected, unread, "    ")
+	return m.nameAndWhen(c, selected, unread, "    ", 0)
 }
 
-func (m Model) nameAndWhen(c gastown.Comment, selected, unread bool, indent string) string {
+func (m Model) nameAndWhen(c gastown.Comment, selected, unread bool, indent string, replies int) string {
 	name := m.authorLabel(c.Author, selected, unread)
+	if replies > 0 {
+		name += lipgloss.NewStyle().Foreground(ui.Dim).Render(superscriptInt(replies))
+	}
 	clock := lipgloss.NewStyle().Foreground(ui.Muted).Render(commentClock(c.Time))
 	out := indent + name + nameTimeGap + clock
 	if selected {
@@ -265,6 +264,22 @@ func (m Model) authorLabel(name string, selected, unread bool) string {
 		s = wavyUnderline(s)
 	}
 	return s
+}
+
+func superscriptInt(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	digits := []rune("⁰¹²³⁴⁵⁶⁷⁸⁹")
+	if n < 10 {
+		return string(digits[n])
+	}
+	var out []rune
+	for n > 0 {
+		out = append([]rune{digits[n%10]}, out...)
+		n /= 10
+	}
+	return string(out)
 }
 
 func (m Model) commentThreads() []commentThread {
