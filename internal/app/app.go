@@ -1862,6 +1862,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			parent := m.replyToID
 			m.replyToID = ""
 			m.replyToAuthor = ""
+
 			m.detail.SetComments(msg.issueID, msg.comments)
 			threads := m.commentThreads()
 			if parent != "" {
@@ -1879,6 +1880,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.commentsDockCursor >= len(threads) {
 				m.commentsDockCursor = max(0, len(threads)-1)
 			}
+			m.applyDockInset()
 		}
 
 		return m, nil
@@ -2392,6 +2394,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		m.applyDockInset()
 		scrollViewport(&m.detail.Viewport, down)
 
 	}
@@ -2799,12 +2802,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		m.applyDockInset()
 		var cmd tea.Cmd
 		switch str {
 		case "j", "down":
 			m.detail.Viewport.ScrollDown(1)
 		case "k", "up":
 			m.detail.Viewport.ScrollUp(1)
+
 		case "m":
 			// Mark current molecule step as done
 			if m.detail.MoleculeDAG != nil {
@@ -3549,11 +3554,13 @@ func (m *Model) syncSelection() {
 				m.detail.AgentOutputID = ""
 			}
 		}
+		m.applyDockInset()
 		return
 	}
 	m.detail.SetIssue(nil)
 	m.detail.AgentOutput = nil
 	m.detail.AgentOutputID = ""
+	m.applyDockInset()
 }
 
 // afterSelect restamps detail and fetches comments for the selected bead.

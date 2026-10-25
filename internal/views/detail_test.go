@@ -1483,8 +1483,9 @@ func TestBackButtonOnlyWhenShowBack(t *testing.T) {
 	d.ShowBack = true
 	d.SetIssue(&issues[0])
 	plain = ansi.Strip(d.renderContent())
-	if !strings.HasPrefix(strings.TrimLeft(plain, " "), " < ") && !strings.Contains(plain, " < ") {
-		t.Fatalf("missing back chip:\n%s", plain)
+	first := strings.Split(plain, "\n")[0]
+	if !strings.Contains(first, " < ") || !strings.Contains(first, "Focus test") {
+		t.Fatalf("back chip must sit on the title line:\n%s", first)
 	}
 	if !d.BackHit(0, 1) {
 		t.Fatal("click on chip must hit")
@@ -1492,8 +1493,23 @@ func TestBackButtonOnlyWhenShowBack(t *testing.T) {
 	if d.BackHit(0, 3) {
 		t.Fatal("click past chip must miss")
 	}
+
 	d.ShowBack = false
 	if d.BackHit(0, 1) {
 		t.Fatal("no history, no hit")
+	}
+}
+
+func TestSetSizeKeepsBottomInset(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "mg-001", Title: "Focus test", Status: data.StatusOpen, Priority: data.PriorityMedium, IssueType: data.TypeTask},
+	}
+	d := NewDetail(80, 24, issues)
+	d.SetIssue(&issues[0])
+	d.SetViewportBottomInset(8)
+	want := d.Viewport.Height()
+	d.SetSize(80, 24)
+	if d.Viewport.Height() != want {
+		t.Fatalf("SetSize wiped inset: %d -> %d", want, d.Viewport.Height())
 	}
 }

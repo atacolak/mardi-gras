@@ -40,6 +40,16 @@ func TestDockInsetLeavesBodyScrollable(t *testing.T) {
 	}
 }
 
+func TestAfterSelectInsetsOpenDock(t *testing.T) {
+	m := testDockModel(t)
+	m.commentsDockOpen = true
+	m.parade.SelectedIssue = m.detail.Issue
+	m.afterSelect()
+	if m.detail.Viewport.Height() >= m.detail.Height-1 {
+		t.Fatal("afterSelect must shrink the body under an open dock")
+	}
+}
+
 func TestCommentsDockCoversWithoutChangingViewport(t *testing.T) {
 	m := testDockModel(t)
 	before := m.detail.Viewport.Height()

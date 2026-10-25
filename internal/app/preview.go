@@ -310,8 +310,11 @@ func (m *Model) openIssueInDetail(issue *data.Issue) tea.Cmd {
 	m.detail.SetIssue(issue)
 	if m.restoreParadeSelection(issue.ID) {
 		m.syncSelection()
+	} else {
+		m.applyDockInset()
 	}
 	m.detail.ShowBack = len(m.detailBack) > 0
+
 	cmds := m.detailFetchBatch()
 	if len(cmds) == 0 {
 		return nil
@@ -336,8 +339,11 @@ func (m *Model) goDetailBack() tea.Cmd {
 	m.detail.SetIssue(issue)
 	if m.restoreParadeSelection(id) {
 		m.syncSelection()
+	} else {
+		m.applyDockInset()
 	}
 	m.detail.ShowBack = len(m.detailBack) > 0
+
 	cmds := m.detailFetchBatch()
 	if len(cmds) == 0 {
 		return nil

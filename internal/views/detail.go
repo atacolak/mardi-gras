@@ -26,6 +26,7 @@ type Detail struct {
 	Height        int
 	Focused       bool
 	ShowBack      bool // link-nav history; not parade selection
+	bottomInset   int  // comments dock rows covering the body
 
 	ActiveAgents     map[string]string
 	TownStatus       *gastown.TownStatus
@@ -67,7 +68,11 @@ func NewDetail(width, height int, issues []data.Issue) Detail {
 // the pane's size contract: one row under the viewport belongs to the scroll
 // cue. Callers must size the pane via SetSize first.
 func (d *Detail) ResetViewport() {
-	d.Viewport = viewport.New(viewport.WithWidth(d.Width-2), viewport.WithHeight(max(d.Height-1, 1)))
+	inset := d.bottomInset
+	if inset < 0 {
+		inset = 0
+	}
+	d.Viewport = viewport.New(viewport.WithWidth(d.Width-2), viewport.WithHeight(max(d.Height-1-inset, 1)))
 }
 
 // SetIssue updates the displayed issue and rebuilds content.
@@ -140,16 +145,25 @@ func (d *Detail) SetRichDetail(issueID string, rich *data.Issue) {
 	}
 }
 
-// SetSize updates dimensions and re-renders content.
 func (d *Detail) SetSize(width, height int) {
 	d.Width = width
 	d.Height = height
-	// One row is reserved under the viewport for the scroll position cue.
 	d.Viewport.SetWidth(width - 2)
-	d.Viewport.SetHeight(max(height-1, 1))
-	d.mdRenderer = nil // re-create with new width
+	d.mdRenderer = nil
+	d.applyViewportHeight()
 	if d.Issue != nil {
 		d.Viewport.SetContent(d.renderContent())
+	}
+}
+
+func (d *Detail) applyViewportHeight() {
+	inset := d.bottomInset
+	if inset < 0 {
+		inset = 0
+	}
+	vis := max(d.Height-1-inset, 1)
+	if d.Viewport.Height() != vis {
+		d.Viewport.SetHeight(vis)
 	}
 }
 
@@ -161,11 +175,8 @@ func (d *Detail) SetViewportBottomInset(inset int) {
 	if inset < 0 {
 		inset = 0
 	}
-	vis := max(d.Height-1-inset, 1)
-	if d.Viewport.Height() == vis {
-		return
-	}
-	d.Viewport.SetHeight(vis)
+	d.bottomInset = inset
+	d.applyViewportHeight()
 }
 
 // SetPreviewSize sizes the viewport to fill a gold preview box. No left-border
@@ -329,12 +340,11 @@ func (d *Detail) renderContent() string {
 		}
 	}
 
+	title := ui.DetailTitle.Render(issue.Title)
 	if d.ShowBack {
-		lines = append(lines, ui.BackButton.Render(" < "))
+		title = ui.BackButton.Render(" < ") + " " + title
 	}
-
-	// Title
-	lines = append(lines, ui.DetailTitle.Render(issue.Title))
+	lines = append(lines, title)
 	lines = append(lines, "")
 
 	// Status row. The state is derived once, from the same graph the parade
