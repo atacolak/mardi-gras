@@ -50,6 +50,28 @@ func TestAfterSelectInsetsOpenDock(t *testing.T) {
 	}
 }
 
+func TestScrollCommentLinesMovesWindow(t *testing.T) {
+	m := testDockModel(t)
+	m.commentsDockOpen = true
+	var comments []gastown.Comment
+	for i := range 12 {
+		comments = append(comments, gastown.Comment{
+			ID: fmt.Sprintf("%d", i+1), Author: "ata", Body: fmt.Sprintf("note %d", i),
+		})
+	}
+	m.detail.SetComments("j7k.9", comments)
+	m.applyDockInset()
+	before := m.commentsDockScroll
+	m.scrollCommentLines(3)
+	if m.commentsDockScroll <= before {
+		t.Fatalf("scroll did not move: %d -> %d", before, m.commentsDockScroll)
+	}
+	m.scrollCommentLines(-100)
+	if m.commentsDockScroll != 0 {
+		t.Fatalf("scroll top = %d, want 0", m.commentsDockScroll)
+	}
+}
+
 func TestCommentsDockCoversWithoutChangingViewport(t *testing.T) {
 	m := testDockModel(t)
 	before := m.detail.Viewport.Height()

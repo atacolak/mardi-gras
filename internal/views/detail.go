@@ -72,7 +72,11 @@ func (d *Detail) ResetViewport() {
 	if inset < 0 {
 		inset = 0
 	}
-	d.Viewport = viewport.New(viewport.WithWidth(d.Width-2), viewport.WithHeight(max(d.Height-1-inset, 1)))
+	chrome := 1
+	if d.Issue != nil {
+		chrome++
+	}
+	d.Viewport = viewport.New(viewport.WithWidth(d.Width-2), viewport.WithHeight(max(d.Height-chrome-inset, 1)))
 }
 
 // SetIssue updates the displayed issue and rebuilds content.
@@ -97,7 +101,9 @@ func (d *Detail) SetIssue(issue *data.Issue) {
 	if issue == nil || issue.ID != d.RichIssueID {
 		d.RichIssueID = ""
 	}
+	d.applyViewportHeight()
 	d.Viewport.SetContent(d.renderContent())
+
 	newID := ""
 	if issue != nil {
 		newID = issue.ID
@@ -161,7 +167,11 @@ func (d *Detail) applyViewportHeight() {
 	if inset < 0 {
 		inset = 0
 	}
-	vis := max(d.Height-1-inset, 1)
+	chrome := 1 // scroll cue
+	if d.Issue != nil {
+		chrome++ // sticky title
+	}
+	vis := max(d.Height-chrome-inset, 1)
 	if d.Viewport.Height() != vis {
 		d.Viewport.SetHeight(vis)
 	}
@@ -226,15 +236,34 @@ func (d *Detail) ReferenceAtXY(viewportRow, contentX int) *data.Issue {
 	return d.ReferenceAt(viewportRow)
 }
 
-// BackHit is the 3-cell ` < ` chip on content line 0 when ShowBack.
-func (d *Detail) BackHit(viewportRow, contentX int) bool {
-	if !d.ShowBack || d.Issue == nil || viewportRow < 0 || viewportRow >= d.Viewport.Height() {
-		return false
-	}
-	if d.Viewport.YOffset()+viewportRow != 0 {
+// BackHit is the 3-cell ` < ` chip on the sticky title row.
+func (d *Detail) BackHit(paneRow, contentX int) bool {
+	if !d.ShowBack || d.Issue == nil || paneRow != 0 {
 		return false
 	}
 	return contentX >= 0 && contentX < 3
+}
+
+func (d *Detail) TitleBar() string {
+	if d.Issue == nil {
+		return ""
+	}
+	title := ui.DetailTitle.Render(d.Issue.Title)
+	if d.ShowBack {
+		title = ui.BackButton.Render(" < ") + " " + title
+	}
+	w := d.Viewport.Width()
+	if w < 1 {
+		w = max(d.Width-2, 1)
+	}
+	return lipgloss.NewStyle().Width(w).MaxHeight(1).Render(title)
+}
+
+func (d *Detail) TitleBarHeight() int {
+	if d.Issue == nil {
+		return 0
+	}
+	return 1
 }
 
 // ContentView is the scrollable body without the pane divider. Preview
@@ -247,8 +276,6 @@ func (d *Detail) ContentView() string {
 }
 
 func (d *Detail) View() string {
-	// Split chrome stays gold. Tab still owns keyboard focus; it does not
-	// recolor the bar.
 	border := ui.DetailBorder.BorderForeground(ui.Gold)
 
 	if d.Issue == nil {
@@ -261,10 +288,9 @@ func (d *Detail) View() string {
 		return border.Height(d.Height).Render(empty)
 	}
 
+	title := d.TitleBar()
 	content := d.Viewport.View()
 
-	// Scroll position cue: a scrolled pane gives no orientation otherwise
-	// (audit #13). Blank when everything fits.
 	cue := ""
 	if d.Viewport.TotalLineCount() > d.Viewport.Height() {
 		cue = fmt.Sprintf("%s %d%% ", strings.Repeat(ui.BoxHorizontal, 3), int(d.Viewport.ScrollPercent()*100))
@@ -275,7 +301,7 @@ func (d *Detail) View() string {
 		Align(lipgloss.Right).
 		Render(cue)
 
-	return border.Height(d.Height).Render(content + "\n" + cueLine)
+	return border.Height(d.Height).Render(title + "\n" + content + "\n" + cueLine)
 }
 
 // renderMarkdown renders markdown text using glamour with mg's brand theme.
@@ -340,12 +366,7 @@ func (d *Detail) renderContent() string {
 		}
 	}
 
-	title := ui.DetailTitle.Render(issue.Title)
-	if d.ShowBack {
-		title = ui.BackButton.Render(" < ") + " " + title
-	}
-	lines = append(lines, title)
-	lines = append(lines, "")
+	// Title lives in TitleBar chrome, not the scrolled body.
 
 	// Status row. The state is derived once, from the same graph the parade
 	// buckets by, so a settled in_progress epic reads "Operator Attention" rather

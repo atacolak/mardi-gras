@@ -2335,6 +2335,7 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.detail.BackHit(bodyRow, contentX) {
 				return m, m.goDetailBack()
 			}
+			bodyRow -= m.detail.TitleBarHeight()
 			issue := m.detail.ReferenceAtXY(bodyRow, contentX)
 			if issue == nil && mouse.Button == tea.MouseRight {
 				issue = m.detail.ReferenceAt(bodyRow)
@@ -2375,10 +2376,11 @@ func (m Model) handleMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commentsFocus = true
 			m.commentsDockOpen = true
 			if down {
-				m.moveCommentCursor(1)
+				m.scrollCommentLines(1)
 			} else {
-				m.moveCommentCursor(-1)
+				m.scrollCommentLines(-1)
 			}
+
 			return m, nil
 		}
 		// Pointer inside a gold box scrolls that preview. At its scroll
